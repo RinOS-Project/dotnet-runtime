@@ -123,10 +123,13 @@ LoadLibraryExA(
     IN /*Reserved*/ HANDLE hFile,
     IN DWORD dwFlags)
 {
-    if (dwFlags != 0)
+    if (hFile != nullptr || dwFlags != 0)
     {
-        // UNIXTODO: Implement this!
-        ASSERT("Needs Implementation!!!");
+        // RinOS loads only authenticated RLLs through the product loader.
+        // Win32 data-file and altered-search-path modes have no equivalent
+        // in that contract, so reject them without an assertion or host
+        // loader fallback.
+        SetLastError(ERROR_INVALID_PARAMETER);
         return nullptr;
     }
 
@@ -167,10 +170,11 @@ LoadLibraryExW(
     IN /*Reserved*/ HANDLE hFile,
     IN DWORD dwFlags)
 {
-    if (dwFlags != 0)
+    if (hFile != nullptr || dwFlags != 0)
     {
-        // UNIXTODO: Implement this!
-        ASSERT("Needs Implementation!!!");
+        // Keep the wide entry point identical to LoadLibraryExA: only the
+        // signed-RLL default load mode is part of the RinOS PAL contract.
+        SetLastError(ERROR_INVALID_PARAMETER);
         return nullptr;
     }
 

@@ -575,7 +575,7 @@ bool GCToOSInterface::VirtualReset(void * address, size_t size, bool unlock)
     // Tell the kernel that the application doesn't need the pages in the range.
     // Freeing the pages can be delayed until a memory pressure occurs.
     st = madvise(address, size, MADV_FREE);
-#elif defined(HAVE_POSIX_MADVISE)
+#elif HAVE_POSIX_MADVISE
     // DONTNEED is the nearest posix equivalent of FREE.
     // Prefer FREE as, since glibc2.6 DONTNEED is a nop.
     st = posix_madvise(address, size, POSIX_MADV_DONTNEED);
@@ -831,7 +831,7 @@ static uint64_t GetMemorySizeMultiplier(char units)
     return 1;
 }
 
-#if !defined(__APPLE__) && !defined(__HAIKU__)
+#if !defined(__APPLE__) && !defined(__HAIKU__) && !defined(TARGET_RINOS)
 // Try to read the MemAvailable entry from /proc/meminfo.
 // Return true if the /proc/meminfo existed, the entry was present and we were able to parse it.
 static bool ReadMemAvailable(uint64_t* memAvailable)
@@ -864,7 +864,7 @@ static bool ReadMemAvailable(uint64_t* memAvailable)
 
     return foundMemAvailable;
 }
-#endif // !defined(__APPLE__) && !defined(__HAIKU__)
+#endif // !defined(__APPLE__) && !defined(__HAIKU__) && !defined(TARGET_RINOS)
 
 // Get size of the largest cache on the processor die
 // Parameters:
@@ -1109,6 +1109,15 @@ uint64_t GetAvailablePhysicalMemory()
     if (get_system_info(&info) == B_OK)
     {
         available = info.free_memory;
+    }
+#elif defined(TARGET_RINOS)
+    // RinOS does not provide Linux /proc.  Its libc exposes the kernel's
+    // memory snapshot through sysconf(_SC_AVPHYS_PAGES).
+    long availablePages = sysconf(_SC_AVPHYS_PAGES);
+    long pageSize = sysconf(_SC_PAGE_SIZE);
+    if (availablePages > 0 && pageSize > 0)
+    {
+        available = (uint64_t)availablePages * (uint64_t)pageSize;
     }
 #else // Linux
     static volatile bool tryReadMemInfo = true;

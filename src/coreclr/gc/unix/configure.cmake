@@ -188,4 +188,43 @@ int main(void) {
   exit(0);
 }" HAVE_PROCFS_STATM)
 
+if(CLR_CMAKE_TARGET_RINOS)
+  # RinOS exposes the POSIX-shaped GC surface through its own libc.  Do not
+  # inherit feature probes from the build host: those probes would enable
+  # Linux procfs, glibc CPU_ALLOC, or foreign BSD/macOS APIs in a cross build.
+  if(NOT CLR_CMAKE_TARGET_ARCH_AMD64)
+    message(FATAL_ERROR "RinOS GC currently supports only x86_64")
+  endif()
+
+  set(HAVE_SYS_TIME_H 1)
+  set(HAVE_SYS_MMAN_H 1)
+  set(HAVE_SYS_MEMBARRIER_H 0)
+  set(HAVE_PTHREAD_THREADID_NP 0)
+  set(HAVE_PTHREAD_GETTHREADID_NP 0)
+  set(HAVE_VM_FLAGS_SUPERPAGE_SIZE_ANY 0)
+  set(HAVE_MAP_HUGETLB 0)
+  set(HAVE_SCHED_GETCPU 0)
+  set(HAVE_VM_ALLOCATE 0)
+  set(HAVE_SWAPCTL 0)
+  set(HAVE_SYSCTLBYNAME 0)
+  set(HAVE_PTHREAD_CONDATTR_SETCLOCK 1)
+  set(HAVE_CLOCK_GETTIME_NSEC_NP 0)
+  set(HAVE_SCHED_GETAFFINITY 0)
+  set(HAVE_SCHED_SETAFFINITY 0)
+  set(HAVE_PTHREAD_SETAFFINITY_NP 0)
+  set(HAVE_PTHREAD_NP_H 0)
+  set(HAVE_POSIX_MADVISE 0)
+  set(HAVE_CPUSET_T 0)
+  set(HAVE__SC_AVPHYS_PAGES 1)
+  set(HAVE__SC_PHYS_PAGES 1)
+  set(HAVE_SYSCONF 1)
+  set(HAVE_SYSCTL 0)
+  set(HAVE_SYSINFO 0)
+  set(HAVE_SYSINFO_WITH_MEM_UNIT 0)
+  set(HAVE_XSW_USAGE 0)
+  set(HAVE_XSWDEV 0)
+  set(HAVE_NON_LEGACY_STATFS 0)
+  set(HAVE_PROCFS_STATM 0)
+endif()
+
 configure_file(${CMAKE_CURRENT_LIST_DIR}/config.gc.h.in ${CMAKE_CURRENT_BINARY_DIR}/config.gc.h)

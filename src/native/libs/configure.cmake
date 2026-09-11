@@ -1187,6 +1187,33 @@ check_c_source_compiles(
     "
     HAVE_TERMIOS2)
 
+if (CLR_CMAKE_TARGET_RINOS)
+    # RinOS is a freestanding userspace target. Do not let configure probes
+    # performed with the host compiler select Linux/BSD extensions for
+    # System.Native. Keep the process path on the product libc contract.
+    set(HAVE_GETIFADDRS 0)
+    set(HAVE_FORK 1)
+    set(HAVE_POSIX_SPAWN_FILE_ACTIONS_ADDCHDIR_NP 0)
+    set(HAVE_LSEEK64 0)
+    set(HAVE_MMAP64 0)
+    set(HAVE_FTRUNCATE64 0)
+    set(HAVE_POSIX_FADVISE64 0)
+    set(HAVE_STAT64 0)
+    set(HAVE_VFORK 0)
+    set(HAVE_PR_SET_PDEATHSIG 0)
+    set(HAVE_PIPE 1)
+    set(HAVE_PIPE2 1)
+    set(HAVE_CLOSE_RANGE 0)
+    set(HAVE_FDWALK 0)
+    set(HAVE_MNTINFO 0)
+    set(HAVE_STRLCPY 0)
+    set(HAVE_SHM_OPEN_THAT_WORKS_WELL_ENOUGH_WITH_MMAP 0)
+    set(HAVE_ALIGNED_ALLOC 1)
+    set(HAVE_MALLOC_USABLE_SIZE 1)
+    set(HAVE_MALLOC_USABLE_SIZE_NP 0)
+    set(HAVE_POSIX_MEMALIGN 1)
+endif()
+
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/Common/pal_config.h.in
     ${CMAKE_CURRENT_BINARY_DIR}/Common/pal_config.h)

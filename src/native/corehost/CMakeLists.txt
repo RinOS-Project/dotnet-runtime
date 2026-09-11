@@ -9,6 +9,13 @@ set(COREHOST_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 option(CLR_CMAKE_BUILD_HOST_PRODUCT "Build host product components" ON)
 option(CLR_CMAKE_BUILD_HOST_TESTS "Build host test components" OFF)
 
+if(CLR_CMAKE_TARGET_RINOS)
+    option(RINOS_ENABLE_NATIVE_PACKAGING
+        "Package RinOS host outputs as signed RIN/RLL images" OFF)
+    set(RINOS_SIGN_KEY "" CACHE FILEPATH "Ed25519 private key for RinOS native packaging")
+    set(RINOS_PUBLIC_KEY "" CACHE FILEPATH "Ed25519 public key for RinOS native packaging")
+endif()
+
 if (MSVC)
     # Host components don't try to handle asynchronous exceptions
     set_property(DIRECTORY PROPERTY CLR_EH_OPTION /EHsc)

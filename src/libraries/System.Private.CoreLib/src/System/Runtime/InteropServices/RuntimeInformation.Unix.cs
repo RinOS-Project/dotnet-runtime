@@ -20,6 +20,8 @@ namespace System.Runtime.InteropServices
             $"iOS {Environment.OSVersion.Version}";
 #elif TARGET_TVOS
             $"tvOS {Environment.OSVersion.Version}";
+#elif TARGET_RINOS
+            $"RinOS {Environment.OSVersion.Version}";
 #elif TARGET_WATCHOS
             $"watchOS {Environment.OSVersion.Version}";
 #elif TARGET_LINUX

@@ -4310,6 +4310,9 @@
   <data name="DllNotFound_Mac" xml:space="preserve">
     <value>Unable to load shared library '{0}' or one of its dependencies. In order to help diagnose loading problems, consider setting the DYLD_PRINT_LIBRARIES environment variable: {1}</value>
   </data>
+  <data name="DllNotFound_RinOS" xml:space="preserve">
+    <value>Unable to load RinOS native library '{0}' or one of its signed .rll dependencies: {1}</value>
+  </data>
   <data name="InvalidOperation_ComInteropRequireComWrapperInstance" xml:space="preserve">
     <value>COM Interop requires ComWrapper instance registered for marshalling.</value>
   </data>

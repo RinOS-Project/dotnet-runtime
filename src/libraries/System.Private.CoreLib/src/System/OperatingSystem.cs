@@ -28,6 +28,8 @@ namespace System
         "TVOS"
 #elif TARGET_ANDROID
         "ANDROID"
+#elif TARGET_RINOS
+        "RINOS"
 #elif TARGET_LINUX
         "LINUX"
 #elif TARGET_FREEBSD
@@ -45,6 +47,7 @@ namespace System
 #else
 #error Unknown OS, add a corresponding TARGET_* constant to System.Private.CoreLib.Shared.projitems
 #endif
+
         ;
 
         private readonly Version _version;

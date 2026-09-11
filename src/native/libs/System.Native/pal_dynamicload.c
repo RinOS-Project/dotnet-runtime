@@ -18,6 +18,9 @@ void* SystemNative_LoadLibrary(const char* filename)
      * NativeLibrary variations may present either the logical name or the
      * target-native suffix; both spellings must resolve to the same handle.
      * Every other name remains subject to the signed RLL loader policy. */
+    if (filename == NULL)
+        return NULL;
+
     if (strcmp(filename, "libc") == 0 || strcmp(filename, "libc.rll") == 0)
         return dlopen(NULL, RTLD_LAZY);
 #endif

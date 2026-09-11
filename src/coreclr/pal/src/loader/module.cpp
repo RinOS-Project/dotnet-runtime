@@ -528,6 +528,18 @@ LPCSTR FixLibCName(LPCSTR shortAsciiName)
     return shortAsciiName;
 }
 
+#if defined(TARGET_RINOS)
+/* RinOS libc is exported by the process-owned main image.  CoreCLR probes
+ * both the logical name and the target-native name while resolving a P/Invoke
+ * library, so both spellings must take the same main-image path. */
+static bool IsRinOSProcessLibCName(LPCSTR libraryName)
+{
+    return libraryName != nullptr &&
+        (strcmp(libraryName, LIBC_NAME_WITHOUT_EXTENSION) == 0 ||
+         strcmp(libraryName, "libc.rll") == 0);
+}
+#endif
+
 /*
 Function:
   PAL_LoadLibraryDirect
@@ -578,7 +590,7 @@ PAL_LoadLibraryDirect(
     lpcstr = FixLibCName(lpstr);
 
 #if defined(TARGET_RINOS)
-    if (strcmp(lpcstr, LIBC_NAME_WITHOUT_EXTENSION) == 0)
+    if (IsRinOSProcessLibCName(lpcstr))
     {
         dl_handle = dlopen(NULL, RTLD_LAZY);
     }
@@ -1774,7 +1786,7 @@ static HMODULE LOADLoadLibrary(LPCSTR shortAsciiName, BOOL fDynamic)
     if (shortAsciiName != nullptr)
     {
 #if defined(TARGET_RINOS)
-        load_process_libc = strcmp(shortAsciiName, LIBC_NAME_WITHOUT_EXTENSION) == 0;
+        load_process_libc = IsRinOSProcessLibCName(shortAsciiName);
 #endif
         shortAsciiName = FixLibCName(shortAsciiName);
     }

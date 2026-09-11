@@ -74,7 +74,11 @@ enum
 
 int32_t SystemNative_GetOSArchitecture(void)
 {
-#ifdef TARGET_WASM
+#if defined(TARGET_RINOS)
+    /* RinOS exposes only the x86_64 target in this product snapshot.  Keep
+     * RuntimeInformation independent from a host or kernel machine string. */
+    return ARCH_X64;
+#elif defined(TARGET_WASM)
     return ARCH_WASM;
 #else
     int32_t result = -1;

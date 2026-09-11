@@ -49,6 +49,10 @@ typedef char pal_char_t;
 #define _X(s) s
 #endif // _WIN32
 
+#if defined(TARGET_RINOS)
+#include "pal.rinos.h"
+#endif
+
 // Max path buffer for apphost string operations
 #define APPHOST_PATH_MAX 4096
 
@@ -261,7 +265,10 @@ bool pal_get_loaded_library(const pal_char_t* library_name, const char* symbol_n
 }
 #endif
 
-#if defined(TARGET_WINDOWS)
+#if defined(TARGET_RINOS)
+#define LIB_PREFIX RINOS_NATIVE_LIBRARY_PREFIX
+#define LIB_FILE_EXT RINOS_NATIVE_LIBRARY_EXT
+#elif defined(TARGET_WINDOWS)
 #define LIB_PREFIX ""
 #define LIB_FILE_EXT ".dll"
 #elif defined(TARGET_OSX)

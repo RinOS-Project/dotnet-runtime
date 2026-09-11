@@ -1,5 +1,11 @@
 
 macro(append_extra_cryptography_libs NativeLibsExtra)
+    if(CLR_CMAKE_TARGET_RINOS)
+        # RinOS has no product OpenSSL/RinTLS backend in this snapshot. Never
+        # let a host OpenSSL installation leak into a target-native RLL.
+        message(FATAL_ERROR "RinOS System.Security.Cryptography.Native requires an explicit product TLS backend; host OpenSSL discovery is forbidden")
+    endif()
+
     if(CMAKE_STATIC_LIB_LINK)
        set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
     endif(CMAKE_STATIC_LIB_LINK)

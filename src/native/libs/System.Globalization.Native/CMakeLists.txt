@@ -7,7 +7,12 @@ project(System.Globalization.Native C)
 # machine's ICU installation. A product backend may provide either a signed
 # ICU directory or a rinicud-backed implementation, but it must be selected
 # explicitly before configuration.
-if (CLR_CMAKE_TARGET_RINOS AND
+set(RINOS_USE_RINICUD_BACKEND FALSE)
+if (CLR_CMAKE_TARGET_RINOS AND RINOS_ICU_BACKEND STREQUAL "rinicud")
+    set(RINOS_USE_RINICUD_BACKEND TRUE)
+endif()
+
+if (CLR_CMAKE_TARGET_RINOS AND NOT RINOS_USE_RINICUD_BACKEND AND
     (NOT DEFINED RINOS_ICU_DIR OR RINOS_ICU_DIR STREQUAL ""))
     message(FATAL_ERROR
         "RinOS System.Globalization.Native requires an explicit RINOS_ICU_DIR; host ICU discovery is forbidden")
@@ -66,7 +71,7 @@ if(CLR_CMAKE_TARGET_UNIX OR CLR_CMAKE_TARGET_WASI)
     endif()
 endif()
 
-if (CLR_CMAKE_TARGET_RINOS)
+if (CLR_CMAKE_TARGET_RINOS AND NOT RINOS_USE_RINICUD_BACKEND)
     # Keep the product path separate from the generic host path. Do not infer
     # it from CMAKE_PREFIX_PATH or the host's default search directories.
     set(CMAKE_ICU_DIR "${RINOS_ICU_DIR}")
@@ -74,11 +79,19 @@ endif()
 
 include(configure.cmake)
 
-set(NATIVEGLOBALIZATION_SOURCES
-    pal_idna.c
-    pal_common.c
-)
-if (NOT CLR_CMAKE_TARGET_APPLE_MOBILE)
+if (RINOS_USE_RINICUD_BACKEND)
+    set(NATIVEGLOBALIZATION_SOURCES
+        pal_rinicud.c
+        ${CMAKE_CURRENT_LIST_DIR}/../../../../../rinicu/client.c
+    )
+    include_directories(${CMAKE_CURRENT_LIST_DIR}/../../../../../rinicu)
+else()
+    set(NATIVEGLOBALIZATION_SOURCES
+        pal_idna.c
+        pal_common.c
+    )
+endif()
+if (NOT RINOS_USE_RINICUD_BACKEND AND NOT CLR_CMAKE_TARGET_APPLE_MOBILE)
     set(NATIVEGLOBALIZATION_SOURCES
         ${NATIVEGLOBALIZATION_SOURCES}
         pal_calendarData.c
@@ -91,7 +104,7 @@ if (NOT CLR_CMAKE_TARGET_APPLE_MOBILE)
     )
 endif()
 
-if (CLR_CMAKE_TARGET_APPLE_MOBILE)
+if (NOT RINOS_USE_RINICUD_BACKEND AND CLR_CMAKE_TARGET_APPLE_MOBILE)
     add_definitions(-DAPPLE_HYBRID_GLOBALIZATION)
     set(NATIVEGLOBALIZATION_SOURCES
         ${NATIVEGLOBALIZATION_SOURCES}
@@ -99,13 +112,13 @@ if (CLR_CMAKE_TARGET_APPLE_MOBILE)
     )
 endif()
 
-if (NOT CLR_CMAKE_TARGET_APPLE_MOBILE AND DEFINED CMAKE_ICU_DIR)
+if (NOT RINOS_USE_RINICUD_BACKEND AND NOT CLR_CMAKE_TARGET_APPLE_MOBILE AND DEFINED CMAKE_ICU_DIR)
     include_directories(${CMAKE_ICU_DIR}/include)
     link_libraries(${CMAKE_ICU_DIR}/lib/libicuuc.a ${CMAKE_ICU_DIR}/lib/libicui18n.a ${CMAKE_ICU_DIR}/lib/libicudata.a)
     link_libraries(stdc++)
 endif()
 
-if (CLR_CMAKE_TARGET_APPLE_MOBILE AND NOT DEFINED CMAKE_ICU_DIR)
+if (NOT RINOS_USE_RINICUD_BACKEND AND CLR_CMAKE_TARGET_APPLE_MOBILE AND NOT DEFINED CMAKE_ICU_DIR)
     link_libraries(icucore)
 endif()
 
@@ -114,7 +127,7 @@ if (CLR_CMAKE_WASM_ENABLE_THREADS)
     add_linker_flag(-pthread)
 endif()
 
-if (LOCAL_BUILD)
+if (NOT RINOS_USE_RINICUD_BACKEND AND LOCAL_BUILD)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
     set(NATIVEGLOBALIZATION_SOURCES ${NATIVEGLOBALIZATION_SOURCES} pal_icushim_static.c)
     add_definitions(-DLOCAL_BUILD)
@@ -124,10 +137,10 @@ if (LOCAL_BUILD)
     # For minipal files
     include_directories(../../)
     include_directories(${CMAKE_CURRENT_BINARY_DIR})
-elseif (CLR_CMAKE_TARGET_APPLE_MOBILE OR CLR_CMAKE_TARGET_BROWSER OR CLR_CMAKE_TARGET_WASI)
+elseif (NOT RINOS_USE_RINICUD_BACKEND AND (CLR_CMAKE_TARGET_APPLE_MOBILE OR CLR_CMAKE_TARGET_BROWSER OR CLR_CMAKE_TARGET_WASI))
     add_definitions(-DSTATIC_ICU)
     set(NATIVEGLOBALIZATION_SOURCES ${NATIVEGLOBALIZATION_SOURCES} pal_icushim_static.c)
-else()
+elseif (NOT RINOS_USE_RINICUD_BACKEND)
     set(NATIVEGLOBALIZATION_SOURCES ${NATIVEGLOBALIZATION_SOURCES} pal_icushim.c)
 endif()
 
@@ -144,7 +157,7 @@ if (CLR_CMAKE_TARGET_APPLE)
 endif()
 
 # time zone names are filtered out of icu data for the browser and associated functionality is disabled
-if (NOT CLR_CMAKE_TARGET_BROWSER AND NOT CLR_CMAKE_TARGET_WASI AND NOT CLR_CMAKE_TARGET_APPLE_MOBILE)
+if (NOT RINOS_USE_RINICUD_BACKEND AND NOT CLR_CMAKE_TARGET_BROWSER AND NOT CLR_CMAKE_TARGET_WASI AND NOT CLR_CMAKE_TARGET_APPLE_MOBILE)
     set(NATIVEGLOBALIZATION_SOURCES ${NATIVEGLOBALIZATION_SOURCES} pal_timeZoneInfo.c)
 endif()
 
@@ -218,7 +231,7 @@ if(CLR_CMAKE_HOST_ANDROID OR CLR_CMAKE_HOST_IOS OR CLR_CMAKE_HOST_TVOS OR CLR_CM
     endif()
 endif()
 
-if(NOT CLR_CMAKE_TARGET_WIN32 AND NOT CLR_CMAKE_TARGET_APPLE AND NOT CLR_CMAKE_TARGET_ANDROID AND NOT CLR_CMAKE_TARGET_LINUX_MUSL AND NOT CLR_CMAKE_TARGET_HAIKU)
+if(NOT RINOS_USE_RINICUD_BACKEND AND NOT CLR_CMAKE_TARGET_WIN32 AND NOT CLR_CMAKE_TARGET_APPLE AND NOT CLR_CMAKE_TARGET_ANDROID AND NOT CLR_CMAKE_TARGET_LINUX_MUSL AND NOT CLR_CMAKE_TARGET_HAIKU)
     if (GEN_SHARED_LIB)
         add_custom_command(TARGET System.Globalization.Native POST_BUILD
             COMMENT "Verifying System.Globalization.Native.so dependencies"

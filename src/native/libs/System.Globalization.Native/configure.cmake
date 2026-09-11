@@ -11,7 +11,7 @@ else()
     include(CheckCSourceCompiles)
     include(CheckSymbolExists)
 
-    if (CLR_CMAKE_TARGET_UNIX)
+    if (CLR_CMAKE_TARGET_UNIX AND NOT CLR_CMAKE_TARGET_RINOS)
         set(CMAKE_REQUIRED_INCLUDES ${UCURR_H} ${ICU_HOMEBREW_INC_PATH})
 
         CHECK_C_SOURCE_COMPILES("

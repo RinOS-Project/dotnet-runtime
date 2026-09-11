@@ -23,7 +23,7 @@
 #undef _XOPEN_SOURCE
 #endif
 
-#if defined(TARGET_LINUX)
+#if defined(TARGET_LINUX) || defined(TARGET_RINOS)
 #include <linux/futex.h>      /* Definition of FUTEX_* constants */
 #include <sys/syscall.h>      /* Definition of SYS_* constants */
 #include <unistd.h>           /* Declaration of syscall */
@@ -257,7 +257,37 @@ void SystemNative_LowLevelFutex_WakeByAddressSingle(int32_t* address)
 {
     syscall(SYS_futex, address, FUTEX_WAKE_PRIVATE, 1, NULL, NULL, 0);
 }
-#else // defined(TARGET_LINUX)
+#elif defined(TARGET_RINOS)
+/* RinOS exposes the product futex ABI directly.  It does not implement
+ * Linux's PRIVATE futex flag, so use the shared WAIT/WAKE operations. */
+void SystemNative_LowLevelFutex_WaitOnAddress(int32_t* address, int32_t comparand)
+{
+    syscall(SYS_futex, address, FUTEX_WAIT, comparand, NULL, NULL, 0);
+}
+
+int32_t SystemNative_LowLevelFutex_WaitOnAddressTimeout(int32_t* address, int32_t comparand, int32_t timeoutMilliseconds)
+{
+    assert(timeoutMilliseconds >= 0);
+
+    struct timespec timeoutTimeSpec;
+    timeoutTimeSpec.tv_sec  = (uint32_t)timeoutMilliseconds / 1000;
+    timeoutTimeSpec.tv_nsec = ((uint32_t)timeoutMilliseconds % 1000) * 1000 * 1000;
+
+    long waitResult = syscall(SYS_futex, address, FUTEX_WAIT, comparand, &timeoutTimeSpec, NULL, 0);
+
+    // possible results: woken, not blocking, interrupted, timeout
+    assert(waitResult == 0 || errno == EAGAIN || errno == EINTR || errno == ETIMEDOUT);
+
+    // normal/immediate/spurious wakes are not timeouts
+    // in release treat unexpected results as spurious wakes
+    return waitResult == 0 || errno != ETIMEDOUT;
+}
+
+void SystemNative_LowLevelFutex_WakeByAddressSingle(int32_t* address)
+{
+    syscall(SYS_futex, address, FUTEX_WAKE, 1, NULL, NULL, 0);
+}
+#else // defined(TARGET_LINUX) || defined(TARGET_RINOS)
 
 // On illumos/Solaris libc's assert is not annotated noreturn, so marking these stubs noreturn would
 // trigger -Winvalid-noreturn there. Only apply the attribute on other platforms.
@@ -299,7 +329,7 @@ void SystemNative_LowLevelFutex_WakeByAddressSingle(int32_t* address)
 
 #undef DEBUGNOTRETURN
 
-#endif  // defined(TARGET_LINUX)
+#endif  // defined(TARGET_LINUX) || defined(TARGET_RINOS)
 
 int32_t SystemNative_CreateThread(uintptr_t stackSize, void *(*startAddress)(void*), void *parameter)
 {

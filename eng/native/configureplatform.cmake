@@ -9,7 +9,15 @@ set(PRERELEASE 1)
 #     - for non-windows build platform & architecture is detected using inbuilt CMAKE variables and cross target component configure
 #     - for windows we use the passed in parameter to CMAKE to determine build arch
 #----------------------------------------
-set(CLR_CMAKE_HOST_OS ${CMAKE_SYSTEM_NAME})
+# `CMAKE_SYSTEM_NAME` is the target when the RinOS toolchain is active.  Use
+# CMake's host identity for cross builds; otherwise the target would be
+# misclassified as the host and CoreCLR would select the wrong build tools and
+# feature probes (for example, it would treat RinOS as a native host).
+if(CMAKE_CROSSCOMPILING)
+    set(CLR_CMAKE_HOST_OS ${CMAKE_HOST_SYSTEM_NAME})
+else()
+    set(CLR_CMAKE_HOST_OS ${CMAKE_SYSTEM_NAME})
+endif()
 string(TOLOWER ${CLR_CMAKE_HOST_OS} CLR_CMAKE_HOST_OS)
 if(CLR_CMAKE_HOST_OS STREQUAL linux)
     set(CLR_CMAKE_HOST_UNIX 1)

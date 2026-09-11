@@ -18,6 +18,11 @@ namespace System
     {
 #if TARGET_ILLUMOS || TARGET_SOLARIS
         private const string DefaultTimeZoneDirectory = "/usr/share/lib/zoneinfo/";
+#elif TARGET_RINOS
+        // RinOS does not expose the host's /usr/share tree. The product image
+        // may provide an IANA-compatible package at this location; TZDIR
+        // remains an explicit per-process override.
+        private const string DefaultTimeZoneDirectory = "/sys/share/zoneinfo/";
 #else
         private const string DefaultTimeZoneDirectory = "/usr/share/zoneinfo/";
 #endif

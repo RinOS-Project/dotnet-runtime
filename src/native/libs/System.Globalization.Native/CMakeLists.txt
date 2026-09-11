@@ -3,6 +3,16 @@ cmake_minimum_required(VERSION 3.10..3.26)
 
 project(System.Globalization.Native C)
 
+# RinOS must never silently bind System.Globalization.Native to the build
+# machine's ICU installation. A product backend may provide either a signed
+# ICU directory or a rinicud-backed implementation, but it must be selected
+# explicitly before configuration.
+if (CLR_CMAKE_TARGET_RINOS AND
+    (NOT DEFINED RINOS_ICU_DIR OR RINOS_ICU_DIR STREQUAL ""))
+    message(FATAL_ERROR
+        "RinOS System.Globalization.Native requires an explicit RINOS_ICU_DIR; host ICU discovery is forbidden")
+endif()
+
 if(CLR_CMAKE_TARGET_UNIX OR CLR_CMAKE_TARGET_WASI)
     if (ANDROID_FORCE_ICU_DATA_DIR)
         add_definitions(-DANDROID_FORCE_ICU_DATA_DIR)
@@ -23,7 +33,7 @@ if(CLR_CMAKE_TARGET_UNIX OR CLR_CMAKE_TARGET_WASI)
     add_compile_options(-Wno-unknown-warning-option)
 
     # The mobile configurations in particular bring their own ICU, so skip
-    if (NOT CLR_CMAKE_TARGET_ANDROID AND NOT CLR_CMAKE_TARGET_APPLE_MOBILE AND NOT DEFINED CMAKE_ICU_DIR AND NOT CLR_CMAKE_TARGET_BROWSER AND NOT CLR_CMAKE_TARGET_WASI)
+    if (NOT CLR_CMAKE_TARGET_RINOS AND NOT CLR_CMAKE_TARGET_ANDROID AND NOT CLR_CMAKE_TARGET_APPLE_MOBILE AND NOT DEFINED CMAKE_ICU_DIR AND NOT CLR_CMAKE_TARGET_BROWSER AND NOT CLR_CMAKE_TARGET_WASI)
         if (CLR_CMAKE_TARGET_OSX)
             execute_process(COMMAND  brew --prefix OUTPUT_VARIABLE brew_prefix OUTPUT_STRIP_TRAILING_WHITESPACE)
             set(ICU_HOMEBREW_INC_PATH "${brew_prefix}/opt/icu4c/include")
@@ -54,6 +64,12 @@ if(CLR_CMAKE_TARGET_UNIX OR CLR_CMAKE_TARGET_WASI)
 
         include_directories(${UCURR_H})
     endif()
+endif()
+
+if (CLR_CMAKE_TARGET_RINOS)
+    # Keep the product path separate from the generic host path. Do not infer
+    # it from CMAKE_PREFIX_PATH or the host's default search directories.
+    set(CMAKE_ICU_DIR "${RINOS_ICU_DIR}")
 endif()
 
 include(configure.cmake)

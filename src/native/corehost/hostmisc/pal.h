@@ -296,7 +296,9 @@ bool pal_get_loaded_library(const pal_char_t* library_name, const char* symbol_n
 // degree of compat across their respective releases is usually high.
 //
 // We cannot maintain the same (compat) invariant for linux and thus, we will fallback to using lowest RID-Platform.
-#if defined(TARGET_WINDOWS)
+#if defined(TARGET_RINOS)
+    #define HOST_RID_PLATFORM "rinos"
+#elif defined(TARGET_WINDOWS)
     #define HOST_RID_PLATFORM "win"
 #elif defined(TARGET_OSX)
     #define HOST_RID_PLATFORM "osx"

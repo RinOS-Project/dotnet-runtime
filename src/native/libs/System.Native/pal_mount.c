@@ -204,6 +204,13 @@ int32_t SystemNative_GetAllMountPoints(MountPointFound onFound, void* context)
 
     return 0;
 }
+#elif defined(TARGET_RINOS)
+    // RinOS intentionally does not expose a host /proc mount table. The
+    // product VFS currently has a single mounted RinFS root and no public
+    // enumeration ABI for PAL consumers, so fail closed until that ABI is
+    // added rather than inheriting a host-only mount source.
+    errno = ENOTSUP;
+    return -1;
 #else
 #error "Don't know how to enumerate mount points on this platform"
 #endif
@@ -218,6 +225,11 @@ int32_t SystemNative_GetSpaceInfoForMountPoint(const char* name, MountPointInfor
     memset(&stats, 0, sizeof(struct statfs));
 
     int result = statfs(name, &stats);
+#elif defined(TARGET_RINOS)
+    struct statvfs stats;
+    memset(&stats, 0, sizeof(struct statvfs));
+
+    int result = statvfs(name, &stats);
 #else
     struct statvfs stats;
     memset(&stats, 0, sizeof(struct statvfs));
@@ -258,6 +270,9 @@ SystemNative_GetFileSystemTypeNameForMountPoint(const char* name, char* formatNa
 #elif defined(__HAIKU__)
     struct fs_info stats;
     int result = fs_stat_dev(dev_for_path(name), &stats);
+#elif defined(TARGET_RINOS)
+    struct statvfs stats;
+    int result = statvfs(name, &stats);
 #else
     struct statvfs stats;
     int result = statvfs(name, &stats);
@@ -285,6 +300,9 @@ SystemNative_GetFileSystemTypeNameForMountPoint(const char* name, char* formatNa
         }
         SafeStringCopy(formatNameBuffer, Int32ToSizeT(bufferLength), stats.f_basetype);
         *formatType = -1;
+#elif defined(TARGET_RINOS)
+        SafeStringCopy(formatNameBuffer, Int32ToSizeT(bufferLength), "RinFS");
+        *formatType = (int64_t)(stats.f_fsid);
 #elif defined(__HAIKU__)
         if (bufferLength < B_OS_NAME_LENGTH)
         {

@@ -53,6 +53,8 @@
 #if HAVE_STATFS_VFS
 #include <sys/vfs.h>
 #endif
+#elif defined(TARGET_RINOS)
+#include <sys/statvfs.h>
 #endif
 
 #ifdef TARGET_SUNOS
@@ -1767,6 +1769,11 @@ uint32_t SystemNative_FileSystemSupportsLocking(intptr_t fd, int32_t lockOperati
     if (statfsRes == -1) return 0;
 
     return FileSystemNameSupportsLocking(statfsArgs.f_basetype);
+#elif defined(TARGET_RINOS)
+    // RinOS exposes only the product RinFS VFS contract. It is local and
+    // does not have the network filesystems for which the generic Unix path
+    // disables shared locks, so the kernel fcntl owner can accept locking.
+    return 1;
 #else
     #error "Platform doesn't support fstatfs or fstatvfs"
 #endif

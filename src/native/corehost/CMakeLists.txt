@@ -10,6 +10,11 @@ option(CLR_CMAKE_BUILD_HOST_PRODUCT "Build host product components" ON)
 option(CLR_CMAKE_BUILD_HOST_TESTS "Build host test components" OFF)
 
 if(CLR_CMAKE_TARGET_RINOS)
+    # hostfxr/hostpolicy and other target-native shared outputs use the same
+    # signed RLL boundary as CoreCLR and System.* native libraries.
+    set(CMAKE_SHARED_LIBRARY_PREFIX "")
+    set(CMAKE_SHARED_LIBRARY_SUFFIX ".rll")
+
     option(RINOS_ENABLE_NATIVE_PACKAGING
         "Package RinOS host outputs as signed RIN/RLL images" OFF)
     set(RINOS_SIGN_KEY "" CACHE FILEPATH "Ed25519 private key for RinOS native packaging")

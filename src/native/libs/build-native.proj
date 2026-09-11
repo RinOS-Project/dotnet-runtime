@@ -113,6 +113,7 @@
           $(NativeBinDir)System.Globalization.Native.dll;
           $(NativeBinDir)System.Globalization.Native.pdb;
           $(NativeBinDir)System.Globalization.Native.so;
+          $(NativeBinDir)System.Globalization.Native.rll;
           $(NativeBinDir)System.Globalization.Native.dylib"
         Condition="'$(RuntimeFlavor)' != 'Mono'" />
 
@@ -124,6 +125,7 @@
       <NativeAsset Include="$(NativeBinDir)*.so" Exclude="@(ExcludeNativeLibrariesRuntimeFiles)" />
       <NativeAsset Include="$(NativeBinDir)*.dbg" />
       <NativeAsset Include="$(NativeBinDir)*.dylib" Exclude="@(ExcludeNativeLibrariesRuntimeFiles)" />
+      <NativeAsset Include="$(NativeBinDir)*.rll" Exclude="@(ExcludeNativeLibrariesRuntimeFiles)" Condition="'$(TargetsRinOS)' == 'true'" />
       <NativeAsset Include="$(NativeBinDir)*.dwarf" />
       <NativeAsset Include="$(NativeBinDir)*.dex" />
       <NativeAsset Include="$(NativeBinDir)*.jar" />

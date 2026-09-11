@@ -8,11 +8,16 @@ namespace System.Runtime.Loader
 {
     internal partial struct LibraryNameVariation
     {
+#if TARGET_RINOS
+        private const string LibraryNamePrefix = "";
+        private const string LibraryNameSuffix = ".rll";
+#else
         private const string LibraryNamePrefix = "lib";
 #if TARGET_OSX || TARGET_MACCATALYST || TARGET_IOS || TARGET_TVOS
         private const string LibraryNameSuffix = ".dylib";
 #else
         private const string LibraryNameSuffix = ".so";
+#endif
 #endif
 
         internal static IEnumerable<LibraryNameVariation> DetermineLibraryNameVariations(string libName, bool isRelativePath)

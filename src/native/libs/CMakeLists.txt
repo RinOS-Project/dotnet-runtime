@@ -39,6 +39,14 @@ else ()
 endif ()
 
 if (CLR_CMAKE_TARGET_UNIX OR CLR_CMAKE_TARGET_BROWSER OR CLR_CMAKE_TARGET_WASI)
+    if (CLR_CMAKE_TARGET_RINOS)
+        # RinOS native assets are signed RLL modules, not ELF .so files.
+        # Keep this scoped to the target-native libraries so host tools retain
+        # the host platform's normal naming convention.
+        set(CMAKE_SHARED_LIBRARY_PREFIX "")
+        set(CMAKE_SHARED_LIBRARY_SUFFIX ".rll")
+    endif()
+
     set(CMAKE_MACOSX_RPATH ON)
     if (CLR_CMAKE_TARGET_APPLE_MOBILE)
         set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)

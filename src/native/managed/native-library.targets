@@ -23,6 +23,7 @@
     <PropertyGroup>
       <StrippedOutputPath>$(OutputPath)stripped\</StrippedOutputPath>
       <StripSourceFile>$(StrippedOutputPath)$(NativeBinaryPrefix)$(TargetName)$(NativeBinaryExt)</StripSourceFile>
+      <StrippedExt Condition="'$(StrippedExt)' == '' and '$(TargetsRinOS)' == 'true'">.rll.dbg</StrippedExt>
       <StrippedExt Condition="'$(StrippedExt)' == '' and ('$(TargetsOSX)' == 'true' or '$(TargetsAppleMobile)' == 'true')">.dylib.dwarf</StrippedExt>
       <StrippedExt Condition="'$(TargetsUnix)' == 'true' and '$(StrippedExt)' == ''">.so.dbg</StrippedExt>
       <StripDestinationFile>$(StrippedOutputPath)$(NativeBinaryPrefix)$(TargetName)$(StrippedExt)</StripDestinationFile>

@@ -1214,6 +1214,12 @@ if (CLR_CMAKE_TARGET_RINOS)
     set(HAVE_POSIX_MEMALIGN 1)
     set(HAVE_PTHREAD_CONDATTR_SETCLOCK 1)
     set(HAVE_PTHREAD_MUTEX_CLOCKLOCK 0)
+    # RinOS owns the socket ABI and exposes poll(2); do not inherit a host
+    # epoll/kqueue event backend from configure probes.
+    set(HAVE_EPOLL 0)
+    set(HAVE_KQUEUE 0)
+    set(HAVE_SYS_POLL_H 0)
+    set(HAVE_ACCEPT4 0)
 endif()
 
 configure_file(

@@ -27,7 +27,10 @@
 
 // Target platform-specific library naming
 //
-#ifdef TARGET_WINDOWS
+#ifdef TARGET_RINOS
+#define MAKE_TARGET_DLLNAME_W(name) name W(".rll")
+#define MAKE_TARGET_DLLNAME_A(name) name ".rll"
+#elif defined(TARGET_WINDOWS)
 #define MAKE_TARGET_DLLNAME_W(name) name W(".dll")
 #define MAKE_TARGET_DLLNAME_A(name) name ".dll"
 #else // TARGET_WINDOWS

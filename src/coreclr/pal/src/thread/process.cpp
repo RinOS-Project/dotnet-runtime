@@ -1138,6 +1138,21 @@ GetProcessIdDisambiguationKey(DWORD processId, UINT64 *disambiguationKey)
     *disambiguationKey = starttime;
     return TRUE;
 
+#elif defined(TARGET_RINOS)
+
+    /* RinOS has no procfs.  Ask the process-namespace ABI for the
+    * generation-stable instance cookie instead of using a recycled process
+    * number as the key. */
+    uint64_t instanceCookie = 0;
+    if (processId == 0 ||
+        rin_process_instance_cookie((uint32_t)processId, &instanceCookie) != 0)
+    {
+        return FALSE;
+    }
+
+    *disambiguationKey = instanceCookie;
+    return TRUE;
+
 #else
     // If this is not OS X and we don't have /proc, we just return FALSE.
     WARN("GetProcessIdDisambiguationKey was called but is not implemented on this platform!");

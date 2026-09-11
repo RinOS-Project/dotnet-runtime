@@ -624,15 +624,9 @@ elseif(CLR_CMAKE_TARGET_BROWSER)
 elseif(CLR_CMAKE_TARGET_WASI)
   set(HAVE_SCHED_OTHER_ASSIGNABLE 0)
 elseif(CLR_CMAKE_TARGET_RINOS)
-  message(FATAL_ERROR "RinOS CoreCLR PAL is not implemented; refusing to use the Linux PAL fallback")
+  include(${CMAKE_CURRENT_LIST_DIR}/rinos/configure.cmake)
 else() # Anything else is Linux
-  # LTTNG is not available on Android, so don't error out
-  if(FEATURE_EVENTSOURCE_XPLAT AND NOT HAVE_LTTNG_TRACEPOINT_H)
-    unset(HAVE_LTTNG_TRACEPOINT_H CACHE)
-    message(FATAL_ERROR "Cannot find liblttng-ust-dev. Try installing liblttng-ust-dev  (or the appropriate packages for your platform)")
-  endif()
-  set(PAL_PTRACE "ptrace((cmd), (pid), (void*)(addr), (data))")
-  set(HAVE_SCHED_OTHER_ASSIGNABLE 1)
+  message(FATAL_ERROR "CoreCLR PAL has no explicit contract for this target OS")
 endif(CLR_CMAKE_TARGET_APPLE)
 
 check_struct_has_member(

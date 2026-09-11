@@ -272,6 +272,44 @@ struct sve_context {
 #define MCREG_Sp(mc)      0
 #define MCREG_Pc(mc)      0
 
+#elif defined(TARGET_RINOS) && defined(HOST_AMD64)
+
+/* RinOS ucontext.h intentionally uses the target-owned gregset_t and a raw
+ * 512-byte FXSAVE image.  It is not layout-compatible with glibc's
+ * `__gregs`/`struct _fpstate`; keep the translation local to the PAL. */
+#define MCREG_Rbx(mc)       ((mc).gregs[REG_RBX])
+#define MCREG_Rcx(mc)       ((mc).gregs[REG_RCX])
+#define MCREG_Rdx(mc)       ((mc).gregs[REG_RDX])
+#define MCREG_Rsi(mc)       ((mc).gregs[REG_RSI])
+#define MCREG_Rdi(mc)       ((mc).gregs[REG_RDI])
+#define MCREG_Rbp(mc)       ((mc).gregs[REG_RBP])
+#define MCREG_Rax(mc)       ((mc).gregs[REG_RAX])
+#define MCREG_Rip(mc)       ((mc).gregs[REG_RIP])
+#define MCREG_Rsp(mc)       ((mc).gregs[REG_RSP])
+#define MCREG_SegCs(mc)     (*(WORD*)&((mc).gregs[REG_CSGSFS]))
+#define MCREG_R8(mc)        ((mc).gregs[REG_R8])
+#define MCREG_R9(mc)        ((mc).gregs[REG_R9])
+#define MCREG_R10(mc)       ((mc).gregs[REG_R10])
+#define MCREG_R11(mc)       ((mc).gregs[REG_R11])
+#define MCREG_R12(mc)       ((mc).gregs[REG_R12])
+#define MCREG_R13(mc)       ((mc).gregs[REG_R13])
+#define MCREG_R14(mc)       ((mc).gregs[REG_R14])
+#define MCREG_R15(mc)       ((mc).gregs[REG_R15])
+#define MCREG_EFlags(mc)    ((mc).gregs[REG_EFL])
+
+#define RINOS_FPSTATE(uc) ((uc)->uc_mcontext.fpregs->fxsave)
+#define FPREG_Xmm(uc, index) *(M128A*)&RINOS_FPSTATE(uc)[160 + ((index) * 16)]
+#define FPREG_St(uc, index) *(M128A*)&RINOS_FPSTATE(uc)[32 + ((index) * 16)]
+#define FPREG_ControlWord(uc) (*(WORD*)&RINOS_FPSTATE(uc)[0])
+#define FPREG_StatusWord(uc) (*(WORD*)&RINOS_FPSTATE(uc)[2])
+#define FPREG_TagWord(uc) (*(WORD*)&RINOS_FPSTATE(uc)[4])
+#define FPREG_ErrorOffset(uc) (*(DWORD*)&RINOS_FPSTATE(uc)[8])
+#define FPREG_ErrorSelector(uc) (*((WORD*)&RINOS_FPSTATE(uc)[8] + 2))
+#define FPREG_DataOffset(uc) (*(DWORD*)&RINOS_FPSTATE(uc)[16])
+#define FPREG_DataSelector(uc) (*((WORD*)&RINOS_FPSTATE(uc)[16] + 2))
+#define FPREG_MxCsr(uc) (*(DWORD*)&RINOS_FPSTATE(uc)[24])
+#define FPREG_MxCsr_Mask(uc) (*(DWORD*)&RINOS_FPSTATE(uc)[28])
+
 #elif HAVE___GREGSET_T
 
 #ifdef HOST_64BIT

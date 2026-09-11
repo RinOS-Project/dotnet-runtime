@@ -146,6 +146,10 @@ function_name() to call the system's implementation
    compiling PAL implementation files. */
 #include "config.h"
 
+#if defined(TARGET_RINOS)
+#include "pal/rinos_contract.h"
+#endif
+
 #ifdef DEBUG
 #define _ENABLE_DEBUG_MESSAGES_ 1
 #else

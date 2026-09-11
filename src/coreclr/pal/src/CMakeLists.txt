@@ -269,7 +269,10 @@ endif(CLR_CMAKE_TARGET_APPLE)
 #
 if(CLR_CMAKE_TARGET_LINUX)
   add_library(tracepointprovider OBJECT misc/tracepointprovider.cpp)
-endif(CLR_CMAKE_TARGET_LINUX)
+elseif(CLR_CMAKE_TARGET_RINOS)
+  # RinOS has no Linux tracepoint provider.  Its diagnostics transport is a
+  # separate target ABI and must not be pulled in through the Linux branch.
+endif()
 
 if(CLR_CMAKE_TARGET_OSX)
   find_library(COREFOUNDATION CoreFoundation)
@@ -339,7 +342,10 @@ if(CLR_CMAKE_TARGET_LINUX)
     target_link_libraries(coreclrpal PUBLIC ucontext)
   endif(CLR_CMAKE_TARGET_LINUX_MUSL AND (CLR_CMAKE_TARGET_ARCH_I386 OR CLR_CMAKE_TARGET_ARCH_POWERPC64))
 
-endif(CLR_CMAKE_TARGET_LINUX)
+elseif(CLR_CMAKE_TARGET_RINOS)
+  # RinOS libc owns pthread, time, loader, and polling entry points.  There
+  # are deliberately no Linux-only gcc_s/pthread/rt/dl link dependencies.
+endif()
 
 if(CLR_CMAKE_TARGET_NETBSD)
   if (CLR_CMAKE_USE_SYSTEM_LIBUNWIND)

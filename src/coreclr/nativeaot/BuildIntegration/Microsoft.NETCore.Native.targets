@@ -73,6 +73,12 @@ The .NET Foundation licenses this file to you under the MIT license.
 
     <NativeBinaryPrefix Condition="'$(UseNativeLibPrefix)' != 'false' and '$(IsNativeExecutable)' != 'true' and '$(_targetOS)' != 'win'">lib</NativeBinaryPrefix>
 
+    <!-- RinOS native images are signed RIN64/RLL artifacts, not Unix ELF
+         files addressed through the conventional lib*.so naming scheme. -->
+    <NativeBinaryExt Condition="'$(IsNativeExecutable)' == 'true' and '$(_targetOS)' == 'rinos'">.rin</NativeBinaryExt>
+    <NativeBinaryExt Condition="'$(IsNativeExecutable)' != 'true' and '$(_targetOS)' == 'rinos' and '$(NativeLib)' == 'Shared'">.rll</NativeBinaryExt>
+    <NativeBinaryPrefix Condition="'$(_targetOS)' == 'rinos'"></NativeBinaryPrefix>
+
     <NativeSymbolExt Condition="'$(NativeSymbolExt)' == '' and '$(_IsApplePlatform)' == 'true'">.dSYM</NativeSymbolExt>
     <NativeSymbolExt Condition="'$(NativeSymbolExt)' == '' and '$(_targetOS)' == 'win'">.pdb</NativeSymbolExt>
     <NativeSymbolExt Condition="'$(NativeSymbolExt)' == ''">.dbg</NativeSymbolExt>
@@ -86,6 +92,7 @@ The .NET Foundation licenses this file to you under the MIT license.
     <_LinkNativeOutputs>$(NativeBinary)</_LinkNativeOutputs>
     <_LinkNativeOutputs Condition="'$(_targetOS)' == 'win' and '$(NativeLib)' == 'Shared' and '$(NativeImportLibrary)' != ''">$(NativeBinary);$(NativeImportLibrary)</_LinkNativeOutputs>
     <NativeExecutableExt Condition="'$(NativeExecutableExt)' == '' and '$(_targetOS)' == 'win'">.exe</NativeExecutableExt>
+    <NativeExecutableExt Condition="'$(NativeExecutableExt)' == '' and '$(_targetOS)' == 'rinos'">.rin</NativeExecutableExt>
     <NativeExecutableExt Condition="'$(NativeExecutableExt)' == ''"></NativeExecutableExt>
     <IlcExportUnmanagedEntrypoints Condition="'$(IlcExportUnmanagedEntrypoints)' == '' and '$(NativeLib)' == 'Shared'">true</IlcExportUnmanagedEntrypoints>
     <ExportsFile Condition="$(ExportsFile) == '' and '$(BuildingFrameworkLibrary)' != 'true'">$(NativeIntermediateOutputPath)$(TargetName)$(ExportsFileExt)</ExportsFile>

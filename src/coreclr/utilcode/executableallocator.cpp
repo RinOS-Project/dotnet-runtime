@@ -500,6 +500,12 @@ void* ExecutableAllocator::Commit(void* pStart, size_t size, bool isExecutable)
     {
 #if !defined(FEATURE_DYNAMIC_CODE_COMPILED)
         return ClrVirtualAlloc(pStart, size, MEM_COMMIT, PAGE_READWRITE);
+#elif defined(TARGET_RINOS)
+        // RinOS rejects W+X at the kernel VMA boundary.  JIT code is
+        // committed RX and ExecutableWriterHolder opens a short RW window
+        // while emitting or patching it.
+        return ClrVirtualAlloc(pStart, size, MEM_COMMIT,
+                               isExecutable ? PAGE_EXECUTE_READ : PAGE_READWRITE);
 #else
         return ClrVirtualAlloc(pStart, size, MEM_COMMIT, isExecutable ? PAGE_EXECUTE_READWRITE : PAGE_READWRITE);
 #endif

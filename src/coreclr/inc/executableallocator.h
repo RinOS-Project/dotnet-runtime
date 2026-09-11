@@ -289,13 +289,28 @@ class ExecutableWriterHolder
 {
     T *m_addressRX;
     T *m_addressRW;
+    size_t m_size;
+#if defined(TARGET_RINOS) && !defined(DACCESS_COMPILE)
+    DWORD m_rinosOriginalProtection;
+    bool m_rinosRestoresProtection;
+#endif
 
     void Move(ExecutableWriterHolder& other)
     {
         m_addressRX = other.m_addressRX;
         m_addressRW = other.m_addressRW;
+        m_size = other.m_size;
+#if defined(TARGET_RINOS) && !defined(DACCESS_COMPILE)
+        m_rinosOriginalProtection = other.m_rinosOriginalProtection;
+        m_rinosRestoresProtection = other.m_rinosRestoresProtection;
+#endif
         other.m_addressRX = NULL;
         other.m_addressRW = NULL;
+        other.m_size = 0;
+#if defined(TARGET_RINOS) && !defined(DACCESS_COMPILE)
+        other.m_rinosOriginalProtection = PAGE_NOACCESS;
+        other.m_rinosRestoresProtection = false;
+#endif
     }
 
     void Unmap()
@@ -306,6 +321,18 @@ class ExecutableWriterHolder
             PAL_JitWriteProtect(false);
         }
 #else
+#if defined(TARGET_RINOS) && !defined(DACCESS_COMPILE)
+        if (m_rinosRestoresProtection)
+        {
+            DWORD ignoredProtection = PAGE_NOACCESS;
+            BOOL restored = ClrVirtualProtect(
+                (LPVOID)m_addressRX, m_size, m_rinosOriginalProtection,
+                &ignoredProtection);
+            _ASSERTE(restored == TRUE);
+            m_rinosRestoresProtection = false;
+            return;
+        }
+#endif
         if (m_addressRX != m_addressRW)
         {
             ExecutableAllocator::Instance()->UnmapRW((void*)m_addressRW);
@@ -329,18 +356,55 @@ public:
         return *this;
     }
 
-    ExecutableWriterHolder() : m_addressRX(nullptr), m_addressRW(nullptr)
+    ExecutableWriterHolder() : m_addressRX(nullptr), m_addressRW(nullptr), m_size(0)
+#if defined(TARGET_RINOS) && !defined(DACCESS_COMPILE)
+        , m_rinosOriginalProtection(PAGE_NOACCESS), m_rinosRestoresProtection(false)
+#endif
     {
     }
 
     ExecutableWriterHolder(T* addressRX, size_t size, ExecutableAllocator::CacheableMapping cacheMapping = ExecutableAllocator::AddToCache)
     {
         m_addressRX = addressRX;
+        m_size = size;
+#if defined(TARGET_RINOS) && !defined(DACCESS_COMPILE)
+        m_rinosOriginalProtection = PAGE_NOACCESS;
+        m_rinosRestoresProtection = false;
+        if (addressRX != nullptr)
+        {
+            MEMORY_BASIC_INFORMATION memoryInfo = {};
+            if (ClrVirtualQuery(addressRX, &memoryInfo, sizeof(memoryInfo)) != 0)
+            {
+                DWORD protection = memoryInfo.Protect & 0xff;
+                const bool executable =
+                    (protection == PAGE_EXECUTE) ||
+                    (protection == PAGE_EXECUTE_READ) ||
+                    (protection == PAGE_EXECUTE_READWRITE) ||
+                    (protection == PAGE_EXECUTE_WRITECOPY);
+                if (executable)
+                {
+                    DWORD ignoredProtection = PAGE_NOACCESS;
+                    if (ClrVirtualProtect(addressRX, size, PAGE_READWRITE,
+                                          &ignoredProtection))
+                    {
+                        m_rinosOriginalProtection = protection;
+                        m_rinosRestoresProtection = true;
+                    }
+                }
+            }
+        }
+#endif
 #if defined(HOST_APPLE) && defined(HOST_ARM64)
         m_addressRW = addressRX;
         PAL_JitWriteProtect(true);
 #else
+#if defined(TARGET_RINOS) && !defined(DACCESS_COMPILE)
+        m_addressRW = m_rinosRestoresProtection
+            ? addressRX
+            : (T *)ExecutableAllocator::Instance()->MapRW((void*)addressRX, size, cacheMapping);
+#else
         m_addressRW = (T *)ExecutableAllocator::Instance()->MapRW((void*)addressRX, size, cacheMapping);
+#endif
 #endif
     }
 

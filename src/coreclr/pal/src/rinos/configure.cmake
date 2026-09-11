@@ -13,6 +13,10 @@ if(NOT CLR_CMAKE_TARGET_ARCH_AMD64)
 endif()
 
 set(CLR_CMAKE_RINOS_PAL 1)
+# The target unwind ABI is built from the runtime snapshot's bundled
+# libunwind sources.  Never inherit a host system libunwind during a cross
+# configure; its ucontext and register layout are not the RinOS contract.
+set(CLR_CMAKE_USE_SYSTEM_LIBUNWIND 0)
 set(CMAKE_RT_LIBS "")
 set(PTHREAD_LIBRARY "")
 

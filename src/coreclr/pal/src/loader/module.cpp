@@ -504,6 +504,9 @@ LPCSTR FixLibCName(LPCSTR shortAsciiName)
     // * For macOS, use constant value absolute path "/usr/lib/libc.dylib".
     // * For FreeBSD, use constant value "libc.so.7".
     // * For Haiku, use constant value "libroot.so".
+    // * For RinOS, libc is part of the process-owned main image rather than a
+    //   separately loadable shared object. Keep the logical name so the
+    //   loader can select that image explicitly below.
     // * For rest of Unices, use constant value "libc.so".
     if (strcmp(shortAsciiName, LIBC_NAME_WITHOUT_EXTENSION) == 0)
     {
@@ -513,6 +516,8 @@ LPCSTR FixLibCName(LPCSTR shortAsciiName)
         return "libc.so.7";
 #elif defined(__HAIKU__)
         return "libroot.so";
+#elif defined(TARGET_RINOS)
+        return shortAsciiName;
 #elif defined(LIBC_SO)
         return LIBC_SO;
 #else
@@ -572,7 +577,16 @@ PAL_LoadLibraryDirect(
     pathstr.CloseBuffer(name_length);
     lpcstr = FixLibCName(lpstr);
 
-    dl_handle = LOADLoadLibraryDirect(lpcstr);
+#if defined(TARGET_RINOS)
+    if (strcmp(lpcstr, LIBC_NAME_WITHOUT_EXTENSION) == 0)
+    {
+        dl_handle = dlopen(NULL, RTLD_LAZY);
+    }
+    else
+#endif
+    {
+        dl_handle = LOADLoadLibraryDirect(lpcstr);
+    }
 
 done:
     LOGEXIT("LoadLibraryDirect returns NATIVE_LIBRARY_HANDLE %p\n", dl_handle);
@@ -1753,13 +1767,30 @@ static HMODULE LOADLoadLibrary(LPCSTR shortAsciiName, BOOL fDynamic)
 {
     HMODULE module = nullptr;
     NATIVE_LIBRARY_HANDLE dl_handle = nullptr;
+#if defined(TARGET_RINOS)
+    bool load_process_libc = false;
+#endif
 
     if (shortAsciiName != nullptr)
+    {
+#if defined(TARGET_RINOS)
+        load_process_libc = strcmp(shortAsciiName, LIBC_NAME_WITHOUT_EXTENSION) == 0;
+#endif
         shortAsciiName = FixLibCName(shortAsciiName);
+    }
 
     LockModuleList();
 
-    dl_handle = LOADLoadLibraryDirect(shortAsciiName);
+#if defined(TARGET_RINOS)
+    if (load_process_libc)
+    {
+        dl_handle = dlopen(NULL, RTLD_LAZY);
+    }
+    else
+#endif
+    {
+        dl_handle = LOADLoadLibraryDirect(shortAsciiName);
+    }
     if (dl_handle)
     {
         module = LOADRegisterLibraryDirect(dl_handle, shortAsciiName, fDynamic);

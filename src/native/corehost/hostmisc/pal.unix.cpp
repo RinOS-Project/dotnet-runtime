@@ -483,7 +483,9 @@ bool pal::get_default_installation_dir_for_arch(pal::architecture arch, pal::str
     if (!is_current_arch && !is_supported_multi_arch_install(arch))
         return false;
 
-#if defined(TARGET_OSX)
+#if defined(TARGET_RINOS)
+    recv->assign(_X(RINOS_RUNTIME_ROOT));
+#elif defined(TARGET_OSX)
     recv->assign(_X("/usr/local/share/dotnet"));
     if (is_current_arch && pal::is_emulating_x64())
     {

@@ -238,7 +238,11 @@ static bool get_install_location_from_file(const pal_char_t* file_path, bool* ou
 pal_char_t* pal_get_dotnet_self_registered_config_location(void)
 {
     pal_char_t* override = utils_test_only_getenv(_X("_DOTNET_TEST_INSTALL_LOCATION_PATH"));
+#if defined(TARGET_RINOS)
+    const pal_char_t* base = override != NULL ? override : _X(RINOS_RUNTIME_ROOT "/metadata");
+#else
     const pal_char_t* base = override != NULL ? override : _X("/etc/dotnet");
+#endif
     pal_char_t* result = utils_append_path_alloc(base, _X("install_location_") _STRINGIFY(CURRENT_ARCH_NAME));
     free(override);
     return result;
@@ -285,7 +289,9 @@ pal_char_t* pal_get_default_installation_dir(void)
     if (override != NULL)
         return override;
 
-#if defined(TARGET_OSX)
+#if defined(TARGET_RINOS)
+    return pal_strdup(_X(RINOS_RUNTIME_ROOT));
+#elif defined(TARGET_OSX)
     const pal_char_t* base = _X("/usr/local/share/dotnet");
     if (pal_get_process_emulation() == pal_process_emulation_x64)
     {

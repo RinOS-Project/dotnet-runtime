@@ -319,6 +319,42 @@ pal_char_t* pal_get_default_installation_dir(void)
 #endif
 }
 
+#if defined(TARGET_RINOS)
+pal_char_t* pal_get_user_dotnet_dir(void)
+{
+    pal_char_t* home = pal_getenv(_X("HOME"));
+    if (home == NULL)
+        return NULL;
+
+    pal_char_t* user_base = utils_append_path_alloc(home, _X(".rinos"));
+    free(home);
+    if (user_base == NULL)
+        return NULL;
+
+    pal_char_t* user_root = utils_append_path_alloc(user_base, _X("dotnet"));
+    free(user_base);
+    if (user_root == NULL)
+        return NULL;
+
+    // Do not select a merely-created configuration directory. The resolver
+    // must be able to continue to a system install when the user root is not
+    // a complete runtime installation.
+    pal_char_t* host_dir = utils_append_path_alloc(user_root, _X("host"));
+    pal_char_t* fxr_dir = host_dir != NULL ? utils_append_path_alloc(host_dir, _X("fxr")) : NULL;
+    free(host_dir);
+
+    bool usable = fxr_dir != NULL && pal_directory_exists(fxr_dir);
+    free(fxr_dir);
+    if (!usable)
+    {
+        free(user_root);
+        return NULL;
+    }
+
+    return user_root;
+}
+#endif
+
 bool pal_is_path_fully_qualified(const pal_char_t* path)
 {
     return path != NULL && path[0] == DIR_SEPARATOR;

@@ -223,6 +223,12 @@ pal_char_t* pal_get_dotnet_self_registered_dir(void);
 // Honors the test-only env var _DOTNET_TEST_DEFAULT_INSTALL_PATH.
 pal_char_t* pal_get_default_installation_dir(void);
 
+#if defined(TARGET_RINOS)
+// Returns the usable per-user RinOS .NET root, or NULL when HOME is unset or
+// the user root has no host/fxr directory. Caller should free() the result.
+pal_char_t* pal_get_user_dotnet_dir(void);
+#endif
+
 // Returns a display string identifying the location consulted to discover the
 // globally-registered install dir for the current architecture (registry path
 // on Windows, file path on Unix). Caller should free() the returned pointer.

@@ -338,9 +338,26 @@ bool fxr_resolver_try_get_path(
 
     if (dotnet_root == NULL && search_global)
     {
+#if defined(TARGET_RINOS)
+        // RinOS intentionally searches the per-user root before the
+        // registered/system roots. pal_get_user_dotnet_dir only returns a
+        // root with a host/fxr directory, so an incomplete user installation
+        // cannot mask the system fallback.
+        pal_char_t* global = pal_get_user_dotnet_dir();
+        if (global != NULL)
+            trace_info(_X("Using per-user install location [%s] as runtime location."), global);
+#else
         pal_char_t* global = pal_get_dotnet_self_registered_dir();
         if (global == NULL)
             global = pal_get_default_installation_dir();
+#endif
+
+#if defined(TARGET_RINOS)
+        if (global == NULL)
+            global = pal_get_dotnet_self_registered_dir();
+        if (global == NULL)
+            global = pal_get_default_installation_dir();
+#endif
 
         if (global != NULL)
         {

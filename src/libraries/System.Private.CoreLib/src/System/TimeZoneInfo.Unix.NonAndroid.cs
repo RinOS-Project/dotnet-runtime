@@ -431,9 +431,13 @@ namespace System
                     return false; // use UTC
                 }
 #else
+#if TARGET_RINOS
+                return TryLoadTzFile(Path.Combine(GetTimeZoneDirectory(), "localtime"), ref rawData, ref id);
+#else
                 return
                     TryLoadTzFile("/etc/localtime", ref rawData, ref id) ||
                     TryLoadTzFile(Path.Combine(GetTimeZoneDirectory(), "localtime"), ref rawData, ref id);
+#endif
 #endif
             }
 #pragma warning restore IDE0074

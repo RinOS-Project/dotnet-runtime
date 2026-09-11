@@ -107,6 +107,26 @@ int64_t SystemNative_GetBootTimeTicks(void)
     const int64_t UnixEpochTicks = 621355968000000000;
 
     return UnixEpochTicks + sinceEpochTicks - sinceBootTicks;
+#elif defined(TARGET_RINOS)
+    /* RinOS exposes a monotonic target clock but intentionally has no Linux
+     * boot-clock personality.  Rebase it against the product realtime
+     * owner so CoreLib receives the same Unix-epoch boot timestamp contract. */
+    struct timespec monotonic;
+    struct timespec realtime;
+    if (clock_gettime(CLOCK_MONOTONIC, &monotonic) != 0 ||
+        clock_gettime(CLOCK_REALTIME, &realtime) != 0)
+    {
+        return -1;
+    }
+
+    int64_t monotonicTicks =
+        ((int64_t)monotonic.tv_sec * SecondsToTicks) +
+        (monotonic.tv_nsec / TicksToNanoSeconds);
+    int64_t realtimeTicks =
+        ((int64_t)realtime.tv_sec * SecondsToTicks) +
+        (realtime.tv_nsec / TicksToNanoSeconds);
+    const int64_t UnixEpochTicks = 621355968000000000;
+    return UnixEpochTicks + realtimeTicks - monotonicTicks;
 #else
     return -1;
 #endif

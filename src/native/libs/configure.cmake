@@ -1191,7 +1191,12 @@ if (CLR_CMAKE_TARGET_RINOS)
     # RinOS is a freestanding userspace target. Do not let configure probes
     # performed with the host compiler select Linux/BSD extensions for
     # System.Native. Keep the process path on the product libc contract.
-    set(HAVE_GETIFADDRS 0)
+    set(HAVE_GETIFADDRS 1)
+    set(HAVE_GETHOSTNAME 1)
+    set(HAVE_GETNAMEINFO 1)
+    set(HAVE_NET_IF_H 1)
+    set(HAVE_IP_MREQN 0)
+    set(HAVE_IP_MULTICAST_IFINDEX 0)
     set(HAVE_FORK 1)
     set(HAVE_POSIX_SPAWN_FILE_ACTIONS_ADDCHDIR_NP 0)
     set(HAVE_LSEEK64 0)

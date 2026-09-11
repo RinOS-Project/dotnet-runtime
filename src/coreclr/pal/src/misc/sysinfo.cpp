@@ -267,6 +267,13 @@ GetSystemInfo(
     lpSystemInfo->lpMaximumApplicationAddress = (PVOID) 0x7fffffe00000ul;
 #elif defined(__wasm__)
     lpSystemInfo->lpMaximumApplicationAddress = (PVOID) (1ul << 31);
+#elif defined(TARGET_RINOS)
+    /* RinOS owns a bounded native user VA window.  Do not fall through to
+     * the generic 64-bit Unix branch: it expects host-only USRSTACK64 and
+     * would make the cross target fail to compile (or inherit a wrong host
+     * limit). */
+    lpSystemInfo->lpMaximumApplicationAddress =
+        (PVOID) RINOS_PAL_USER_ADDRESS_LIMIT;
 #elif defined(USERLIMIT)
     lpSystemInfo->lpMaximumApplicationAddress = (PVOID) USERLIMIT;
 #elif defined(HOST_64BIT)

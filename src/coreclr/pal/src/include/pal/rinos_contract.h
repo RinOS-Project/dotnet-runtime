@@ -24,6 +24,12 @@
 #define RINOS_PAL_NATIVE_LIBRARY_EXT ".rll"
 #define RINOS_PAL_TEMP_DIRECTORY "/tmp/"
 
+/* Exclusive upper bound for user mappings.  This is the product address-space
+ * contract, not a host Linux canonical-address guess.  Keep it in the PAL
+ * contract so GetSystemInfo/VirtualQuery and the GC/JIT see the same limit as
+ * the kernel's native x86_64 user-space policy. */
+#define RINOS_PAL_USER_ADDRESS_LIMIT ((uintptr_t)0x00007FFFFFF00000ULL)
+
 /* RinOS has no Linux /proc or ptrace contract.  Cross-process register
  * inspection stays explicitly unavailable until a RinOS debugger ABI exists;
  * current-thread signal and exception contexts use ucontext_t instead. */

@@ -40,12 +40,11 @@ set(HAVE_UCONTEXT_H 1)
 set(HAVE_UCONTEXT_T 1)
 set(HAVE_SYS_UCONTEXT_H 1)
 
-# RinOS scheduler exposes affinity through its own ABI.  The libc headers
-# provide the POSIX-shaped functions, so use the generic PAL affinity path.
-# The PAL's generic affinity implementation requires CPU_ALLOC/CPU_COUNT_S,
-# which is a host-libc extension.  RinOS exposes the POSIX-shaped syscall
-# wrappers but not that allocation API yet; use the sysconf CPU-count path
-# until a bounded cpuset adapter is added.
+# RinOS scheduler exposes a bounded fixed-size cpuset ABI.  The generic PAL
+# affinity implementation requires CPU_ALLOC/CPU_COUNT_S, which is a
+# host-libc extension and cannot be enabled by a target-only symbol probe.
+# Keep affinity on the safe sysconf CPU-count path until the PAL gets a
+# dedicated bounded cpuset adapter.
 set(HAVE_SCHED_GETAFFINITY 0)
 set(HAVE_SCHED_SETAFFINITY 0)
 set(HAVE_SCHED_GET_PRIORITY 0)

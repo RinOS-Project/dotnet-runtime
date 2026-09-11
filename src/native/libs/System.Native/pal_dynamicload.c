@@ -13,6 +13,15 @@
 
 void* SystemNative_LoadLibrary(const char* filename)
 {
+#if defined(TARGET_RINOS)
+    /* RinOS libc is the process-owned main image, not a loadable libc.so.
+     * NativeLibrary variations may present either the logical name or the
+     * target-native suffix; both spellings must resolve to the same handle.
+     * Every other name remains subject to the signed RLL loader policy. */
+    if (strcmp(filename, "libc") == 0 || strcmp(filename, "libc.rll") == 0)
+        return dlopen(NULL, RTLD_LAZY);
+#endif
+
     // Check whether we have been requested to load 'libc'. If that's the case, then:
     // * For Linux, use the full name of the library that is defined in <gnu/lib-names.h> by the
     //   LIBC_SO constant. The problem is that calling dlopen("libc.so") will fail for libc even

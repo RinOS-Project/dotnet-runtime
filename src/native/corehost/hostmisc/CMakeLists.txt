@@ -52,11 +52,14 @@ if (MSVC)
     target_link_libraries(hostmisc_interface INTERFACE advapi32)
 endif()
 
-target_link_libraries(hostmisc_interface INTERFACE
-    ${CMAKE_DL_LIBS}
-    $<$<BOOL:${PTHREAD_LIB}>:${PTHREAD_LIB}>)
+if(NOT CLR_CMAKE_TARGET_RINOS)
+    target_link_libraries(hostmisc_interface INTERFACE
+        ${CMAKE_DL_LIBS}
+        $<$<BOOL:${PTHREAD_LIB}>:${PTHREAD_LIB}>)
+endif()
 
-if(CLR_CMAKE_TARGET_ARCH_ARM OR CLR_CMAKE_TARGET_ARCH_ARMV6)
+if((CLR_CMAKE_TARGET_ARCH_ARM OR CLR_CMAKE_TARGET_ARCH_ARMV6) AND
+   NOT CLR_CMAKE_TARGET_RINOS)
     target_link_libraries(hostmisc_interface INTERFACE
     $<$<BOOL:${ATOMIC_SUPPORT_LIB}>:${ATOMIC_SUPPORT_LIB}>)
 endif()

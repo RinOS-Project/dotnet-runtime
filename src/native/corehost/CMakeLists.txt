@@ -58,14 +58,22 @@ endif()
 string(TOUPPER "${CLR_CMAKE_TARGET_ARCH}" CLR_CMAKE_TARGET_ARCH_UPPER)
 
 # Find support libraries that we need if they're present on the system.
-find_library(PTHREAD_LIB pthread)
+# RinOS libc owns pthread/atomic entry points and does not ship host-style
+# support libraries.  Never let a cross configure discover the build host's
+# libpthread or libatomic by accident.
+if(CLR_CMAKE_TARGET_RINOS)
+    set(PTHREAD_LIB "")
+    set(ATOMIC_SUPPORT_LIB "")
+else()
+    find_library(PTHREAD_LIB pthread)
 
-# Prefer libatomic.a over libatomic.so.
-set(_current_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
-list(PREPEND CMAKE_FIND_LIBRARY_SUFFIXES .a)
-find_library(ATOMIC_SUPPORT_LIB atomic)
-set(CMAKE_FIND_LIBRARY_SUFFIXES ${_current_CMAKE_FIND_LIBRARY_SUFFIXES})
-unset(_current_CMAKE_FIND_LIBRARY_SUFFIXES)
+    # Prefer libatomic.a over libatomic.so.
+    set(_current_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
+    list(PREPEND CMAKE_FIND_LIBRARY_SUFFIXES .a)
+    find_library(ATOMIC_SUPPORT_LIB atomic)
+    set(CMAKE_FIND_LIBRARY_SUFFIXES ${_current_CMAKE_FIND_LIBRARY_SUFFIXES})
+    unset(_current_CMAKE_FIND_LIBRARY_SUFFIXES)
+endif()
 
 configure_file(configure.h.in ${CMAKE_CURRENT_BINARY_DIR}/configure.h)
 

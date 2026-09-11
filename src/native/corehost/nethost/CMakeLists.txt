@@ -42,8 +42,10 @@ set_target_properties(nethost PROPERTIES MACOSX_RPATH TRUE)
 set_target_properties(libnethost PROPERTIES MACOSX_RPATH TRUE)
 set_target_properties(libnethost PROPERTIES PREFIX "")
 
-target_link_libraries (nethost PRIVATE ${CMAKE_DL_LIBS})
-target_link_libraries (libnethost PUBLIC ${CMAKE_DL_LIBS})
+if(NOT CLR_CMAKE_TARGET_RINOS)
+    target_link_libraries (nethost PRIVATE ${CMAKE_DL_LIBS})
+    target_link_libraries (libnethost PUBLIC ${CMAKE_DL_LIBS})
+endif()
 
 install(FILES ../coreclr_delegates.h DESTINATION corehost)
 install(FILES ../hostfxr.h DESTINATION corehost)

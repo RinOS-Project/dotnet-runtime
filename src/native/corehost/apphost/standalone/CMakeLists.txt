@@ -43,8 +43,14 @@ if(CLR_CMAKE_TARGET_WIN32)
         target_link_options(apphost PRIVATE "/CETCOMPAT")
     endif()
 else()
-    target_link_libraries(apphost PRIVATE hostmisc_c minipal_objects m)
-    disable_pax_mprotect(apphost)
+    if(CLR_CMAKE_TARGET_RINOS)
+        # RinOS libc owns math and loader entry points.  The target output is
+        # still an intermediate ELF image until the signed .rin packaging step.
+        target_link_libraries(apphost PRIVATE hostmisc_c minipal_objects)
+    else()
+        target_link_libraries(apphost PRIVATE hostmisc_c minipal_objects m)
+        disable_pax_mprotect(apphost)
+    endif()
 endif()
 
 add_sanitizer_runtime_support(apphost)

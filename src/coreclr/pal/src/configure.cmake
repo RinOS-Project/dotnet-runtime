@@ -623,6 +623,8 @@ elseif(CLR_CMAKE_TARGET_BROWSER)
   set(HAVE_SCHED_OTHER_ASSIGNABLE 0)
 elseif(CLR_CMAKE_TARGET_WASI)
   set(HAVE_SCHED_OTHER_ASSIGNABLE 0)
+elseif(CLR_CMAKE_TARGET_RINOS)
+  message(FATAL_ERROR "RinOS CoreCLR PAL is not implemented; refusing to use the Linux PAL fallback")
 else() # Anything else is Linux
   # LTTNG is not available on Android, so don't error out
   if(FEATURE_EVENTSOURCE_XPLAT AND NOT HAVE_LTTNG_TRACEPOINT_H)

@@ -30,7 +30,9 @@
 #define TARGET_ARCH_STRING "Unknown"
 #endif
 
-#if defined(UNIX_AMD64_ABI) || defined(UNIX_X86_ABI)
+#if defined(TARGET_RINOS)
+#define TARGET_OS_STRING "rinos"
+#elif defined(UNIX_AMD64_ABI) || defined(UNIX_X86_ABI)
 #define TARGET_OS_STRING "unix"
 #elif defined(WINDOWS_AMD64_ABI) || defined(TARGET_X86)
 #define TARGET_OS_STRING "win"

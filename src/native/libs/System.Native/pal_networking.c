@@ -25,6 +25,9 @@
 #elif HAVE_SYS_POLL_H
 #include <sys/poll.h>
 #include <sys/select.h>
+#elif defined(TARGET_RINOS)
+#include <poll.h>
+#include <sys/select.h>
 #endif
 #if HAVE_SYS_PROCINFO_H
 #include <sys/proc_info.h>
@@ -3414,6 +3417,256 @@ static int32_t WaitForSocketEventsInner(int32_t port, SocketEvent* buffer, int32
     }
 
     *count = numEvents;
+    return Error_SUCCESS;
+}
+
+#elif defined(TARGET_RINOS)
+
+/* RinOS exposes poll(2), but not Linux epoll or BSD kqueue.  Keep the
+ * System.Native event-port ABI useful without inventing a host-only loader
+ * dependency: each port owns a wake pipe and a bounded registration table,
+ * while the actual readiness wait is delegated to RinOS libc poll(). */
+#define RINOS_SOCKET_EVENT_PORT_CAPACITY 32
+#define RINOS_SOCKET_EVENT_REGISTRATION_CAPACITY 128
+
+static const size_t SocketEventBufferElementSize = sizeof(SocketEvent);
+
+typedef struct RinOSSocketEventRegistration
+{
+    int Socket;
+    short Events;
+    uintptr_t Data;
+} RinOSSocketEventRegistration;
+
+typedef struct RinOSSocketEventPort
+{
+    int ReadFd;
+    int WakeFd;
+    int Active;
+    pthread_mutex_t Lock;
+    RinOSSocketEventRegistration Registrations[RINOS_SOCKET_EVENT_REGISTRATION_CAPACITY];
+} RinOSSocketEventPort;
+
+static pthread_mutex_t g_rinosSocketEventPortsLock = PTHREAD_MUTEX_INITIALIZER;
+static RinOSSocketEventPort g_rinosSocketEventPorts[RINOS_SOCKET_EVENT_PORT_CAPACITY];
+
+static RinOSSocketEventPort* FindRinOSSocketEventPort(int port)
+{
+    for (int i = 0; i < RINOS_SOCKET_EVENT_PORT_CAPACITY; ++i)
+    {
+        if (g_rinosSocketEventPorts[i].Active &&
+            g_rinosSocketEventPorts[i].ReadFd == port)
+        {
+            return &g_rinosSocketEventPorts[i];
+        }
+    }
+    return NULL;
+}
+
+static short GetRinOSPollEvents(SocketEvents events)
+{
+    short pollEvents = 0;
+    if ((events & SocketEvents_SA_READ) != 0)
+        pollEvents |= POLLIN;
+    if ((events & SocketEvents_SA_WRITE) != 0)
+        pollEvents |= POLLOUT;
+    if ((events & SocketEvents_SA_READCLOSE) != 0)
+        pollEvents |= POLLRDHUP;
+    return pollEvents;
+}
+
+static SocketEvents GetRinOSSocketEvents(short revents)
+{
+    SocketEvents events = SocketEvents_SA_NONE;
+    if ((revents & (POLLIN | POLLPRI)) != 0)
+        events |= SocketEvents_SA_READ;
+    if ((revents & POLLOUT) != 0)
+        events |= SocketEvents_SA_WRITE;
+    if ((revents & POLLRDHUP) != 0)
+        events |= SocketEvents_SA_READCLOSE;
+    if ((revents & POLLHUP) != 0)
+        events |= SocketEvents_SA_CLOSE;
+    if ((revents & (POLLERR | POLLNVAL)) != 0)
+        events |= SocketEvents_SA_ERROR;
+    return events;
+}
+
+static void WakeRinOSSocketEventPort(RinOSSocketEventPort* port)
+{
+    const char wake = 1;
+    if (port != NULL && port->WakeFd >= 0)
+        (void)write(port->WakeFd, &wake, sizeof(wake));
+}
+
+static int32_t CreateSocketEventPortInner(int32_t* port)
+{
+    int pipeFds[2];
+    if (port == NULL)
+        return Error_EFAULT;
+
+    if (pipe(pipeFds) != 0)
+    {
+        *port = -1;
+        return SystemNative_ConvertErrorPlatformToPal(errno);
+    }
+
+    pthread_mutex_lock(&g_rinosSocketEventPortsLock);
+    RinOSSocketEventPort* slot = NULL;
+    for (int i = 0; i < RINOS_SOCKET_EVENT_PORT_CAPACITY; ++i)
+    {
+        if (!g_rinosSocketEventPorts[i].Active)
+        {
+            slot = &g_rinosSocketEventPorts[i];
+            break;
+        }
+    }
+    if (slot == NULL)
+    {
+        pthread_mutex_unlock(&g_rinosSocketEventPortsLock);
+        close(pipeFds[0]);
+        close(pipeFds[1]);
+        *port = -1;
+        return Error_ENOMEM;
+    }
+
+    slot->ReadFd = pipeFds[0];
+    slot->WakeFd = pipeFds[1];
+    slot->Active = 1;
+    pthread_mutex_init(&slot->Lock, NULL);
+    memset(slot->Registrations, 0, sizeof(slot->Registrations));
+    *port = slot->ReadFd;
+    pthread_mutex_unlock(&g_rinosSocketEventPortsLock);
+    return Error_SUCCESS;
+}
+
+static int32_t CloseSocketEventPortInner(int32_t port)
+{
+    pthread_mutex_lock(&g_rinosSocketEventPortsLock);
+    RinOSSocketEventPort* slot = FindRinOSSocketEventPort(port);
+    if (slot == NULL)
+    {
+        pthread_mutex_unlock(&g_rinosSocketEventPortsLock);
+        return Error_EBADF;
+    }
+    slot->Active = 0;
+    pthread_mutex_unlock(&g_rinosSocketEventPortsLock);
+
+    pthread_mutex_destroy(&slot->Lock);
+    int readResult = close(slot->ReadFd);
+    int wakeResult = close(slot->WakeFd);
+    return readResult == 0 && wakeResult == 0
+        ? Error_SUCCESS
+        : SystemNative_ConvertErrorPlatformToPal(errno);
+}
+
+static int32_t TryChangeSocketEventRegistrationInner(
+    int32_t port, int32_t socket, SocketEvents currentEvents, SocketEvents newEvents, uintptr_t data)
+{
+    (void)currentEvents;
+    pthread_mutex_lock(&g_rinosSocketEventPortsLock);
+    RinOSSocketEventPort* slot = FindRinOSSocketEventPort(port);
+    if (slot != NULL)
+        pthread_mutex_lock(&slot->Lock);
+    pthread_mutex_unlock(&g_rinosSocketEventPortsLock);
+    if (slot == NULL)
+        return Error_EBADF;
+
+    int freeIndex = -1;
+    int registrationIndex = -1;
+    for (int i = 0; i < RINOS_SOCKET_EVENT_REGISTRATION_CAPACITY; ++i)
+    {
+        if (slot->Registrations[i].Events != 0 &&
+            slot->Registrations[i].Socket == socket)
+        {
+            registrationIndex = i;
+            break;
+        }
+        if (freeIndex < 0 && slot->Registrations[i].Events == 0)
+            freeIndex = i;
+    }
+
+    if (newEvents == SocketEvents_SA_NONE)
+    {
+        if (registrationIndex >= 0)
+            memset(&slot->Registrations[registrationIndex], 0, sizeof(slot->Registrations[registrationIndex]));
+    }
+    else
+    {
+        if (registrationIndex < 0)
+            registrationIndex = freeIndex;
+        if (registrationIndex < 0)
+        {
+            pthread_mutex_unlock(&slot->Lock);
+            return Error_ENOMEM;
+        }
+        slot->Registrations[registrationIndex].Socket = socket;
+        slot->Registrations[registrationIndex].Events = GetRinOSPollEvents(newEvents);
+        slot->Registrations[registrationIndex].Data = data;
+    }
+    pthread_mutex_unlock(&slot->Lock);
+    WakeRinOSSocketEventPort(slot);
+    return Error_SUCCESS;
+}
+
+static int32_t WaitForSocketEventsInner(int32_t port, SocketEvent* buffer, int32_t* count)
+{
+    struct pollfd pollFds[RINOS_SOCKET_EVENT_REGISTRATION_CAPACITY + 1];
+    uintptr_t data[RINOS_SOCKET_EVENT_REGISTRATION_CAPACITY + 1];
+    int pollCount = 1;
+    if (buffer == NULL || count == NULL || *count < 0)
+        return Error_EFAULT;
+
+    pthread_mutex_lock(&g_rinosSocketEventPortsLock);
+    RinOSSocketEventPort* slot = FindRinOSSocketEventPort(port);
+    if (slot != NULL)
+        pthread_mutex_lock(&slot->Lock);
+    pthread_mutex_unlock(&g_rinosSocketEventPortsLock);
+    if (slot == NULL)
+        return Error_EBADF;
+
+    pollFds[0].fd = slot->ReadFd;
+    pollFds[0].events = POLLIN;
+    pollFds[0].revents = 0;
+    data[0] = 0;
+    for (int i = 0; i < RINOS_SOCKET_EVENT_REGISTRATION_CAPACITY; ++i)
+    {
+        if (slot->Registrations[i].Events == 0)
+            continue;
+        pollFds[pollCount].fd = slot->Registrations[i].Socket;
+        pollFds[pollCount].events = slot->Registrations[i].Events;
+        pollFds[pollCount].revents = 0;
+        data[pollCount] = slot->Registrations[i].Data;
+        ++pollCount;
+    }
+    pthread_mutex_unlock(&slot->Lock);
+
+    int result;
+    do
+    {
+        result = poll(pollFds, (nfds_t)pollCount, -1);
+    } while (result < 0 && errno == EINTR);
+    if (result < 0)
+    {
+        *count = 0;
+        return SystemNative_ConvertErrorPlatformToPal(errno);
+    }
+
+    int outputCount = 0;
+    if ((pollFds[0].revents & POLLIN) != 0)
+    {
+        char wakeBuffer[64];
+        (void)read(slot->ReadFd, wakeBuffer, sizeof(wakeBuffer));
+    }
+    for (int i = 1; i < pollCount && outputCount < *count; ++i)
+    {
+        SocketEvents events = GetRinOSSocketEvents(pollFds[i].revents);
+        if (events == SocketEvents_SA_NONE)
+            continue;
+        buffer[outputCount].Data = data[i];
+        buffer[outputCount].Events = events;
+        ++outputCount;
+    }
+    *count = outputCount;
     return Error_SUCCESS;
 }
 

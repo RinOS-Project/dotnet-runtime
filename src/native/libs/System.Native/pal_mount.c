@@ -206,11 +206,18 @@ int32_t SystemNative_GetAllMountPoints(MountPointFound onFound, void* context)
 }
 #elif defined(TARGET_RINOS)
     // RinOS intentionally does not expose a host /proc mount table. The
-    // product VFS currently has a single mounted RinFS root and no public
-    // enumeration ABI for PAL consumers, so fail closed until that ABI is
-    // added rather than inheriting a host-only mount source.
-    errno = ENOTSUP;
-    return -1;
+    // current product VFS presents one process-visible RinFS root, so use the
+    // product statvfs boundary to prove that root is mounted and report only
+    // that root. Do not manufacture a list from a host mount namespace.
+    struct statvfs stats;
+    memset(&stats, 0, sizeof(stats));
+    if (statvfs("/", &stats) != 0)
+    {
+        return -1;
+    }
+
+    onFound(context, "/");
+    return 0;
 #else
 #error "Don't know how to enumerate mount points on this platform"
 #endif

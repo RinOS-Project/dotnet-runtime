@@ -16,7 +16,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
-#if HAVE_GETRANDOM
+#if HAVE_GETRANDOM || defined(TARGET_RINOS)
 #include <sys/random.h>
 #endif
 #endif
@@ -103,7 +103,7 @@ int32_t minipal_get_cryptographically_secure_random_bytes(uint8_t* buffer, int32
     return BCRYPT_SUCCESS(status) ? 0 : -1;
 #else
 
-#if HAVE_GETRANDOM
+#if HAVE_GETRANDOM || defined(TARGET_RINOS)
     // Try getrandom() first - it's faster than /dev/urandom as it avoids file descriptor overhead.
     // getrandom() was added in Linux 3.17 (2014) and glibc 2.25 (2017).
     static volatile bool sMissingGetrandom;
@@ -170,6 +170,11 @@ int32_t minipal_get_cryptographically_secure_random_bytes(uint8_t* buffer, int32
     }
 #endif
 
+#if defined(TARGET_RINOS)
+    /* The product random owner is the only accepted source on RinOS.  Do not
+     * inherit a host filesystem device path when the syscall is unavailable. */
+    return -1;
+#else
     // Fallback to /dev/urandom
     static volatile int rand_des = -1;
     static bool sMissingDevURandom;
@@ -188,7 +193,6 @@ int32_t minipal_get_cryptographically_secure_random_bytes(uint8_t* buffer, int32
                 fd = open("/dev/urandom", O_RDONLY);
                 fcntl(fd, F_SETFD, FD_CLOEXEC);
 #endif
-            }
             while ((fd == -1) && (errno == EINTR));
 
             if (fd != -1)
@@ -229,4 +233,5 @@ int32_t minipal_get_cryptographically_secure_random_bytes(uint8_t* buffer, int32
     }
 #endif
     return -1;
+#endif
 }

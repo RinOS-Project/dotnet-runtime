@@ -23,6 +23,8 @@
 #include <unistd.h>
 #elif defined(_WIN32)
 #include <windows.h>
+#elif defined(TARGET_RINOS)
+#include <unistd.h>
 #elif defined(__HAIKU__)
 #include <FindDirectory.h>
 #include <StorageDefs.h>
@@ -130,6 +132,14 @@ char* minipal_getexepath(void)
     }
 
     return _strdup(path);
+#elif defined(TARGET_RINOS)
+    RinProcessImagePathResponseV1 response = {0};
+    if (rin_process_image_path_get(&response) != 0)
+    {
+        errno = ENOENT;
+        return NULL;
+    }
+    return strdup(response.path);
 #elif defined(TARGET_BROWSER)
     const char *browserVirtualAppBase = "/"; // keep in sync other places that define browserVirtualAppBase
     return strdup(browserVirtualAppBase);

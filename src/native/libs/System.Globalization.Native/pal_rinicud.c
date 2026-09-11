@@ -293,6 +293,86 @@ static char* locale_utf8(const UChar* locale)
     return result;
 }
 
+static int get_locale_record(const UChar* locale, RinIcuDataLocaleRecord* record)
+{
+    char* locale_name = locale_utf8(locale);
+    rin_icu_client_t* client = product_client();
+    int status = RIN_ICU_STATUS_INVALID;
+    if (locale_name && client && record) {
+        status = rin_icu_locale_info(client, locale_name, record);
+    }
+    free(locale_name);
+    return status == RIN_ICU_STATUS_OK;
+}
+
+static size_t record_field_length(const char* field, size_t capacity)
+{
+    size_t length = 0u;
+    if (!field) return 0u;
+    while (length < capacity && field[length] != '\0') ++length;
+    return length;
+}
+
+static int append_pattern_text(char* dest, size_t capacity, size_t* length, const char* text)
+{
+    size_t text_length = strlen(text);
+    if (!dest || !length || *length + text_length >= capacity) return 0;
+    memcpy(dest + *length, text, text_length);
+    *length += text_length;
+    dest[*length] = '\0';
+    return 1;
+}
+
+static int product_pattern(const char* source, size_t source_capacity,
+                           int time_pattern, int month_day,
+                           char* dest, size_t capacity)
+{
+    size_t source_length = record_field_length(source, source_capacity);
+    size_t i = 0u;
+    size_t length = 0u;
+    if (!source || !dest || capacity == 0u) return 0;
+    dest[0] = '\0';
+    while (i < source_length) {
+        const char* replacement = NULL;
+        size_t consumed = 1u;
+        if (!time_pattern && i + 4u <= source_length && strncmp(source + i, "YYYY", 4u) == 0) {
+            replacement = "yyyy";
+            consumed = 4u;
+        } else if (!time_pattern && i + 2u <= source_length && strncmp(source + i, "MM", 2u) == 0) {
+            replacement = "MM";
+            consumed = 2u;
+        } else if (!time_pattern && i + 2u <= source_length && strncmp(source + i, "DD", 2u) == 0) {
+            replacement = "dd";
+            consumed = 2u;
+        } else if (!time_pattern && source[i] == 'Y') {
+            replacement = "yyyy";
+        } else if (time_pattern && source[i] == 'a') {
+            replacement = "tt";
+        }
+        if (month_day && !time_pattern && replacement && strcmp(replacement, "yyyy") == 0) {
+            size_t skip = consumed;
+            if (i > 0u && (source[i - 1u] == '/' || source[i - 1u] == '-' || source[i - 1u] == '.')) {
+                if (length > 0u) --length;
+            } else if (i + skip < source_length &&
+                       (source[i + skip] == '/' || source[i + skip] == '-' || source[i + skip] == '.')) {
+                ++skip;
+            }
+            i += skip;
+            if (length > 0u) dest[length] = '\0';
+            continue;
+        }
+        if (replacement) {
+            if (!append_pattern_text(dest, capacity, &length, replacement)) return 0;
+            i += consumed;
+        } else {
+            char literal[2] = { source[i], '\0' };
+            if (!append_pattern_text(dest, capacity, &length, literal)) return 0;
+            ++i;
+        }
+    }
+    return (int)length;
+}
+
 static int service_text_call(int (*call)(rin_icu_client_t*, const char*, char*, size_t, size_t*),
                              const char* input, UChar* dest, int32_t capacity)
 {
@@ -651,12 +731,18 @@ int32_t GlobalizationNative_GetLocales(UChar* value, int32_t value_length)
 
 int32_t GlobalizationNative_GetLocaleTimeFormat(const UChar* locale, int short_format, UChar* value, int32_t value_length)
 {
-    char* input = locale_utf8(locale);
-    const char* format = short_format ? "H:mm" : "H:mm:ss";
-    int32_t result;
-    if (input && (strncmp(input, "en", 2u) == 0 || strncmp(input, "root", 4u) == 0)) format = short_format ? "h:mm tt" : "h:mm:ss tt";
+    RinIcuDataLocaleRecord record;
+    char format[128];
+    size_t source_length;
+    int result;
+    if (!get_locale_record(locale, &record)) return 0;
+    source_length = record_field_length(record.time_pattern, sizeof(record.time_pattern));
+    if (!product_pattern(record.time_pattern, source_length + 1u, 1, 0, format, sizeof(format))) return 0;
+    if (short_format) {
+        char* seconds = strstr(format, ":ss");
+        if (seconds) memmove(seconds, seconds + 3u, strlen(seconds + 3u) + 1u);
+    }
     result = copy_utf8(format, strlen(format), value, value_length);
-    free(input);
     return result > 0;
 }
 
@@ -664,7 +750,7 @@ static int locale_is_english(const UChar* locale)
 {
     char* value = locale_utf8(locale);
     int result = value && (strncmp(value, "en", 2u) == 0 || strcmp(value, "root") == 0);
-    if (value != (char*)"root") free(value);
+    free(value);
     return result;
 }
 
@@ -672,14 +758,56 @@ int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStrin
 {
     char* locale_name = locale_utf8(locale);
     char* ui_name = locale_utf8(ui_locale);
+    RinIcuDataLocaleRecord record;
     char buffer[256];
+    const char* field = NULL;
+    size_t field_capacity = 0u;
     size_t length = 0u;
     int status = RIN_ICU_STATUS_UNSUPPORTED;
     rin_icu_client_t* client = product_client();
-    if (client && (kind == LocaleString_EnglishDisplayName || kind == LocaleString_NativeDisplayName || kind == LocaleString_LocalizedDisplayName ||
-                   kind == LocaleString_EnglishLanguageName || kind == LocaleString_NativeLanguageName || kind == LocaleString_LocalizedLanguageName)) {
-        uint32_t type = (kind == LocaleString_EnglishDisplayName || kind == LocaleString_LocalizedDisplayName || kind == LocaleString_NativeDisplayName) ? RIN_ICU_DISPLAY_NAME_LANGUAGE : RIN_ICU_DISPLAY_NAME_LANGUAGE;
-        status = rin_icu_display_name(client, ui_name, locale_name, type, RIN_ICU_STYLE_LONG, RIN_ICU_LANGUAGE_DISPLAY_STANDARD, buffer, sizeof(buffer), &length);
+    int have_record = get_locale_record(locale, &record);
+    if (client && have_record && (kind == LocaleString_EnglishDisplayName || kind == LocaleString_NativeDisplayName || kind == LocaleString_LocalizedDisplayName ||
+                                  kind == LocaleString_EnglishLanguageName || kind == LocaleString_NativeLanguageName || kind == LocaleString_LocalizedLanguageName ||
+                                  kind == LocaleString_EnglishCountryName || kind == LocaleString_NativeCountryName ||
+                                  kind == LocaleString_CurrencyEnglishName || kind == LocaleString_CurrencyNativeName)) {
+        uint32_t type = RIN_ICU_DISPLAY_NAME_LANGUAGE;
+        const char* code = locale_name;
+        uint32_t style = RIN_ICU_STYLE_LONG;
+        if (kind == LocaleString_EnglishCountryName || kind == LocaleString_NativeCountryName) {
+            type = RIN_ICU_DISPLAY_NAME_REGION;
+            code = record.region;
+        } else if (kind == LocaleString_CurrencyEnglishName || kind == LocaleString_CurrencyNativeName) {
+            type = RIN_ICU_DISPLAY_NAME_CURRENCY;
+            code = record.currency_code;
+        } else if (kind == LocaleString_EnglishLanguageName || kind == LocaleString_NativeLanguageName || kind == LocaleString_LocalizedLanguageName) {
+            code = record.language;
+        }
+        status = rin_icu_display_name(client, ui_name, code, type, style, RIN_ICU_LANGUAGE_DISPLAY_STANDARD, buffer, sizeof(buffer), &length);
+    }
+    if (status != RIN_ICU_STATUS_OK && have_record) {
+        switch (kind) {
+            case LocaleString_DecimalSeparator:
+            case LocaleString_MonetaryDecimalSeparator: field = record.decimal_sep; field_capacity = sizeof(record.decimal_sep); break;
+            case LocaleString_ThousandSeparator:
+            case LocaleString_MonetaryThousandSeparator: field = record.group_sep; field_capacity = sizeof(record.group_sep); break;
+            case LocaleString_MonetarySymbol: field = record.currency_symbol; field_capacity = sizeof(record.currency_symbol); break;
+            case LocaleString_Iso4217MonetarySymbol: field = record.currency_code; field_capacity = sizeof(record.currency_code); break;
+            case LocaleString_AMDesignator: field = record.am; field_capacity = sizeof(record.am); break;
+            case LocaleString_PMDesignator: field = record.pm; field_capacity = sizeof(record.pm); break;
+            case LocaleString_PositiveSign: field = record.plus_sign; field_capacity = sizeof(record.plus_sign); break;
+            case LocaleString_NegativeSign: field = record.minus_sign; field_capacity = sizeof(record.minus_sign); break;
+            case LocaleString_PercentSymbol: field = record.percent_sign; field_capacity = sizeof(record.percent_sign); break;
+            case LocaleString_Iso639LanguageTwoLetterName: field = record.language; field_capacity = sizeof(record.language); break;
+            case LocaleString_Iso3166CountryName: field = record.region; field_capacity = sizeof(record.region); break;
+            case LocaleString_ParentName: field = "root"; field_capacity = 5u; break;
+            case LocaleString_Digits: field = "0123456789"; field_capacity = 11u; break;
+            default: break;
+        }
+        if (field) {
+            length = record_field_length(field, field_capacity);
+            if (length < sizeof(buffer)) memcpy(buffer, field, length);
+            status = length < sizeof(buffer) ? RIN_ICU_STATUS_OK : RIN_ICU_STATUS_NO_SPACE;
+        }
     }
     if (status != RIN_ICU_STATUS_OK) {
         const char* fallback = ".";
@@ -710,13 +838,19 @@ int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStrin
 
 int32_t GlobalizationNative_GetLocaleInfoInt(const UChar* locale, LocaleNumberData kind, int32_t* value)
 {
+    RinIcuDataLocaleRecord record;
+    int have_record = get_locale_record(locale, &record);
     if (!value) return 0;
+    if (!have_record) return 0;
     switch (kind) {
-        case LocaleNumber_MeasurementSystem: *value = locale_is_english(locale) ? 1 : 0; break;
-        case LocaleNumber_FirstDayofWeek: *value = locale_is_english(locale) ? 0 : 1; break;
+        case LocaleNumber_MeasurementSystem:
+            *value = (strcmp(record.region, "US") == 0 || strcmp(record.region, "LR") == 0 || strcmp(record.region, "MM") == 0) ? 1 : 0;
+            break;
+        case LocaleNumber_FirstDayofWeek: *value = (strcmp(record.region, "US") == 0 || strcmp(record.region, "CA") == 0) ? 0 : 1; break;
         case LocaleNumber_FractionalDigitsCount:
-        case LocaleNumber_MonetaryFractionalDigitsCount: *value = 2; break;
-        case LocaleNumber_Monetary: *value = 1; break;
+        case LocaleNumber_MonetaryFractionalDigitsCount: *value = (int32_t)record.currency_digits; break;
+        case LocaleNumber_Monetary: *value = record.currency_code[0] != '\0'; break;
+        case LocaleNumber_Digit: *value = 0; break;
         default: *value = 0; break;
     }
     return 1;
@@ -724,11 +858,12 @@ int32_t GlobalizationNative_GetLocaleInfoInt(const UChar* locale, LocaleNumberDa
 
 int32_t GlobalizationNative_GetLocaleInfoGroupingSizes(const UChar* locale, LocaleNumberData kind, int32_t* primary, int32_t* secondary)
 {
+    RinIcuDataLocaleRecord record;
     (void)kind;
     if (!primary || !secondary) return 0;
-    *primary = 3;
-    *secondary = 3;
-    if (!locale_is_english(locale)) *secondary = 3;
+    if (!get_locale_record(locale, &record)) return 0;
+    *primary = record.group_sep[0] == '\0' ? 0 : 3;
+    *secondary = *primary;
     return 1;
 }
 
@@ -741,13 +876,14 @@ int32_t GlobalizationNative_GetCalendars(const UChar* locale, CalendarId* calend
 
 ResultCode GlobalizationNative_GetCalendarInfo(const UChar* locale, CalendarId calendar, CalendarDataType kind, UChar* value, int32_t capacity)
 {
+    RinIcuDataLocaleRecord record;
+    char pattern[128];
     const char* text = "gregorian";
-    (void)locale;
-    (void)calendar;
-    if (kind == CalendarData_MonthDay) text = "M/d";
-    else if (kind == CalendarData_ShortDates) text = "M/d/yyyy";
-    else if (kind == CalendarData_LongDates) text = "dddd, MMMM d, yyyy";
-    else if (kind == CalendarData_YearMonths) text = "MMMM yyyy";
+    if (calendar != 1 || !get_locale_record(locale, &record)) return UnknownError;
+    if (kind == CalendarData_MonthDay || kind == CalendarData_ShortDates || kind == CalendarData_LongDates || kind == CalendarData_YearMonths) {
+        if (!product_pattern(record.date_pattern, sizeof(record.date_pattern), 0, kind == CalendarData_MonthDay, pattern, sizeof(pattern))) return UnknownError;
+        text = pattern;
+    }
     return copy_utf8(text, strlen(text), value, capacity) > 0 ? Success : InsufficientBuffer;
 }
 

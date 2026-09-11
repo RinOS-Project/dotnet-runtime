@@ -432,6 +432,16 @@ namespace System
                 }
 #else
 #if TARGET_RINOS
+                string? productTimeZone = Interop.Sys.GetDefaultTimeZone();
+                if (!string.IsNullOrEmpty(productTimeZone))
+                {
+                    id = productTimeZone;
+                    if (TryLoadTzFile(Path.Combine(GetTimeZoneDirectory(), productTimeZone), ref rawData, ref id))
+                    {
+                        return true;
+                    }
+                    id = null;
+                }
                 return TryLoadTzFile(Path.Combine(GetTimeZoneDirectory(), "localtime"), ref rawData, ref id);
 #else
                 return

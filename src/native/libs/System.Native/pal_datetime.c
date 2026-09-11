@@ -57,6 +57,19 @@ char* SystemNative_GetDefaultTimeZone(void)
         return NULL;
     }
 }
+#elif defined(TARGET_RINOS)
+/* The machine-wide timezone is owned by the RinOS kernel/runtime boundary.
+ * Do not inspect host filesystem timezone files or inherit a host libc database. */
+extern int rin_system_timezone_get(char* output, size_t capacity)
+    __attribute__((weak));
+
+char* SystemNative_GetDefaultTimeZone(void)
+{
+    char timezone[128] = {};
+    if (rin_system_timezone_get && rin_system_timezone_get(timezone, sizeof(timezone)))
+        return strdup(timezone);
+    return NULL;
+}
 #elif !defined(__APPLE__)
 char* SystemNative_GetDefaultTimeZone(void)
 {

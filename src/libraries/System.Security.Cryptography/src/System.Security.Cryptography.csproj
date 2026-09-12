@@ -859,7 +859,7 @@
     <Compile Include="$(CommonPath)Interop\Unix\System.Security.Cryptography.Native\Interop.RAND.cs"
              Link="Common\Interop\Unix\System.Security.Cryptography.Native\Interop.RAND.cs" />
     <Compile Include="System\Security\Cryptography\AesCcm.NotSupported.cs" />
-    <Compile Include="System\Security\Cryptography\AesGcm.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\AesGcm.RinOS.cs" />
     <Compile Include="System\Security\Cryptography\AesImplementation.NotSupported.cs" />
     <Compile Include="System\Security\Cryptography\AsnFormatter.Managed.cs" />
     <Compile Include="System\Security\Cryptography\CapiHelper.Browser.cs" />

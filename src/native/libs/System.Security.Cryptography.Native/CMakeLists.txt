@@ -63,6 +63,7 @@ if (CLR_CMAKE_TARGET_RINOS)
     # algorithms that have a checked-in RinTLS implementation.
     set(NATIVECRYPTO_SOURCES
         rinos_crypto.c
+        rinos_aes.c
         rinos_tls.c
         "${RINOS_REPO_ROOT}/libs/rintls/rintls.c"
         "${RINOS_REPO_ROOT}/libs/rintls/crypto/aes.c"

@@ -15,6 +15,7 @@
 
 #include "../Common/pal_compiler.h"
 #include "sha256.h"
+#include "sha3.h"
 #include "hmac.h"
 #include "platform/rin_platform.h"
 
@@ -25,6 +26,9 @@ enum
     RINOS_SHA256 = 1,
     RINOS_SHA384 = 2,
     RINOS_SHA512 = 3,
+    RINOS_SHA3_256 = 4,
+    RINOS_SHA3_384 = 5,
+    RINOS_SHA3_512 = 6,
 };
 
 typedef struct
@@ -35,6 +39,7 @@ typedef struct
     {
         sha256_ctx sha256;
         sha512_ctx sha512;
+        sha3_ctx sha3;
     } state;
 } rinos_hash_context;
 
@@ -60,6 +65,12 @@ static int rinos_hash_size(uint32_t algorithm)
             return SHA384_DIGEST_SIZE;
         case RINOS_SHA512:
             return SHA512_DIGEST_SIZE;
+        case RINOS_SHA3_256:
+            return SHA3_256_DIGEST_SIZE;
+        case RINOS_SHA3_384:
+            return SHA3_384_DIGEST_SIZE;
+        case RINOS_SHA3_512:
+            return SHA3_512_DIGEST_SIZE;
         default:
             return 0;
     }
@@ -107,8 +118,14 @@ PALEXPORT void* CryptoNative_RinOSHashCreate(int32_t algorithm)
         sha256_init(&context->state.sha256);
     else if (algorithm == RINOS_SHA384)
         sha384_init(&context->state.sha512);
-    else
+    else if (algorithm == RINOS_SHA512)
         sha512_init(&context->state.sha512);
+    else if (algorithm == RINOS_SHA3_256)
+        sha3_256_init(&context->state.sha3);
+    else if (algorithm == RINOS_SHA3_384)
+        sha3_384_init(&context->state.sha3);
+    else
+        sha3_512_init(&context->state.sha3);
 
     return context;
 }
@@ -135,8 +152,10 @@ PALEXPORT int32_t CryptoNative_RinOSHashUpdate(void* handle, const uint8_t* data
         sha256_update(&context->state.sha256, data, (rin_size_t)length);
     else if (context->algorithm == RINOS_SHA384)
         sha384_update(&context->state.sha512, data, (rin_size_t)length);
-    else
+    else if (context->algorithm == RINOS_SHA512)
         sha512_update(&context->state.sha512, data, (rin_size_t)length);
+    else
+        sha3_update(&context->state.sha3, data, (rin_size_t)length);
     return 1;
 }
 
@@ -153,8 +172,10 @@ PALEXPORT int32_t CryptoNative_RinOSHashFinal(void* handle, uint8_t* destination
         sha256_final(&context->state.sha256, destination);
     else if (context->algorithm == RINOS_SHA384)
         sha384_final(&context->state.sha512, destination);
-    else
+    else if (context->algorithm == RINOS_SHA512)
         sha512_final(&context->state.sha512, destination);
+    else
+        sha3_final(&context->state.sha3, destination);
     return size;
 }
 
@@ -173,8 +194,10 @@ PALEXPORT int32_t CryptoNative_RinOSHashCurrent(const void* handle, uint8_t* des
         sha256_final(&copy.state.sha256, destination);
     else if (copy.algorithm == RINOS_SHA384)
         sha384_final(&copy.state.sha512, destination);
-    else
+    else if (copy.algorithm == RINOS_SHA512)
         sha512_final(&copy.state.sha512, destination);
+    else
+        sha3_final(&copy.state.sha3, destination);
     rintls_secure_zero(&copy, sizeof(copy));
     return size;
 }
@@ -189,8 +212,14 @@ PALEXPORT int32_t CryptoNative_RinOSHashReset(void* handle)
         sha256_init(&context->state.sha256);
     else if (context->algorithm == RINOS_SHA384)
         sha384_init(&context->state.sha512);
-    else
+    else if (context->algorithm == RINOS_SHA512)
         sha512_init(&context->state.sha512);
+    else if (context->algorithm == RINOS_SHA3_256)
+        sha3_256_init(&context->state.sha3);
+    else if (context->algorithm == RINOS_SHA3_384)
+        sha3_384_init(&context->state.sha3);
+    else
+        sha3_512_init(&context->state.sha3);
     return 1;
 }
 

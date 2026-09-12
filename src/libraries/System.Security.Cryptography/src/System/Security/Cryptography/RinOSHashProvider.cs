@@ -15,6 +15,9 @@ namespace System.Security.Cryptography
             internal const int Sha256 = 1;
             internal const int Sha384 = 2;
             internal const int Sha512 = 3;
+            internal const int Sha3_256 = 4;
+            internal const int Sha3_384 = 5;
+            internal const int Sha3_512 = 6;
 
             internal static int GetHashAlgorithm(string id)
             {
@@ -25,9 +28,9 @@ namespace System.Security.Cryptography
                     HashAlgorithmNames.SHA512 => Sha512,
                     HashAlgorithmNames.SHA1 => throw Unsupported(id),
                     HashAlgorithmNames.MD5 => throw Unsupported(id),
-                    HashAlgorithmNames.SHA3_256 => throw Unsupported(id),
-                    HashAlgorithmNames.SHA3_384 => throw Unsupported(id),
-                    HashAlgorithmNames.SHA3_512 => throw Unsupported(id),
+                    HashAlgorithmNames.SHA3_256 => Sha3_256,
+                    HashAlgorithmNames.SHA3_384 => Sha3_384,
+                    HashAlgorithmNames.SHA3_512 => Sha3_512,
                     HashAlgorithmNames.SHAKE128 => throw Unsupported(id),
                     HashAlgorithmNames.SHAKE256 => throw Unsupported(id),
                     _ => throw Unknown(id),
@@ -54,10 +57,11 @@ namespace System.Security.Cryptography
             {
                 return id switch
                 {
-                    HashAlgorithmNames.SHA256 or HashAlgorithmNames.SHA384 or HashAlgorithmNames.SHA512 => true,
-                    HashAlgorithmNames.SHA1 or HashAlgorithmNames.MD5 or
+                    HashAlgorithmNames.SHA256 or HashAlgorithmNames.SHA384 or HashAlgorithmNames.SHA512 or
                     HashAlgorithmNames.SHA3_256 or HashAlgorithmNames.SHA3_384 or
-                    HashAlgorithmNames.SHA3_512 or HashAlgorithmNames.SHAKE128 or
+                    HashAlgorithmNames.SHA3_512 => true,
+                    HashAlgorithmNames.SHA1 or HashAlgorithmNames.MD5 or
+                    HashAlgorithmNames.SHAKE128 or
                     HashAlgorithmNames.SHAKE256 => false,
                     _ => throw Unknown(id),
                 };
@@ -95,9 +99,10 @@ namespace System.Security.Cryptography
                 _algorithm = RinOSAlgorithms.GetHashAlgorithm(hashAlgorithmId);
                 _hashSize = _algorithm switch
                 {
-                    RinOSAlgorithms.Sha256 => 32,
-                    RinOSAlgorithms.Sha384 => 48,
-                    _ => 64,
+                    RinOSAlgorithms.Sha256 or RinOSAlgorithms.Sha3_256 => 32,
+                    RinOSAlgorithms.Sha384 or RinOSAlgorithms.Sha3_384 => 48,
+                    RinOSAlgorithms.Sha512 or RinOSAlgorithms.Sha3_512 => 64,
+                    _ => throw new CryptographicException("RinOS hash algorithm size is invalid."),
                 };
                 _context = Interop.Crypto.RinOSHashCreate(_algorithm);
                 if (_context == IntPtr.Zero)

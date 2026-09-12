@@ -73,6 +73,7 @@ if (CLR_CMAKE_TARGET_RINOS)
         "${RINOS_REPO_ROOT}/libs/rintls/crypto/rsa.c"
         "${RINOS_REPO_ROOT}/libs/rintls/crypto/sha1.c"
         "${RINOS_REPO_ROOT}/libs/rintls/crypto/sha256.c"
+        "${RINOS_REPO_ROOT}/libs/rintls/crypto/sha3.c"
         "${RINOS_REPO_ROOT}/libs/rintls/tls/handshake.c"
         "${RINOS_REPO_ROOT}/libs/rintls/tls/record.c"
         "${RINOS_REPO_ROOT}/libs/rintls/x509/cert.c"

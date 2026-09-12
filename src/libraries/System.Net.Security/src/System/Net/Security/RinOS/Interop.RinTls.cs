@@ -70,6 +70,16 @@ namespace System.Net.Security
             private static partial int GetCipherSuiteNative(IntPtr handle);
 
             [LibraryImport(Libraries.CryptoNative,
+                EntryPoint = "CryptoNative_RinTlsGetApplicationProtocolLength")]
+            private static partial int GetApplicationProtocolLengthNative(
+                IntPtr handle, out int length);
+
+            [LibraryImport(Libraries.CryptoNative,
+                EntryPoint = "CryptoNative_RinTlsCopyApplicationProtocol")]
+            private static partial unsafe int CopyApplicationProtocolNative(
+                IntPtr handle, byte* destination, int capacity);
+
+            [LibraryImport(Libraries.CryptoNative,
                 EntryPoint = "CryptoNative_RinTlsGetError")]
             private static partial int GetErrorNative(IntPtr handle);
 
@@ -160,6 +170,22 @@ namespace System.Net.Security
 
             internal static int GetCipherSuite(RinSslHandle handle)
                 => GetCipherSuiteNative(handle.DangerousGetHandle());
+
+            internal static int GetApplicationProtocolLength(RinSslHandle handle,
+                                                              out int length)
+                => GetApplicationProtocolLengthNative(handle.DangerousGetHandle(),
+                                                       out length);
+
+            internal static unsafe int CopyApplicationProtocol(
+                RinSslHandle handle, Span<byte> destination)
+            {
+                fixed (byte* destinationPtr = destination)
+                {
+                    return CopyApplicationProtocolNative(handle.DangerousGetHandle(),
+                                                         destinationPtr,
+                                                         destination.Length);
+                }
+            }
 
             internal static int GetError(RinSslHandle handle)
                 => GetErrorNative(handle.DangerousGetHandle());

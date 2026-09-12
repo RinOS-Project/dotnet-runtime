@@ -287,10 +287,16 @@ namespace System.Net.Security
                 throw new PlatformNotSupportedException(
                     "RinTLS uses the product trust bundle; custom managed roots are not connected yet.");
             }
-            if ((sslAuthenticationOptions.ApplicationProtocols?.Count ?? 0) != 0)
+            if (sslAuthenticationOptions.ApplicationProtocols is { Count: > 0 } protocols)
             {
-                throw new PlatformNotSupportedException(
-                    "RinTLS ALPN is not available in the current product API.");
+                foreach (SslApplicationProtocol protocol in protocols)
+                {
+                    if (protocol != SslApplicationProtocol.Http11)
+                    {
+                        throw new PlatformNotSupportedException(
+                            "RinTLS supports only the HTTP/1.1 ALPN protocol.");
+                    }
+                }
             }
 
             uint options = GetRinTlsOptions(sslAuthenticationOptions.EnabledSslProtocols);

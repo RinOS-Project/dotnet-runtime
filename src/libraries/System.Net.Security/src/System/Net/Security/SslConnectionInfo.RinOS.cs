@@ -17,8 +17,27 @@ namespace System.Net.Security
             };
 
             MapCipherSuite((TlsCipherSuite)Interop.RinTls.GetCipherSuite(sslContext));
-            // RinTLS currently has no ALPN or session-resumption API.  Keeping
-            // ApplicationProtocol null accurately reports that limitation.
+
+            int alpnResult = Interop.RinTls.GetApplicationProtocolLength(
+                sslContext, out int alpnLength);
+            if (alpnResult != 0 || alpnLength < 0)
+            {
+                throw new AuthenticationException(
+                    "RinTLS could not read the negotiated application protocol.");
+            }
+
+            if (alpnLength != 0)
+            {
+                byte[] alpn = new byte[alpnLength];
+                alpnResult = Interop.RinTls.CopyApplicationProtocol(sslContext,
+                                                                      alpn);
+                if (alpnResult != 0)
+                {
+                    throw new AuthenticationException(
+                        "RinTLS could not copy the negotiated application protocol.");
+                }
+                ApplicationProtocol = alpn;
+            }
         }
     }
 }

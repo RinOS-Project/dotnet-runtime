@@ -295,6 +295,37 @@ int32_t CryptoNative_RinTlsGetCipherSuite(void* handle)
     return adapter ? (int32_t)rintls_get_cipher_suite(adapter->context) : 0;
 }
 
+int32_t CryptoNative_RinTlsGetApplicationProtocolLength(void* handle,
+                                                        int32_t* length)
+{
+    rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;
+    rin_size_t required = 0u;
+    int result;
+
+    if (length) *length = 0;
+    if (!adapter || !length) return RINTLS_ERR_MEMORY;
+    result = rintls_get_application_protocol(adapter->context, RIN_NULL, 0u,
+                                             &required);
+    if (result != RINTLS_ERR_MEMORY && result != RINTLS_OK)
+        return result;
+    if (required > 0x7fffffffU) return RINTLS_ERR_MEMORY;
+    *length = (int32_t)required;
+    return RINTLS_OK;
+}
+
+int32_t CryptoNative_RinTlsCopyApplicationProtocol(void* handle,
+                                                   uint8_t* destination,
+                                                   int32_t capacity)
+{
+    rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;
+    rin_size_t length = 0u;
+
+    if (!adapter || capacity < 0 || (capacity != 0 && !destination))
+        return RINTLS_ERR_MEMORY;
+    return rintls_get_application_protocol(adapter->context, destination,
+                                           (rin_size_t)capacity, &length);
+}
+
 int32_t CryptoNative_RinTlsGetError(void* handle)
 {
     rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;

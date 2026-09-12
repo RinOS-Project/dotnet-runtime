@@ -6,8 +6,10 @@ using System.IO;
 using System.Net.Security;
 using System.Security.Authentication;
 using System.Security.Authentication.ExtendedProtection;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.Win32.SafeHandles;
+using System.Runtime.InteropServices;
 
 namespace System.Net.Security
 {
@@ -175,18 +177,221 @@ namespace System.Net.Security
         }
 
         public static bool TryUpdateClintCertificate(
-            SafeFreeCredentials? _, SafeDeleteSslContext? __,
+            SafeFreeCredentials? _, SafeDeleteSslContext? context,
             SslAuthenticationOptions sslAuthenticationOptions)
         {
-            if (sslAuthenticationOptions.CertificateContext is not null ||
-                (sslAuthenticationOptions.ClientCertificates?.Count ?? 0) != 0 ||
-                sslAuthenticationOptions.CertSelectionDelegate is not null)
+            if (context is not RinSslHandle handle)
             {
-                throw new PlatformNotSupportedException(
-                    "RinTLS client-certificate callbacks are not connected to SslStream.");
+                return false;
             }
 
-            return false;
+            if (handle.ClientCertificateConfigured)
+            {
+                return true;
+            }
+
+            SslStreamCertificateContext? certificateContext =
+                sslAuthenticationOptions.CertificateContext;
+            if (certificateContext is null)
+            {
+                int declined = Interop.RinTls.SetClientCertificate(
+                    handle, ReadOnlySpan<byte>.Empty, IntPtr.Zero, IntPtr.Zero);
+                if (declined != 0)
+                {
+                    throw new RinTlsException(
+                        declined, "RinTLS rejected declining the client certificate request.");
+                }
+
+                handle.MarkClientCertificateConfigured();
+                return true;
+            }
+
+            byte[] certificateList = BuildClientCertificateList(certificateContext);
+            RinClientCertificateState state =
+                new RinClientCertificateState(certificateContext.TargetCertificate);
+            IntPtr stateHandle = handle.AttachClientCertificateState(state);
+            int result = Interop.RinTls.SetClientCertificate(
+                handle, certificateList,
+                Marshal.GetFunctionPointerForDelegate(s_clientCertificateSignCallback),
+                stateHandle);
+            if (result != 0)
+            {
+                throw new RinTlsException(
+                    result, "RinTLS rejected the managed client certificate.");
+            }
+
+            handle.MarkClientCertificateConfigured();
+            return true;
+        }
+
+        private const int MaxClientCertificateChain = 16 * 1024;
+
+        private static byte[] BuildClientCertificateList(
+            SslStreamCertificateContext certificateContext)
+        {
+            byte[][] certificates = new byte[
+                1 + certificateContext.IntermediateCertificates.Count][];
+            certificates[0] = certificateContext.TargetCertificate.RawData;
+            for (int i = 0; i < certificateContext.IntermediateCertificates.Count; i++)
+            {
+                certificates[i + 1] =
+                    certificateContext.IntermediateCertificates[i].RawData;
+            }
+
+            int listLength = 0;
+            foreach (byte[] certificate in certificates)
+            {
+                if (certificate.Length == 0 || certificate.Length > 0xFFFFFF)
+                {
+                    throw new AuthenticationException(
+                        "RinTLS received an invalid client certificate.");
+                }
+
+                listLength = checked(listLength + 3 + certificate.Length + 2);
+            }
+
+            if (listLength > MaxClientCertificateChain - 3)
+            {
+                throw new AuthenticationException(
+                    "The RinTLS client certificate chain exceeds 16 KiB.");
+            }
+
+            byte[] result = new byte[listLength + 3];
+            WriteUInt24(result, 0, listLength);
+            int offset = 3;
+            foreach (byte[] certificate in certificates)
+            {
+                WriteUInt24(result, offset, certificate.Length);
+                offset += 3;
+                certificate.AsSpan().CopyTo(result.AsSpan(offset));
+                offset += certificate.Length;
+                result[offset++] = 0;
+                result[offset++] = 0;
+            }
+
+            return result;
+        }
+
+        private static void WriteUInt24(Span<byte> destination, int offset, int value)
+        {
+            destination[offset] = (byte)(value >> 16);
+            destination[offset + 1] = (byte)(value >> 8);
+            destination[offset + 2] = (byte)value;
+        }
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private unsafe delegate int ClientCertificateSignCallback(
+            IntPtr opaque, ushort signatureScheme, byte* message,
+            nuint messageLength, byte* signature, nuint signatureCapacity,
+            nuint* signatureLength);
+
+        private static readonly unsafe ClientCertificateSignCallback
+            s_clientCertificateSignCallback = SignClientCertificate;
+
+        private static unsafe int SignClientCertificate(
+            IntPtr opaque, ushort signatureScheme, byte* message,
+            nuint messageLength, byte* signature, nuint signatureCapacity,
+            nuint* signatureLength)
+        {
+            if (signatureLength is null || messageLength > int.MaxValue ||
+                signatureCapacity > int.MaxValue ||
+                (message is null && messageLength != 0u))
+            {
+                return -1;
+            }
+
+            *signatureLength = 0u;
+            try
+            {
+                if (opaque == IntPtr.Zero || signature is null)
+                {
+                    return -1;
+                }
+
+                object? target = GCHandle.FromIntPtr(opaque).Target;
+                if (target is not RinClientCertificateState state)
+                {
+                    return -1;
+                }
+
+                byte[] signedData = new ReadOnlySpan<byte>(
+                    message, checked((int)messageLength)).ToArray();
+                byte[] signed = state.Sign(signatureScheme, signedData);
+                if (signed.Length == 0 || signed.Length > (int)signatureCapacity)
+                {
+                    return -1;
+                }
+
+                signed.AsSpan().CopyTo(new Span<byte>(signature, signed.Length));
+                *signatureLength = (nuint)signed.Length;
+                return 0;
+            }
+            catch
+            {
+                return -1;
+            }
+        }
+
+        private sealed class RinClientCertificateState
+        {
+            private readonly X509Certificate2 _certificate;
+
+            internal RinClientCertificateState(X509Certificate2 certificate)
+            {
+                _certificate = certificate;
+            }
+
+            internal byte[] Sign(ushort signatureScheme, ReadOnlySpan<byte> message)
+            {
+                return signatureScheme switch
+                {
+                    0x0403 => SignEcdsa(message, HashAlgorithmName.SHA256, 256),
+                    0x0503 => SignEcdsa(message, HashAlgorithmName.SHA384, 384),
+                    0x0603 => SignEcdsa(message, HashAlgorithmName.SHA512, 521),
+                    0x0804 => SignRsa(message, HashAlgorithmName.SHA256),
+                    0x0805 => SignRsa(message, HashAlgorithmName.SHA384),
+                    0x0806 => SignRsa(message, HashAlgorithmName.SHA512),
+                    _ => throw new CryptographicException(
+                        "RinTLS selected an unsupported client signature scheme."),
+                };
+            }
+
+            private byte[] SignEcdsa(
+                ReadOnlySpan<byte> message, HashAlgorithmName hashAlgorithm,
+                int expectedKeySize)
+            {
+                using ECDsa? ecdsa = _certificate.GetECDsaPrivateKey();
+                if (ecdsa is null || ecdsa.KeySize != expectedKeySize)
+                {
+                    throw new CryptographicException(
+                        "The client certificate does not match the TLS signature scheme.");
+                }
+
+                byte[] hash = hashAlgorithm == HashAlgorithmName.SHA256
+                    ? SHA256.HashData(message)
+                    : hashAlgorithm == HashAlgorithmName.SHA384
+                        ? SHA384.HashData(message)
+                        : SHA512.HashData(message);
+                return ecdsa.SignHash(hash);
+            }
+
+            private byte[] SignRsa(
+                ReadOnlySpan<byte> message, HashAlgorithmName hashAlgorithm)
+            {
+                using RSA? rsa = _certificate.GetRSAPrivateKey();
+                if (rsa is null)
+                {
+                    throw new CryptographicException(
+                        "The client certificate does not contain an RSA private key.");
+                }
+
+                byte[] hash = hashAlgorithm == HashAlgorithmName.SHA256
+                    ? SHA256.HashData(message)
+                    : hashAlgorithm == HashAlgorithmName.SHA384
+                        ? SHA384.HashData(message)
+                        : SHA512.HashData(message);
+                return rsa.SignHash(hash, hashAlgorithm, RSASignaturePadding.Pss);
+            }
         }
 
         private static ProtocolToken HandshakeInternal(
@@ -206,12 +411,20 @@ namespace System.Net.Security
                     return Unsupported("RinTLS currently exposes a client-only TLS API.");
                 }
 
+                bool created = false;
                 if (context is null || context.IsInvalid)
                 {
                     context = CreateHandle(sslAuthenticationOptions);
+                    created = true;
                 }
 
                 RinSslHandle handle = GetHandle(context);
+                if (!handle.ClientCertificateConfigured &&
+                    ((created && sslAuthenticationOptions.CertificateContext is not null) ||
+                     Interop.RinTls.ClientCertificateRequested(handle)))
+                {
+                    TryUpdateClintCertificate(null, handle, sslAuthenticationOptions);
+                }
                 int result;
                 if (Interop.RinTls.IsClosed(handle))
                 {
@@ -379,6 +592,7 @@ namespace System.Net.Security
             {
                 0 => new SecurityStatusPal(SecurityStatusPalErrorCode.OK),
                 -10 or -11 => new SecurityStatusPal(SecurityStatusPalErrorCode.ContinueNeeded),
+                -13 => new SecurityStatusPal(SecurityStatusPalErrorCode.CredentialsNeeded),
                 -6 => new SecurityStatusPal(SecurityStatusPalErrorCode.ContextExpired),
                 -4 or -12 => new SecurityStatusPal(
                     SecurityStatusPalErrorCode.UntrustedRoot,

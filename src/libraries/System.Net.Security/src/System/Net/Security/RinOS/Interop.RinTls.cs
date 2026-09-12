@@ -32,6 +32,17 @@ namespace System.Net.Security
                 IntPtr handle, byte* input, int inputLength, out int consumed);
 
             [LibraryImport(Libraries.CryptoNative,
+                EntryPoint = "CryptoNative_RinTlsSetClientCertificate")]
+            private static partial unsafe int SetClientCertificateNative(
+                IntPtr handle, byte* certificateList, int certificateListLength,
+                IntPtr signer, IntPtr signerOpaque);
+
+            [LibraryImport(Libraries.CryptoNative,
+                EntryPoint = "CryptoNative_RinTlsClientCertificateRequested")]
+            private static partial int ClientCertificateRequestedNative(
+                IntPtr handle);
+
+            [LibraryImport(Libraries.CryptoNative,
                 EntryPoint = "CryptoNative_RinTlsPendingOutputLength")]
             private static partial int PendingOutputLengthNative(IntPtr handle);
 
@@ -120,6 +131,22 @@ namespace System.Net.Security
                                            input.Length, out consumed);
                 }
             }
+
+            internal static unsafe int SetClientCertificate(
+                RinSslHandle handle, ReadOnlySpan<byte> certificateList,
+                IntPtr signer, IntPtr signerOpaque)
+            {
+                fixed (byte* listPtr = certificateList)
+                {
+                    return SetClientCertificateNative(
+                        handle.DangerousGetHandle(),
+                        certificateList.IsEmpty ? null : listPtr,
+                        certificateList.Length, signer, signerOpaque);
+                }
+            }
+
+            internal static bool ClientCertificateRequested(RinSslHandle handle)
+                => ClientCertificateRequestedNative(handle.DangerousGetHandle()) != 0;
 
             internal static int PendingOutputLength(RinSslHandle handle)
                 => PendingOutputLengthNative(handle.DangerousGetHandle());

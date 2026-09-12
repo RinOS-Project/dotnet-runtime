@@ -189,10 +189,39 @@ int32_t CryptoNative_RinTlsHandshake(void* handle, const uint8_t* input,
     result = rinos_append_input(adapter, input, (rin_size_t)input_length);
     if (result != RINTLS_OK) return result;
     result = rintls_handshake_step(adapter->context);
+    /* RinTLS pauses immediately after a TLS 1.3 CertificateRequest. Surface
+     * that protocol state as the PAL's credential callback status; the
+     * managed side can then install a certificate-list and signer without
+     * feeding the already-consumed CertificateRequest a second time. */
+    if (result == RINTLS_ERR_CERTIFICATE &&
+        rintls_client_certificate_requested(adapter->context) &&
+        !rintls_client_certificate_configured(adapter->context)) {
+        result = RINTLS_ERR_WANT_CREDENTIALS;
+    }
     if (consumed)
         *consumed = (int32_t)rinos_consumed(adapter, old_input_length,
                                             (rin_size_t)input_length);
     return result;
+}
+
+int32_t CryptoNative_RinTlsSetClientCertificate(
+    void* handle, const uint8_t* certificate_list, int32_t certificate_list_length,
+    void* signer, void* signer_opaque)
+{
+    rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;
+    if (!adapter || certificate_list_length < 0 ||
+        (certificate_list_length != 0 && !certificate_list))
+        return RINTLS_ERR_MEMORY;
+    return rintls_set_client_certificate(
+        adapter->context, certificate_list, (rin_size_t)certificate_list_length,
+        (rintls_client_certificate_sign_func)signer, signer_opaque);
+}
+
+int32_t CryptoNative_RinTlsClientCertificateRequested(void* handle)
+{
+    rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;
+    return adapter && rintls_client_certificate_requested(adapter->context)
+        ? 1 : 0;
 }
 
 int32_t CryptoNative_RinTlsPendingOutputLength(void* handle)

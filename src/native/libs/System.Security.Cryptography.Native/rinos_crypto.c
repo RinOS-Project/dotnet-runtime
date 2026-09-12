@@ -46,6 +46,7 @@ typedef struct
     {
         hmac_sha256_ctx sha256;
         hmac_sha384_ctx sha384;
+        hmac_sha512_ctx sha512;
     } state;
 } rinos_hmac_context;
 
@@ -72,6 +73,8 @@ static int rinos_hmac_size(uint32_t algorithm)
             return HMAC_SHA256_SIZE;
         case RINOS_SHA384:
             return HMAC_SHA384_SIZE;
+        case RINOS_SHA512:
+            return HMAC_SHA512_SIZE;
         default:
             return 0;
     }
@@ -214,8 +217,10 @@ PALEXPORT void* CryptoNative_RinOSHmacCreate(int32_t algorithm, const uint8_t* k
     context->algorithm = (uint32_t)algorithm;
     if (algorithm == RINOS_SHA256)
         hmac_sha256_init(&context->state.sha256, key, (rin_size_t)key_length);
-    else
+    else if (algorithm == RINOS_SHA384)
         hmac_sha384_init(&context->state.sha384, key, (rin_size_t)key_length);
+    else
+        hmac_sha512_init(&context->state.sha512, key, (rin_size_t)key_length);
     return context;
 }
 
@@ -239,8 +244,10 @@ PALEXPORT int32_t CryptoNative_RinOSHmacUpdate(void* handle, const uint8_t* data
 
     if (context->algorithm == RINOS_SHA256)
         hmac_sha256_update(&context->state.sha256, data, (rin_size_t)length);
-    else
+    else if (context->algorithm == RINOS_SHA384)
         hmac_sha384_update(&context->state.sha384, data, (rin_size_t)length);
+    else
+        hmac_sha512_update(&context->state.sha512, data, (rin_size_t)length);
     return 1;
 }
 
@@ -255,8 +262,10 @@ PALEXPORT int32_t CryptoNative_RinOSHmacFinal(void* handle, uint8_t* destination
 
     if (context->algorithm == RINOS_SHA256)
         hmac_sha256_final(&context->state.sha256, destination);
-    else
+    else if (context->algorithm == RINOS_SHA384)
         hmac_sha384_final(&context->state.sha384, destination);
+    else
+        hmac_sha512_final(&context->state.sha512, destination);
     return size;
 }
 
@@ -273,8 +282,10 @@ PALEXPORT int32_t CryptoNative_RinOSHmacCurrent(const void* handle, uint8_t* des
     rintls_memcpy(&copy, context, sizeof(copy));
     if (copy.algorithm == RINOS_SHA256)
         hmac_sha256_final(&copy.state.sha256, destination);
-    else
+    else if (copy.algorithm == RINOS_SHA384)
         hmac_sha384_final(&copy.state.sha384, destination);
+    else
+        hmac_sha512_final(&copy.state.sha512, destination);
     rintls_secure_zero(&copy, sizeof(copy));
     return size;
 }
@@ -289,8 +300,10 @@ PALEXPORT int32_t CryptoNative_RinOSHmacReset(void* handle)
      * the keyed inner/outer states without retaining a second managed copy. */
     if (context->algorithm == RINOS_SHA256)
         hmac_sha256_init(&context->state.sha256, context->state.sha256.key_block, SHA256_BLOCK_SIZE);
-    else
+    else if (context->algorithm == RINOS_SHA384)
         hmac_sha384_init(&context->state.sha384, context->state.sha384.key_block, SHA384_BLOCK_SIZE);
+    else
+        hmac_sha512_init(&context->state.sha512, context->state.sha512.key_block, SHA512_BLOCK_SIZE);
     return 1;
 }
 

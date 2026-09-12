@@ -42,7 +42,7 @@ namespace System.Security.Cryptography
                     HashAlgorithmNames.SHA384 => Sha384,
                     HashAlgorithmNames.SHA1 => throw Unsupported(id),
                     HashAlgorithmNames.MD5 => throw Unsupported(id),
-                    HashAlgorithmNames.SHA512 => throw Unsupported(id),
+                    HashAlgorithmNames.SHA512 => Sha512,
                     HashAlgorithmNames.SHA3_256 => throw Unsupported(id),
                     HashAlgorithmNames.SHA3_384 => throw Unsupported(id),
                     HashAlgorithmNames.SHA3_512 => throw Unsupported(id),
@@ -67,9 +67,9 @@ namespace System.Security.Cryptography
             {
                 return id switch
                 {
-                    HashAlgorithmNames.SHA256 or HashAlgorithmNames.SHA384 => true,
+                    HashAlgorithmNames.SHA256 or HashAlgorithmNames.SHA384 or HashAlgorithmNames.SHA512 => true,
                     HashAlgorithmNames.SHA1 or HashAlgorithmNames.MD5 or
-                    HashAlgorithmNames.SHA512 or HashAlgorithmNames.SHA3_256 or
+                    HashAlgorithmNames.SHA3_256 or
                     HashAlgorithmNames.SHA3_384 or HashAlgorithmNames.SHA3_512 => false,
                     _ => throw Unknown(id),
                 };
@@ -218,7 +218,12 @@ namespace System.Security.Cryptography
             internal RinOSHmacProvider(string hashAlgorithmId, ReadOnlySpan<byte> key)
             {
                 _algorithm = RinOSAlgorithms.GetMacAlgorithm(hashAlgorithmId);
-                _hashSize = _algorithm == RinOSAlgorithms.Sha256 ? 32 : 48;
+                _hashSize = _algorithm switch
+                {
+                    RinOSAlgorithms.Sha256 => 32,
+                    RinOSAlgorithms.Sha384 => 48,
+                    _ => 64,
+                };
                 fixed (byte* pKey = key)
                 {
                     _context = Interop.Crypto.RinOSHmacCreate(_algorithm, pKey, key.Length);

@@ -102,6 +102,10 @@ namespace System.Net.Security
 
         internal void UpdateOptions(SslServerAuthenticationOptions sslServerAuthenticationOptions)
         {
+#if TARGET_RINOS
+            throw new PlatformNotSupportedException(
+                "RinTLS currently exposes a client-only TLS API.");
+#endif
             if (sslServerAuthenticationOptions.ServerCertificate == null &&
                 sslServerAuthenticationOptions.ServerCertificateContext == null &&
                 sslServerAuthenticationOptions.ServerCertificateSelectionCallback == null &&

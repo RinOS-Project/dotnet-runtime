@@ -63,8 +63,18 @@ if (CLR_CMAKE_TARGET_RINOS)
     # algorithms that have a checked-in RinTLS implementation.
     set(NATIVECRYPTO_SOURCES
         rinos_crypto.c
-        "${RINOS_REPO_ROOT}/libs/rintls/crypto/sha256.c"
+        rinos_tls.c
+        "${RINOS_REPO_ROOT}/libs/rintls/rintls.c"
+        "${RINOS_REPO_ROOT}/libs/rintls/crypto/aes.c"
+        "${RINOS_REPO_ROOT}/libs/rintls/crypto/bignum.c"
+        "${RINOS_REPO_ROOT}/libs/rintls/crypto/ecdh.c"
         "${RINOS_REPO_ROOT}/libs/rintls/crypto/hmac.c"
+        "${RINOS_REPO_ROOT}/libs/rintls/crypto/rsa.c"
+        "${RINOS_REPO_ROOT}/libs/rintls/crypto/sha1.c"
+        "${RINOS_REPO_ROOT}/libs/rintls/crypto/sha256.c"
+        "${RINOS_REPO_ROOT}/libs/rintls/tls/handshake.c"
+        "${RINOS_REPO_ROOT}/libs/rintls/tls/record.c"
+        "${RINOS_REPO_ROOT}/libs/rintls/x509/cert.c"
     )
 else()
     set(NATIVECRYPTO_SOURCES

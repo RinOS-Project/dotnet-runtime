@@ -43,45 +43,66 @@ endif()
 include(${CMAKE_CURRENT_LIST_DIR}/extra_libs.cmake)
 
 set(NATIVE_LIBS_EXTRA)
-append_extra_cryptography_libs(NATIVE_LIBS_EXTRA)
+if (CLR_CMAKE_TARGET_RINOS)
+    if (NOT RINOS_REPO_ROOT)
+        message(FATAL_ERROR "RinOS cryptography requires RINOS_REPO_ROOT")
+    endif()
+    include_directories(
+        "${RINOS_REPO_ROOT}/libs/rintls"
+        "${RINOS_REPO_ROOT}/libs/rintls/crypto"
+    )
+else()
+    append_extra_cryptography_libs(NATIVE_LIBS_EXTRA)
+endif()
 
 include_directories(${OPENSSL_INCLUDE_DIR})
 
-set(NATIVECRYPTO_SOURCES
-    apibridge_30.c
-    memory_debug.c
-    openssl.c
-    pal_asn1.c
-    pal_bignum.c
-    pal_bio.c
-    pal_dsa.c
-    pal_ecc_import_export.c
-    pal_eckey.c
-    pal_err.c
-    pal_evp.c
-    pal_evp_cipher.c
-    pal_evp_kdf.c
-    pal_evp_kem.c
-    pal_evp_mac.c
-    pal_evp_pkey.c
-    pal_evp_pkey_dsa.c
-    pal_evp_pkey_ecdh.c
-    pal_evp_pkey_ecdsa.c
-    pal_evp_pkey_eckey.c
-    pal_evp_pkey_rsa.c
-    pal_evp_pkey_raw_signverify.c
-    pal_evp_pkey_ml_dsa.c
-    pal_evp_pkey_slh_dsa.c
-    pal_evp_pkey_x25519.c
-    pal_hmac.c
-    pal_ocsp.c
-    pal_pkcs7.c
-    pal_ssl.c
-    pal_x509.c
-    pal_x509_name.c
-    pal_x509_root.c
-    pal_x509ext.c
-)
+if (CLR_CMAKE_TARGET_RINOS)
+    # The target crypto boundary is product-owned.  Do not compile any of the
+    # OpenSSL PAL sources for RinOS; the product adapter exports only the
+    # algorithms that have a checked-in RinTLS implementation.
+    set(NATIVECRYPTO_SOURCES
+        rinos_crypto.c
+        "${RINOS_REPO_ROOT}/libs/rintls/crypto/sha256.c"
+        "${RINOS_REPO_ROOT}/libs/rintls/crypto/hmac.c"
+    )
+else()
+    set(NATIVECRYPTO_SOURCES
+        apibridge_30.c
+        memory_debug.c
+        openssl.c
+        pal_asn1.c
+        pal_bignum.c
+        pal_bio.c
+        pal_dsa.c
+        pal_ecc_import_export.c
+        pal_eckey.c
+        pal_err.c
+        pal_evp.c
+        pal_evp_cipher.c
+        pal_evp_kdf.c
+        pal_evp_kem.c
+        pal_evp_mac.c
+        pal_evp_pkey.c
+        pal_evp_pkey_dsa.c
+        pal_evp_pkey_ecdh.c
+        pal_evp_pkey_ecdsa.c
+        pal_evp_pkey_eckey.c
+        pal_evp_pkey_rsa.c
+        pal_evp_pkey_raw_signverify.c
+        pal_evp_pkey_ml_dsa.c
+        pal_evp_pkey_slh_dsa.c
+        pal_evp_pkey_x25519.c
+        pal_hmac.c
+        pal_ocsp.c
+        pal_pkcs7.c
+        pal_ssl.c
+        pal_x509.c
+        pal_x509_name.c
+        pal_x509_root.c
+        pal_x509ext.c
+    )
+endif()
 
 if (LOCAL_BUILD)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -97,7 +118,7 @@ if (LOCAL_BUILD)
         ${CMAKE_CURRENT_BINARY_DIR}/pal_config.h)
 endif()
 
-if (FEATURE_DISTRO_AGNOSTIC_SSL)
+if (FEATURE_DISTRO_AGNOSTIC_SSL AND NOT CLR_CMAKE_TARGET_RINOS)
     list(APPEND NATIVECRYPTO_SOURCES
         opensslshim.c
     )
@@ -115,10 +136,16 @@ if (GEN_SHARED_LIB)
     )
 endif()
 
+if (CLR_CMAKE_TARGET_RINOS)
+    set(NATIVECRYPTO_ENTRYPOINTS rinos_entrypoints.c)
+else()
+    set(NATIVECRYPTO_ENTRYPOINTS entrypoints.c)
+endif()
+
 add_library(System.Security.Cryptography.Native.OpenSsl-Static
     STATIC
     $<TARGET_OBJECTS:objlib>
-    entrypoints.c
+    ${NATIVECRYPTO_ENTRYPOINTS}
 )
 
 set_target_properties(System.Security.Cryptography.Native.OpenSsl-Static PROPERTIES OUTPUT_NAME System.Security.Cryptography.Native.OpenSsl CLEAN_DIRECT_OUTPUT 1)

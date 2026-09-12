@@ -14,20 +14,39 @@ namespace System.Security.Cryptography
     {
         internal static HashProvider CreateHashProvider(string hashAlgorithmId)
         {
+#if TARGET_RINOS
+            return new RinOSHashProvider(hashAlgorithmId);
+#else
             return new EvpHashProvider(hashAlgorithmId);
+#endif
         }
 
         internal static HashProvider CreateMacProvider(string hashAlgorithmId, ReadOnlySpan<byte> key)
         {
+#if TARGET_RINOS
+            return new RinOSHmacProvider(hashAlgorithmId, key);
+#else
             return new HmacHashProvider(hashAlgorithmId, key);
+#endif
         }
 
         internal static bool HashSupported(string hashAlgorithmId)
         {
+#if TARGET_RINOS
+            return RinOSAlgorithms.IsHashSupported(hashAlgorithmId);
+#else
             return Interop.Crypto.HashAlgorithmSupported(hashAlgorithmId);
+#endif
         }
 
-        internal static bool MacSupported(string hashAlgorithmId) => HashSupported(hashAlgorithmId);
+        internal static bool MacSupported(string hashAlgorithmId)
+        {
+#if TARGET_RINOS
+            return RinOSAlgorithms.IsMacSupported(hashAlgorithmId);
+#else
+            return HashSupported(hashAlgorithmId);
+#endif
+        }
 
         internal static partial class OneShotHashProvider
         {
@@ -37,6 +56,9 @@ namespace System.Security.Cryptography
                 ReadOnlySpan<byte> source,
                 Span<byte> destination)
             {
+#if TARGET_RINOS
+                return RinOSHmacProvider.OneShot(hashAlgorithmId, key, source, destination);
+#else
                 IntPtr evpType = Interop.Crypto.HashAlgorithmToEvp(hashAlgorithmId);
                 Debug.Assert(evpType != IntPtr.Zero);
 
@@ -51,10 +73,14 @@ namespace System.Security.Cryptography
                 int written = Interop.Crypto.HmacOneShot(evpType, key, source, destination);
                 Debug.Assert(written == hashSize);
                 return written;
+#endif
             }
 
             public static unsafe int HashData(string hashAlgorithmId, ReadOnlySpan<byte> source, Span<byte> destination)
             {
+#if TARGET_RINOS
+                return RinOSHashProvider.OneShot(hashAlgorithmId, source, destination);
+#else
                 IntPtr evpType = Interop.Crypto.HashAlgorithmToEvp(hashAlgorithmId);
                 Debug.Assert(evpType != IntPtr.Zero);
 
@@ -80,6 +106,7 @@ namespace System.Security.Cryptography
                 }
 
                 return hashSize;
+#endif
             }
         }
 

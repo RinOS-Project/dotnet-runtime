@@ -4,7 +4,7 @@
 /*
  * RinOS product crypto adapter.
  *
- * This file intentionally exposes the small SHA-2 boundary that is already
+ * This file intentionally exposes the small SHA-2/SHA-3 boundary that is
  * implemented by RinTLS.  The exported names retain the CoreCLR
  * System.Security.Cryptography.Native ABI, while no OpenSSL object or host
  * provider is linked into the RinOS target.

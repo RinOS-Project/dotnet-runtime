@@ -10,4 +10,6 @@ PALEXPORT int64_t SystemNative_GetSystemTimeAsTicks(void);
 
 PALEXPORT char* SystemNative_GetDefaultTimeZone(void);
 
+PALEXPORT uint32_t SystemNative_GetTimeZoneGeneration(void);
+
 PALEXPORT const char* SystemNative_GetTimeZoneData(const char* name, int* length);

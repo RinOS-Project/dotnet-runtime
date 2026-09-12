@@ -60,6 +60,13 @@ namespace System
         private static readonly TimeZoneInfo s_utcTimeZone = CreateUtcTimeZone();
         private static CachedData s_cachedData = new CachedData();
 
+        private static CachedData GetCachedData()
+        {
+            CachedData cachedData = s_cachedData;
+            cachedData.EnsureRinOSTimeZoneDataFresh();
+            return cachedData;
+        }
+
         [FeatureSwitchDefinition("System.TimeZoneInfo.Invariant")]
         internal static bool Invariant { get; } = AppContextConfigHelper.GetBooleanConfig("System.TimeZoneInfo.Invariant", "DOTNET_SYSTEM_TIMEZONE_INVARIANT");
 
@@ -72,6 +79,33 @@ namespace System
         private sealed partial class CachedData
         {
             private TimeZoneInfo? _localTimeZone;
+
+            private volatile uint _rinOSTimeZoneGeneration;
+
+            internal void EnsureRinOSTimeZoneDataFresh()
+            {
+#if TARGET_RINOS
+                uint generation = Interop.Sys.GetTimeZoneGeneration();
+                if (generation == 0u || generation == _rinOSTimeZoneGeneration)
+                    return;
+
+                lock (this)
+                {
+                    generation = Interop.Sys.GetTimeZoneGeneration();
+                    if (generation == 0u || generation == _rinOSTimeZoneGeneration)
+                        return;
+
+                    _localTimeZone = null;
+                    _systemTimeZones = null;
+                    _readOnlySystemTimeZones = null;
+                    _readOnlyUnsortedSystemTimeZones = null;
+                    _timeZonesUsingAlternativeIds = null;
+                    _allSystemTimeZonesRead = false;
+                    _dateTimeNowCache = null;
+                    _rinOSTimeZoneGeneration = generation;
+                }
+#endif
+            }
 
             private TimeZoneInfo CreateLocal()
             {
@@ -101,7 +135,14 @@ namespace System
                 }
             }
 
-            public TimeZoneInfo Local => _localTimeZone ?? CreateLocal();
+            public TimeZoneInfo Local
+            {
+                get
+                {
+                    EnsureRinOSTimeZoneDataFresh();
+                    return _localTimeZone ?? CreateLocal();
+                }
+            }
 
             /// <summary>
             /// Helper function that returns the corresponding DateTimeKind for this TimeZoneInfo.
@@ -242,12 +283,12 @@ namespace System
             DateTime adjustedTime;
             if (dateTime.Kind == DateTimeKind.Local)
             {
-                CachedData cachedData = s_cachedData;
+                CachedData cachedData = GetCachedData();
                 adjustedTime = ConvertTime(dateTime, cachedData.Local, this, TimeZoneInfoOptions.None, cachedData);
             }
             else if (dateTime.Kind == DateTimeKind.Utc)
             {
-                CachedData cachedData = s_cachedData;
+                CachedData cachedData = GetCachedData();
                 adjustedTime = ConvertTime(dateTime, s_utcTimeZone, this, TimeZoneInfoOptions.None, cachedData);
             }
             else
@@ -274,12 +315,12 @@ namespace System
         /// Returns the Universal Coordinated Time (UTC) Offset for the current TimeZoneInfo instance.
         /// </summary>
         public TimeSpan GetUtcOffset(DateTime dateTime) =>
-            GetUtcOffset(dateTime, TimeZoneInfoOptions.NoThrowOnInvalidTime, s_cachedData);
+            GetUtcOffset(dateTime, TimeZoneInfoOptions.NoThrowOnInvalidTime, GetCachedData());
 
         // Shortcut for TimeZoneInfo.Local.GetUtcOffset, it is called from DateTime and DateTimeOffset types.
         internal static TimeSpan GetLocalUtcOffset(DateTime dateTime, TimeZoneInfoOptions flags)
         {
-            CachedData cachedData = s_cachedData;
+            CachedData cachedData = GetCachedData();
             return cachedData.Local.GetUtcOffset(dateTime, flags, cachedData);
         }
 
@@ -287,7 +328,7 @@ namespace System
         /// Returns the Universal Coordinated Time (UTC) Offset for the current TimeZoneInfo instance.
         /// </summary>
         internal TimeSpan GetUtcOffset(DateTime dateTime, TimeZoneInfoOptions flags) =>
-            GetUtcOffset(dateTime, flags, s_cachedData);
+            GetUtcOffset(dateTime, flags, GetCachedData());
 
         private TimeSpan GetUtcOffset(DateTime dateTime, TimeZoneInfoOptions flags, CachedData cachedData)
         {
@@ -369,7 +410,7 @@ namespace System
                 return false;
             }
 
-            CachedData cachedData = s_cachedData;
+            CachedData cachedData = GetCachedData();
             DateTime adjustedTime =
                 dateTime.Kind == DateTimeKind.Local ? ConvertTime(dateTime, cachedData.Local, this, flags, cachedData) :
                 dateTime.Kind == DateTimeKind.Utc ? ConvertTime(dateTime, s_utcTimeZone, this, flags, cachedData) :
@@ -391,13 +432,13 @@ namespace System
         /// Returns true if the time is during Daylight Saving time for the current TimeZoneInfo instance.
         /// </summary>
         public bool IsDaylightSavingTime(DateTime dateTime) =>
-            IsDaylightSavingTime(dateTime, TimeZoneInfoOptions.NoThrowOnInvalidTime, s_cachedData);
+            IsDaylightSavingTime(dateTime, TimeZoneInfoOptions.NoThrowOnInvalidTime, GetCachedData());
 
         /// <summary>
         /// Returns true if the time is during Daylight Saving time for the current TimeZoneInfo instance.
         /// </summary>
         internal bool IsDaylightSavingTime(DateTime dateTime, TimeZoneInfoOptions flags) =>
-            IsDaylightSavingTime(dateTime, flags, s_cachedData);
+            IsDaylightSavingTime(dateTime, flags, GetCachedData());
 
         private bool IsDaylightSavingTime(DateTime dateTime, TimeZoneInfoOptions flags, CachedData cachedData)
         {
@@ -456,7 +497,7 @@ namespace System
         /// Returns true when dateTime falls into a "hole in time".
         /// </summary>
         public bool IsInvalidTime(DateTime dateTime)
-            => (dateTime.Kind == DateTimeKind.Unspecified) || (dateTime.Kind == DateTimeKind.Local && s_cachedData.GetCorrespondingKind(this) == DateTimeKind.Local) ?
+            => (dateTime.Kind == DateTimeKind.Unspecified) || (dateTime.Kind == DateTimeKind.Local && GetCachedData().GetCorrespondingKind(this) == DateTimeKind.Local) ?
                 IsInvalidLocalTime(dateTime) : false;
 
         /// <summary>
@@ -556,7 +597,7 @@ namespace System
                 return TimeZoneInfoResult.TimeZoneNotFoundException;
             }
 
-            CachedData cachedData = s_cachedData;
+            CachedData cachedData = GetCachedData();
 
             lock (cachedData)
             {
@@ -576,12 +617,12 @@ namespace System
                 // Without the snapshot, there is a chance that ConvertTime will throw since 'source' won't
                 // be reference equal to the new TimeZoneInfo.Local
                 //
-                CachedData cachedData = s_cachedData;
+                CachedData cachedData = GetCachedData();
                 return ConvertTime(dateTime, cachedData.Local, FindSystemTimeZoneById(destinationTimeZoneId), TimeZoneInfoOptions.None, cachedData);
             }
             else if (dateTime.Kind == DateTimeKind.Utc && string.Equals(sourceTimeZoneId, Utc.Id, StringComparison.OrdinalIgnoreCase))
             {
-                return ConvertTime(dateTime, s_utcTimeZone, FindSystemTimeZoneById(destinationTimeZoneId), TimeZoneInfoOptions.None, s_cachedData);
+                return ConvertTime(dateTime, s_utcTimeZone, FindSystemTimeZoneById(destinationTimeZoneId), TimeZoneInfoOptions.None, GetCachedData());
             }
             else
             {
@@ -621,7 +662,7 @@ namespace System
             {
                 ClearCachedData();
             }
-            CachedData cachedData = s_cachedData;
+            CachedData cachedData = GetCachedData();
             TimeZoneInfo sourceTimeZone = dateTime.Kind == DateTimeKind.Utc ? s_utcTimeZone : cachedData.Local;
             return ConvertTime(dateTime, sourceTimeZone, destinationTimeZone, TimeZoneInfoOptions.None, cachedData);
         }
@@ -630,13 +671,13 @@ namespace System
         /// Converts the value of the dateTime object from sourceTimeZone to destinationTimeZone
         /// </summary>
         public static DateTime ConvertTime(DateTime dateTime, TimeZoneInfo sourceTimeZone, TimeZoneInfo destinationTimeZone) =>
-            ConvertTime(dateTime, sourceTimeZone, destinationTimeZone, TimeZoneInfoOptions.None, s_cachedData);
+            ConvertTime(dateTime, sourceTimeZone, destinationTimeZone, TimeZoneInfoOptions.None, GetCachedData());
 
         /// <summary>
         /// Converts the value of the dateTime object from sourceTimeZone to destinationTimeZone
         /// </summary>
         internal static DateTime ConvertTime(DateTime dateTime, TimeZoneInfo sourceTimeZone, TimeZoneInfo destinationTimeZone, TimeZoneInfoOptions flags) =>
-            ConvertTime(dateTime, sourceTimeZone, destinationTimeZone, flags, s_cachedData);
+            ConvertTime(dateTime, sourceTimeZone, destinationTimeZone, flags, GetCachedData());
 
         private static DateTime ConvertTime(DateTime dateTime, TimeZoneInfo sourceTimeZone, TimeZoneInfo destinationTimeZone, TimeZoneInfoOptions flags, CachedData cachedData)
         {
@@ -700,7 +741,7 @@ namespace System
         /// Converts the value of a DateTime object from Coordinated Universal Time (UTC) to the destinationTimeZone.
         /// </summary>
         public static DateTime ConvertTimeFromUtc(DateTime dateTime, TimeZoneInfo destinationTimeZone) =>
-            ConvertTime(dateTime, s_utcTimeZone, destinationTimeZone, TimeZoneInfoOptions.None, s_cachedData);
+            ConvertTime(dateTime, s_utcTimeZone, destinationTimeZone, TimeZoneInfoOptions.None, GetCachedData());
 
         /// <summary>
         /// Converts the value of a DateTime object to Coordinated Universal Time (UTC).
@@ -711,7 +752,7 @@ namespace System
             {
                 return dateTime;
             }
-            CachedData cachedData = s_cachedData;
+            CachedData cachedData = GetCachedData();
             return ConvertTime(dateTime, cachedData.Local, s_utcTimeZone, TimeZoneInfoOptions.None, cachedData);
         }
 
@@ -721,7 +762,7 @@ namespace System
         internal static DateTime ConvertTimeToUtc(DateTime dateTime, TimeZoneInfoOptions flags)
         {
             Debug.Assert(dateTime.Kind != DateTimeKind.Utc);
-            CachedData cachedData = s_cachedData;
+            CachedData cachedData = GetCachedData();
             return ConvertTime(dateTime, cachedData.Local, s_utcTimeZone, flags, cachedData);
         }
 
@@ -729,7 +770,7 @@ namespace System
         /// Converts the value of a DateTime object to Coordinated Universal Time (UTC).
         /// </summary>
         public static DateTime ConvertTimeToUtc(DateTime dateTime, TimeZoneInfo sourceTimeZone) =>
-            ConvertTime(dateTime, sourceTimeZone, s_utcTimeZone, TimeZoneInfoOptions.None, s_cachedData);
+            ConvertTime(dateTime, sourceTimeZone, s_utcTimeZone, TimeZoneInfoOptions.None, GetCachedData());
 
         /// <summary>
         /// Returns value equality. Equals does not compare any localizable
@@ -773,7 +814,7 @@ namespace System
         /// This option can be beneficial when the caller does not require a sorted list and aims to enhance the performance. </remarks>
         public static ReadOnlyCollection<TimeZoneInfo> GetSystemTimeZones(bool skipSorting)
         {
-            CachedData cachedData = s_cachedData;
+            CachedData cachedData = GetCachedData();
 
             lock (cachedData)
             {
@@ -847,7 +888,7 @@ namespace System
         /// Accessing this property may throw InvalidTimeZoneException or COMException
         /// if the machine is in an unstable or corrupt state.
         /// </summary>
-        public static TimeZoneInfo Local => s_cachedData.Local;
+        public static TimeZoneInfo Local => GetCachedData().Local;
 
         //
         // ToSerializedString -

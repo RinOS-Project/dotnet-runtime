@@ -11,6 +11,9 @@ internal static partial class Interop
 #if TARGET_RINOS
         [LibraryImport(Interop.Libraries.SystemNative, EntryPoint = "SystemNative_GetDefaultTimeZone", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
         internal static partial string? GetDefaultTimeZone();
+
+        [LibraryImport(Interop.Libraries.SystemNative, EntryPoint = "SystemNative_GetTimeZoneGeneration")]
+        internal static partial uint GetTimeZoneGeneration();
 #endif
     }
 }

@@ -73,7 +73,7 @@ namespace System
         /// Gets the UTC offset for the specified UTC time, along with whether it is ambiguous.
         /// Used by DateTime.Now to get the local time ticks and whether it is ambiguous.
         /// </summary>
-        internal static long GetLocalDateTimeNowTicks(DateTime utcNow, out bool isAmbiguous) => s_cachedData.GetLocalDateTimeNowTicks(utcNow, out isAmbiguous);
+        internal static long GetLocalDateTimeNowTicks(DateTime utcNow, out bool isAmbiguous) => GetCachedData().GetLocalDateTimeNowTicks(utcNow, out isAmbiguous);
 
         /// <summary>
         /// Gets the next transition for the specified UTC time and cache the result for the subsequent calls.

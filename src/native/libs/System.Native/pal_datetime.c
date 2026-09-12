@@ -62,6 +62,8 @@ char* SystemNative_GetDefaultTimeZone(void)
  * Do not inspect host filesystem timezone files or inherit a host libc database. */
 extern int rin_system_timezone_get(char* output, size_t capacity)
     __attribute__((weak));
+extern uint32_t rin_system_timezone_generation(void)
+    __attribute__((weak));
 
 char* SystemNative_GetDefaultTimeZone(void)
 {
@@ -70,11 +72,23 @@ char* SystemNative_GetDefaultTimeZone(void)
         return strdup(timezone);
     return NULL;
 }
+
+uint32_t SystemNative_GetTimeZoneGeneration(void)
+{
+    return rin_system_timezone_generation ? rin_system_timezone_generation() : 0u;
+}
 #elif !defined(__APPLE__)
 char* SystemNative_GetDefaultTimeZone(void)
 {
     assert_err(false, "This function is not supported on this platform.", EINVAL);
     return NULL;
+}
+#endif
+
+#if !defined(TARGET_RINOS)
+uint32_t SystemNative_GetTimeZoneGeneration(void)
+{
+    return 0u;
 }
 #endif
 

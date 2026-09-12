@@ -193,7 +193,8 @@ int32_t CryptoNative_RinTlsHandshake(void* handle, const uint8_t* input,
      * that protocol state as the PAL's credential callback status; the
      * managed side can then install a certificate-list and signer without
      * feeding the already-consumed CertificateRequest a second time. */
-    if (result == RINTLS_ERR_CERTIFICATE &&
+    if ((result == RINTLS_ERR_WANT_READ ||
+         result == RINTLS_ERR_CERTIFICATE) &&
         rintls_client_certificate_requested(adapter->context) &&
         !rintls_client_certificate_configured(adapter->context)) {
         result = RINTLS_ERR_WANT_CREDENTIALS;

@@ -4,10 +4,14 @@
 #include "pal_config.h"
 #include "pal_runtimeinformation.h"
 #include "pal_types.h"
+#include <errno.h>
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/utsname.h>
+#if defined(TARGET_RINOS)
+#include <rin_account_compat.h>
+#endif
 #if defined(TARGET_ANDROID)
 #include <sys/system_properties.h>
 #elif defined(TARGET_OSX)
@@ -157,5 +161,31 @@ int32_t SystemNative_GetOSArchitecture(void)
     assert(result != -1);
 
     return result;
+#endif
+}
+
+int32_t SystemNative_GetProcessCapabilities(uint64_t* capabilities)
+{
+    if (capabilities == NULL)
+    {
+        errno = EFAULT;
+        return -1;
+    }
+
+    *capabilities = 0;
+#if defined(TARGET_RINOS)
+    __rin_credentials_v1 credentials;
+    int error = __rin_credentials_get(&credentials);
+    if (error != 0)
+    {
+        errno = error;
+        return -1;
+    }
+
+    *capabilities = credentials.capabilities;
+    return 0;
+#else
+    errno = ENOTSUP;
+    return -1;
 #endif
 }

@@ -67,6 +67,11 @@ void NUMASupportInitialize()
 
     g_numaAvailable = true;
     g_highestNumaNode = highestNumaNode;
+#elif defined(TARGET_RINOS)
+    // RinOS v1 has no product NUMA ABI. Keep GC on its single-node policy and
+    // never probe a host /sys tree or issue a Linux mempolicy syscall.
+    g_numaAvailable = false;
+    g_highestNumaNode = 0;
 #endif
 }
 
@@ -78,6 +83,10 @@ int GetNumaNodeNumByCpu(int cpu)
         return -1;
 
     return GetNodeNum(path, true);
+#elif defined(TARGET_RINOS)
+    (void)cpu;
+    // A future product NUMA ABI must define this mapping explicitly.
+    return -1;
 #else
     return -1;
 #endif
@@ -87,6 +96,13 @@ long BindMemoryPolicy(void* start, unsigned long len, const unsigned long* nodem
 {
 #if defined(TARGET_LINUX) && !defined(TARGET_ANDROID)
     return syscall(__NR_mbind, (long)start, len, 1, (long)nodemask, maxnode, 0);
+#elif defined(TARGET_RINOS)
+    (void)start;
+    (void)len;
+    (void)nodemask;
+    (void)maxnode;
+    // Do not inherit Linux mbind semantics before RinOS publishes an ABI.
+    return -1;
 #else
     return -1;
 #endif

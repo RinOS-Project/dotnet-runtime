@@ -3504,7 +3504,7 @@ static int32_t CreateSocketEventPortInner(int32_t* port)
     if (port == NULL)
         return Error_EFAULT;
 
-    if (pipe(pipeFds) != 0)
+    if (pipe2(pipeFds, O_CLOEXEC | O_NONBLOCK) != 0)
     {
         *port = -1;
         return SystemNative_ConvertErrorPlatformToPal(errno);
@@ -3548,7 +3548,13 @@ static int32_t CloseSocketEventPortInner(int32_t port)
         pthread_mutex_unlock(&g_rinosSocketEventPortsLock);
         return Error_EBADF;
     }
+    /* Registration and wait setup may have released the global table lock
+     * while holding the per-port lock.  Serialize with those operations
+     * before changing Active or destroying the lock. */
+    pthread_mutex_lock(&slot->Lock);
+    WakeRinOSSocketEventPort(slot);
     slot->Active = 0;
+    pthread_mutex_unlock(&slot->Lock);
     pthread_mutex_unlock(&g_rinosSocketEventPortsLock);
 
     pthread_mutex_destroy(&slot->Lock);
@@ -3603,8 +3609,8 @@ static int32_t TryChangeSocketEventRegistrationInner(
         slot->Registrations[registrationIndex].Events = GetRinOSPollEvents(newEvents);
         slot->Registrations[registrationIndex].Data = data;
     }
-    pthread_mutex_unlock(&slot->Lock);
     WakeRinOSSocketEventPort(slot);
+    pthread_mutex_unlock(&slot->Lock);
     return Error_SUCCESS;
 }
 
@@ -3624,7 +3630,9 @@ static int32_t WaitForSocketEventsInner(int32_t port, SocketEvent* buffer, int32
     if (slot == NULL)
         return Error_EBADF;
 
-    pollFds[0].fd = slot->ReadFd;
+    int readFd = slot->ReadFd;
+
+    pollFds[0].fd = readFd;
     pollFds[0].events = POLLIN;
     pollFds[0].revents = 0;
     data[0] = 0;
@@ -3655,7 +3663,7 @@ static int32_t WaitForSocketEventsInner(int32_t port, SocketEvent* buffer, int32
     if ((pollFds[0].revents & POLLIN) != 0)
     {
         char wakeBuffer[64];
-        (void)read(slot->ReadFd, wakeBuffer, sizeof(wakeBuffer));
+        (void)read(readFd, wakeBuffer, sizeof(wakeBuffer));
     }
     for (int i = 1; i < pollCount && outputCount < *count; ++i)
     {

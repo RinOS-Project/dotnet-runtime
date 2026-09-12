@@ -102,6 +102,16 @@ namespace System.IO
             // The implementation is not using InternalBufferSize. There's no need to restart.
         }
 
+#if TARGET_RINOS
+        // RinOS exposes the watch queue through its product ABI; it has no
+        // Linux procfs limit files.  Keep the failure path generic instead of
+        // treating the target as a Linux host.
+        private static string? ReadMaxUserLimit(string path)
+        {
+            _ = path;
+            return null;
+        }
+#else
         /// <summary>Reads the value of a max user limit path from procfs.</summary>
         /// <param name="path">The path to read.</param>
         /// <returns>The value read, or "0" if a failure occurred.</returns>
@@ -110,6 +120,7 @@ namespace System.IO
             try { return File.ReadAllText(path).Trim(); }
             catch { return null; }
         }
+#endif
 
         private sealed class INotify
         {

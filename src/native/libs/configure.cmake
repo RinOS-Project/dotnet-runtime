@@ -1191,6 +1191,13 @@ if (CLR_CMAKE_TARGET_RINOS)
     # RinOS is a freestanding userspace target. Do not let configure probes
     # performed with the host compiler select Linux/BSD extensions for
     # System.Native. Keep the process path on the product libc contract.
+    # RinOS libc exposes an inotify-shaped queue backed by the product
+    # filesystem notification ABI. These values deliberately do not come
+    # from host-library probes.
+    set(HAVE_INOTIFY_INIT 1)
+    set(HAVE_INOTIFY_ADD_WATCH 1)
+    set(HAVE_INOTIFY_RM_WATCH 1)
+    set(HAVE_INOTIFY 1)
     set(HAVE_GETIFADDRS 1)
     set(HAVE_GETHOSTNAME 1)
     set(HAVE_GETNAMEINFO 1)

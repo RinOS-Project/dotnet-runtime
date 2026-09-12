@@ -40,7 +40,7 @@
 #elif HAVE_SENDFILE_4
 #include <sys/sendfile.h>
 #endif
-#if HAVE_INOTIFY
+#if HAVE_INOTIFY || defined(TARGET_RINOS)
 #include <sys/inotify.h>
 #endif
 #if HAVE_STATFS_VFS // Linux
@@ -185,7 +185,7 @@ c_static_assert(PAL_SEEK_CUR == SEEK_CUR);
 c_static_assert(PAL_SEEK_END == SEEK_END);
 
 // Validate our NotifyEvents enum values are correct for the platform
-#if HAVE_INOTIFY
+#if HAVE_INOTIFY || defined(TARGET_RINOS)
 c_static_assert(PAL_IN_ACCESS == IN_ACCESS);
 c_static_assert(PAL_IN_MODIFY == IN_MODIFY);
 c_static_assert(PAL_IN_ATTRIB == IN_ATTRIB);
@@ -202,7 +202,7 @@ c_static_assert(PAL_IN_EXCL_UNLINK == IN_EXCL_UNLINK);
 #endif // HAVE_IN_EXCL_UNLINK
 c_static_assert(PAL_IN_MOVE_SELF == IN_MOVE_SELF);
 c_static_assert(PAL_IN_ISDIR == IN_ISDIR);
-#endif // HAVE_INOTIFY
+#endif // HAVE_INOTIFY || TARGET_RINOS
 
 // Validate that our UserFlags enum values match the platform, since
 // SystemNative_LChflags and SystemNative_FChflags pass them directly to the OS.
@@ -1600,7 +1600,9 @@ int32_t SystemNative_CopyFile(intptr_t sourceFd, intptr_t destinationFd, int64_t
 
 intptr_t SystemNative_INotifyInit(void)
 {
-#if HAVE_INOTIFY
+#if defined(TARGET_RINOS)
+    return inotify_init1(IN_CLOEXEC);
+#elif HAVE_INOTIFY
     return inotify_init1(IN_CLOEXEC);
 #else
     errno = ENOTSUP;
@@ -1613,7 +1615,9 @@ int32_t SystemNative_INotifyAddWatch(intptr_t fd, const char* pathName, uint32_t
     assert(fd >= 0);
     assert(pathName != NULL);
 
-#if HAVE_INOTIFY
+#if defined(TARGET_RINOS)
+    return inotify_add_watch(ToFileDescriptor(fd), pathName, mask);
+#elif HAVE_INOTIFY
 #if !HAVE_IN_EXCL_UNLINK
     mask &= ~((uint32_t)PAL_IN_EXCL_UNLINK);
 #endif
@@ -1630,7 +1634,9 @@ int32_t SystemNative_INotifyRemoveWatch(intptr_t fd, int32_t wd)
     assert(fd >= 0);
     assert(wd >= 0);
 
-#if HAVE_INOTIFY
+#if defined(TARGET_RINOS)
+    return inotify_rm_watch(ToFileDescriptor(fd), wd);
+#elif HAVE_INOTIFY
     return inotify_rm_watch(
         ToFileDescriptor(fd),
 #if INOTIFY_RM_WATCH_WD_UNSIGNED

@@ -36,6 +36,16 @@ int32_t CryptoNative_RinOSAesGcmDecrypt(
     int32_t ciphertext_length, const uint8_t* tag, int32_t tag_length,
     uint8_t* plaintext, int32_t plaintext_length);
 void CryptoNative_RinOSAesGcmDestroy(void* handle);
+void* CryptoNative_RinOSAesCreate(
+    const uint8_t* key, int32_t key_length, int32_t mode,
+    int32_t feedback_size, const uint8_t* iv, int32_t iv_length,
+    int32_t encrypting);
+int32_t CryptoNative_RinOSAesTransform(
+    void* handle, const uint8_t* input, int32_t input_length,
+    uint8_t* output, int32_t output_length);
+int32_t CryptoNative_RinOSAesReset(
+    void* handle, const uint8_t* iv, int32_t iv_length);
+void CryptoNative_RinOSAesDestroy(void* handle);
 
 void* CryptoNative_RinTlsCreate(int32_t is_server, const char* hostname,
                                 uint32_t options, uint64_t trusted_time,
@@ -90,6 +100,10 @@ static const Entry s_cryptoNative[] =
     DllImportEntry(CryptoNative_RinOSAesGcmEncrypt)
     DllImportEntry(CryptoNative_RinOSAesGcmDecrypt)
     DllImportEntry(CryptoNative_RinOSAesGcmDestroy)
+    DllImportEntry(CryptoNative_RinOSAesCreate)
+    DllImportEntry(CryptoNative_RinOSAesTransform)
+    DllImportEntry(CryptoNative_RinOSAesReset)
+    DllImportEntry(CryptoNative_RinOSAesDestroy)
     DllImportEntry(CryptoNative_RinTlsCreate)
     DllImportEntry(CryptoNative_RinTlsDestroy)
     DllImportEntry(CryptoNative_RinTlsLoadTrustStore)

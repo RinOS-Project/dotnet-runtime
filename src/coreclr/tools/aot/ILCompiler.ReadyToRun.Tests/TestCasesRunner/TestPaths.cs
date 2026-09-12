@@ -210,8 +210,13 @@ internal sealed class TestPaths
 
     /// <summary>
     /// Returns the target triple string for crossgen2 (e.g. "linux-x64").
+    /// RinOS uses the toolchain triple rather than its NuGet RID spelling.
     /// </summary>
-    public static string TargetTriple => $"{TargetOS.ToLowerInvariant()}-{TargetArchitecture.ToLowerInvariant()}";
+    public static string TargetTriple =>
+        TargetOS.Equals("rinos", StringComparison.OrdinalIgnoreCase) &&
+        TargetArchitecture.Equals("x64", StringComparison.OrdinalIgnoreCase)
+            ? "x86_64-unknown-rinos"
+            : $"{TargetOS.ToLowerInvariant()}-{TargetArchitecture.ToLowerInvariant()}";
 
     /// <summary>
     /// Returns all framework reference assembly paths (*.dll in the runtime pack).

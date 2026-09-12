@@ -113,6 +113,10 @@ namespace ILCompiler.Diagnostics
                 TargetOS.Unknown => PerfMapOSToken.Unknown,
                 TargetOS.Windows => PerfMapOSToken.Windows,
                 TargetOS.Linux => PerfMapOSToken.Linux,
+                // RinOS uses the Linux-compatible ELF/perf-map ABI. The target
+                // OS remains distinct in the compiler while the perf-map format
+                // intentionally reuses the existing Linux token.
+                TargetOS.RinOS => PerfMapOSToken.Linux,
                 TargetOS.OSX => PerfMapOSToken.OSX,
                 TargetOS.FreeBSD => PerfMapOSToken.FreeBSD,
                 TargetOS.NetBSD => PerfMapOSToken.NetBSD,

@@ -110,6 +110,7 @@ namespace ILCompiler.ObjectWriter
                     return MachineOSOverride.Windows;
 
                 case TargetOS.Linux:
+                case TargetOS.RinOS:
                     return MachineOSOverride.Linux;
 
                 case TargetOS.OSX:

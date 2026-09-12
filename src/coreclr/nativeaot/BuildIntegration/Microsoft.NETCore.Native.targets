@@ -79,6 +79,23 @@ The .NET Foundation licenses this file to you under the MIT license.
     <NativeBinaryExt Condition="'$(IsNativeExecutable)' != 'true' and '$(_targetOS)' == 'rinos' and '$(NativeLib)' == 'Shared'">.rll</NativeBinaryExt>
     <NativeBinaryPrefix Condition="'$(_targetOS)' == 'rinos'"></NativeBinaryPrefix>
 
+    <!-- RinOS NativeAOT links an intermediate ELF and then signs/packages it
+         into the final RIN64 executable or RLL shared library. Keep the
+         packager and signing inputs explicit so a build cannot silently emit
+         an unsigned ELF file with a .rin/.rll suffix. The uppercase fallbacks
+         are supplied by the RinOS CMake toolchain/environment. -->
+    <RinOSNativePackager Condition="'$(RinOSNativePackager)' == '' and '$(RINOS_DOTNET_PACKAGER)' != ''">$(RINOS_DOTNET_PACKAGER)</RinOSNativePackager>
+    <RinOSNativePython Condition="'$(RinOSNativePython)' == '' and '$(RINOS_PYTHON)' != ''">$(RINOS_PYTHON)</RinOSNativePython>
+    <RinOSNativePython Condition="'$(RinOSNativePython)' == ''">python</RinOSNativePython>
+    <RinOSSignKey Condition="'$(RinOSSignKey)' == '' and '$(RINOS_SIGN_KEY)' != ''">$(RINOS_SIGN_KEY)</RinOSSignKey>
+    <RinOSPublicKey Condition="'$(RinOSPublicKey)' == '' and '$(RINOS_PUBLIC_KEY)' != ''">$(RINOS_PUBLIC_KEY)</RinOSPublicKey>
+    <RinOSRequiredCapabilities Condition="'$(RinOSRequiredCapabilities)' == ''">0</RinOSRequiredCapabilities>
+    <_RinOSNativeLinkOutput Condition="'$(_targetOS)' == 'rinos' and '$(NativeLib)' != 'Static'">$(NativeIntermediateOutputPath)$(TargetName).elf</_RinOSNativeLinkOutput>
+    <_RinOSNativePackagingKind Condition="'$(_targetOS)' == 'rinos' and '$(IsNativeExecutable)' == 'true'">executable</_RinOSNativePackagingKind>
+    <_RinOSNativePackagingKind Condition="'$(_targetOS)' == 'rinos' and '$(IsNativeExecutable)' != 'true' and '$(NativeLib)' == 'Shared'">library</_RinOSNativePackagingKind>
+    <_NativePostLinkFile Condition="'$(_targetOS)' == 'rinos' and '$(NativeLib)' != 'Static'">$(_RinOSNativeLinkOutput)</_NativePostLinkFile>
+    <_NativePostLinkFile Condition="'$(_NativePostLinkFile)' == ''">$(NativeBinary)</_NativePostLinkFile>
+
     <NativeSymbolExt Condition="'$(NativeSymbolExt)' == '' and '$(_IsApplePlatform)' == 'true'">.dSYM</NativeSymbolExt>
     <NativeSymbolExt Condition="'$(NativeSymbolExt)' == '' and '$(_targetOS)' == 'win'">.pdb</NativeSymbolExt>
     <NativeSymbolExt Condition="'$(NativeSymbolExt)' == ''">.dbg</NativeSymbolExt>
@@ -385,9 +402,17 @@ The .NET Foundation licenses this file to you under the MIT license.
       Outputs="$(_LinkNativeOutputs)"
       DependsOnTargets="$(LinkNativeDependsOn)">
 
+    <Error Condition="'$(_targetOS)' == 'rinos' and '$(NativeLib)' != 'Static' and '$(RinOSNativePackager)' == ''"
+           Text="RinOS NativeAOT requires RinOSNativePackager to produce a signed .rin/.rll image." />
+    <Error Condition="'$(_targetOS)' == 'rinos' and '$(NativeLib)' != 'Static' and '$(RinOSSignKey)' == ''"
+           Text="RinOS NativeAOT requires RinOSSignKey (or RINOS_SIGN_KEY)." />
+    <Error Condition="'$(_targetOS)' == 'rinos' and '$(NativeLib)' != 'Static' and '$(RinOSPublicKey)' == ''"
+           Text="RinOS NativeAOT requires RinOSPublicKey (or RINOS_PUBLIC_KEY)." />
+
     <ItemGroup>
       <CustomLinkerArg Include="&quot;$(NativeObject)&quot;" />
-      <CustomLinkerArg Include="-o &quot;$(NativeBinary)&quot;" Condition="'$(_targetOS)' != 'win'" />
+      <CustomLinkerArg Include="-o &quot;$(_RinOSNativeLinkOutput)&quot;" Condition="'$(_targetOS)' == 'rinos' and '$(NativeLib)' != 'Static'" />
+      <CustomLinkerArg Include="-o &quot;$(NativeBinary)&quot;" Condition="'$(_targetOS)' != 'win' and '$(_targetOS)' != 'rinos'" />
       <CustomLinkerArg Include="/OUT:&quot;$(NativeBinary)&quot;" Condition="'$(_targetOS)' == 'win'" />
       <CustomLinkerArg Include="/IMPLIB:&quot;$(NativeImportLibrary)&quot;" Condition="'$(_targetOS)' == 'win' and '$(NativeLib)' == 'Shared' and '$(NativeImportLibrary)' != ''" />
       <CustomLinkerArg Include="/DEF:&quot;$(ExportsFile)&quot;" Condition="'$(_targetOS)' == 'win' and $(ExportsFile) != ''" />
@@ -412,6 +437,7 @@ The .NET Foundation licenses this file to you under the MIT license.
     </ItemGroup>
 
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName($(NativeBinary)))" />
+    <MakeDir Directories="$(NativeIntermediateOutputPath)" Condition="'$(_targetOS)' == 'rinos' and '$(NativeLib)' != 'Static'" />
 
     <!-- https://github.com/dotnet/runtimelab/issues/956 - we IgnoreStandardErrorWarningFormat on macOS because there's a lot of warnings -->
     <PropertyGroup>
@@ -436,15 +462,20 @@ The .NET Foundation licenses this file to you under the MIT license.
     <Exec Command="&quot;$(CppLibCreator)&quot; @&quot;$(NativeIntermediateOutputPath)lib.rsp&quot;" Condition="'$(_targetOS)' == 'win' and '$(NativeLib)' == 'Static'" />
 
     <!-- remove executable flag -->
-    <Exec Command="chmod 644 &quot;$(NativeBinary)&quot;" Condition="'$(NativeLib)' == 'Shared' and !$([MSBuild]::IsOSPlatform('Windows'))" />
+    <Exec Command="chmod 644 &quot;$(_NativePostLinkFile)&quot;" Condition="'$(NativeLib)' == 'Shared' and !$([MSBuild]::IsOSPlatform('Windows'))" />
 
     <!-- strip symbols, see https://github.com/dotnet/runtime/blob/5d3288d/eng/native/functions.cmake#L374 -->
     <Exec Condition="'$(StripSymbols)' == 'true' and '$(NativeDebugSymbols)' == 'true' and '$(_targetOS)' != 'win' and '$(_IsApplePlatform)' != 'true'"
-      Command="&quot;$(ObjCopyName)&quot; --only-keep-debug &quot;$(NativeBinary)&quot; &quot;$(NativeBinary)$(NativeSymbolExt)&quot;" />
+      Command="&quot;$(ObjCopyName)&quot; --only-keep-debug &quot;$(_NativePostLinkFile)&quot; &quot;$(_NativePostLinkFile)$(NativeSymbolExt)&quot;" />
     <Exec Condition="'$(StripSymbols)' == 'true' and '$(_targetOS)' != 'win' and '$(_IsApplePlatform)' != 'true'"
-      Command="&quot;$(ObjCopyName)&quot; --strip-debug --strip-unneeded &quot;$(NativeBinary)&quot;" />
+      Command="&quot;$(ObjCopyName)&quot; --strip-debug --strip-unneeded &quot;$(_NativePostLinkFile)&quot;" />
     <Exec Condition="'$(StripSymbols)' == 'true' and '$(NativeDebugSymbols)' == 'true' and '$(_targetOS)' != 'win' and '$(_IsApplePlatform)' != 'true'"
-      Command="&quot;$(ObjCopyName)&quot; --add-gnu-debuglink=&quot;$(NativeBinary)$(NativeSymbolExt)&quot; &quot;$(NativeBinary)&quot;" />
+      Command="&quot;$(ObjCopyName)&quot; --add-gnu-debuglink=&quot;$(_NativePostLinkFile)$(NativeSymbolExt)&quot; &quot;$(_NativePostLinkFile)&quot;" />
+
+    <!-- The signed image is deliberately produced after all ELF post-link
+         transformations so the signature covers the exact shipped bytes. -->
+    <Exec Condition="'$(_targetOS)' == 'rinos' and '$(NativeLib)' != 'Static'"
+      Command="&quot;$(RinOSNativePython)&quot; &quot;$(RinOSNativePackager)&quot; --kind &quot;$(_RinOSNativePackagingKind)&quot; &quot;$(_RinOSNativeLinkOutput)&quot; &quot;$(NativeBinary)&quot; --sign-key &quot;$(RinOSSignKey)&quot; --public-key &quot;$(RinOSPublicKey)&quot; --required-capabilities &quot;$(RinOSRequiredCapabilities)&quot;" />
 
     <Exec Condition="'$(StripSymbols)' == 'true' and '$(_IsApplePlatform)' == 'true' and '$(NativeLib)' != 'Static'"
       IgnoreStandardErrorWarningFormat="true"

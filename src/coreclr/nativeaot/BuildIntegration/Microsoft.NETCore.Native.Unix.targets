@@ -80,6 +80,7 @@ The .NET Foundation licenses this file to you under the MIT license.
       <TargetTriple Condition="'$(CrossCompileArch)' != '' and '$(_IsAlpineExitCode)' == '0'">$(CrossCompileArch)-alpine-linux-$(CrossCompileAbi)</TargetTriple>
       <TargetTriple Condition="'$(CrossCompileArch)' != '' and ($(CrossCompileRid.StartsWith('freebsd')))">$(CrossCompileArch)-unknown-freebsd14</TargetTriple>
       <TargetTriple Condition="'$(CrossCompileArch)' != '' and ($(CrossCompileRid.StartsWith('openbsd')))">$(CrossCompileArch)-unknown-openbsd</TargetTriple>
+      <TargetTriple Condition="'$(CrossCompileArch)' != '' and '$(_targetOS)' == 'rinos'">$(CrossCompileArch)-unknown-rinos</TargetTriple>
 
       <SharedLibraryInstallName Condition="'$(SharedLibraryInstallName)' == '' and '$(_IsApplePlatform)' == 'true' and '$(NativeLib)' == 'Shared'">@rpath/$(NativeBinaryPrefix)$(TargetName)$(NativeBinaryExt)</SharedLibraryInstallName>
 
@@ -415,6 +416,9 @@ The .NET Foundation licenses this file to you under the MIT license.
           DependsOnTargets="LinkNative;WriteAggregateExecutableShimRspFiles"
           Inputs="$(NativeBinary);@(_AggregateExecutableReferencePath->'%(ShimSource)');@(_AggregateExecutableReferencePath->'%(ShimCompileLinkRspFile)')"
           Outputs="@(_AggregateExecutableShim);@(_AggregateExecutableShimSymbol)">
+
+    <Error Condition="'$(_targetOS)' == 'rinos'"
+           Text="RinOS NativeAOT aggregate executable shims are not supported until signed RLL inputs can be linked into a signed RIN64 shim." />
 
     <Exec Command="&quot;$(CppLinker)&quot; @&quot;%(_AggregateExecutableReferencePath.ShimCompileLinkRspFile)&quot;" />
     <Exec Condition="'$(StripSymbols)' == 'true' and '$(NativeDebugSymbols)' == 'true' and '$(_IsApplePlatform)' != 'true'"

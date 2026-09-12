@@ -14,6 +14,7 @@ namespace Internal.TypeSystem
         Unknown,
         Windows,
         Linux,
+        RinOS,
         OSX,
         MacCatalyst,
         iOS,

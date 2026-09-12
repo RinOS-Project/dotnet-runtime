@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>$(NetCoreAppCurrent)-windows;$(NetCoreAppCurrent)-unix;$(NetCoreAppCurrent)-android;$(NetCoreAppCurrent)-osx;$(NetCoreAppCurrent)-ios;$(NetCoreAppCurrent)-tvos;$(NetCoreAppCurrent)-browser;$(NetCoreAppCurrent)</TargetFrameworks>
+    <TargetFrameworks>$(NetCoreAppCurrent)-windows;$(NetCoreAppCurrent)-unix;$(NetCoreAppCurrent)-android;$(NetCoreAppCurrent)-osx;$(NetCoreAppCurrent)-ios;$(NetCoreAppCurrent)-tvos;$(NetCoreAppCurrent)-browser;$(NetCoreAppCurrent)-rinos;$(NetCoreAppCurrent)</TargetFrameworks>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <DefineConstants>$(DefineConstants);INTERNAL_ASYMMETRIC_IMPLEMENTATIONS;SYSTEM_SECURITY_CRYPTOGRAPHY</DefineConstants>
     <NoWarn>$(NoWarn);CA5350;CA5351;CA5379;CA5384;SYSLIB0026</NoWarn>
@@ -22,6 +22,7 @@
     <UseAndroidCrypto Condition="'$(TargetPlatformIdentifier)' == 'android'">true</UseAndroidCrypto>
     <UseAppleCrypto Condition="'$(TargetPlatformIdentifier)' == 'osx' or '$(TargetPlatformIdentifier)' == 'ios' or '$(TargetPlatformIdentifier)' == 'tvos'">true</UseAppleCrypto>
     <UseOpenSsl Condition="'$(TargetPlatformIdentifier)' == 'unix'">true</UseOpenSsl>
+    <DefineConstants Condition="'$(TargetPlatformIdentifier)' == 'rinos'">$(DefineConstants);TARGET_RINOS</DefineConstants>
     <DefineConstants Condition="'$(Configuration)' == 'Debug'">$(DefineConstants);DESIGNTIMEINTERFACES</DefineConstants>
   </PropertyGroup>
 
@@ -833,6 +834,78 @@
     <Compile Include="System\Security\Cryptography\X509Certificates\Asn1\PolicyInformationAsn.xml.cs">
       <DependentUpon>System\Security\Cryptography\X509Certificates\Asn1\PolicyInformationAsn.xml</DependentUpon>
     </Compile>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'rinos'">
+    <!-- RinOS supplies SHA-2/HMAC and entropy through the product crypto PAL.  The remaining
+         algorithm families use the same explicit unsupported/managed surface as Browser until a
+         product PAL is connected. -->
+    <Compile Include="$(CommonPath)System\Sha1ForNonSecretPurposes.cs"
+             Link="Common\System\Sha1ForNonSecretPurposes.cs" />
+    <Compile Include="$(CommonPath)System\Security\Cryptography\CompositeMLDsaImplementation.NotSupported.cs"
+             Link="Common\System\Security\Cryptography\CompositeMLDsaImplementation.NotSupported.cs" />
+    <Compile Include="$(CommonPath)System\Security\Cryptography\MLDsaImplementation.NotSupported.cs"
+             Link="Common\System\Security\Cryptography\MLDsaImplementation.NotSupported.cs" />
+    <Compile Include="$(CommonPath)System\Security\Cryptography\MLKemImplementation.cs"
+             Link="Common\System\Security\Cryptography\MLKemImplementation.cs" />
+    <Compile Include="$(CommonPath)System\Security\Cryptography\MLKemImplementation.NotSupported.cs"
+             Link="Common\System\Security\Cryptography\MLKemImplementation.NotSupported.cs" />
+    <Compile Include="$(CommonPath)System\Security\Cryptography\SlhDsaImplementation.NotSupported.cs"
+             Link="Common\System\Security\Cryptography\SlhDsaImplementation.NotSupported.cs" />
+    <Compile Include="$(CommonPath)System\Security\Cryptography\X25519DiffieHellmanImplementation.NotSupported.cs"
+             Link="Common\System\Security\Cryptography\X25519DiffieHellmanImplementation.NotSupported.cs" />
+    <Compile Include="$(CommonPath)Interop\Unix\Interop.Libraries.cs"
+             Link="Common\Interop\Unix\Interop.Libraries.cs" />
+    <Compile Include="$(CommonPath)Interop\Unix\System.Security.Cryptography.Native\Interop.RAND.cs"
+             Link="Common\Interop\Unix\System.Security.Cryptography.Native\Interop.RAND.cs" />
+    <Compile Include="System\Security\Cryptography\AesCcm.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\AesGcm.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\AesImplementation.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\AsnFormatter.Managed.cs" />
+    <Compile Include="System\Security\Cryptography\CapiHelper.Browser.cs" />
+    <Compile Include="System\Security\Cryptography\ChaCha20Poly1305.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\Cng.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\CspKeyContainerInfo.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\DESCryptoServiceProvider.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\DesImplementation.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\DSA.Create.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\DSACryptoServiceProvider.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\ECDiffieHellman.Create.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\ECDsa.Create.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\HashProviderDispenser.RinOS.cs" />
+    <Compile Include="System\Security\Cryptography\HashProviderDispenser.Unix.cs" />
+    <Compile Include="System\Security\Cryptography\HKDF.Managed.cs" />
+    <Compile Include="System\Security\Cryptography\LiteHash.Browser.cs" />
+    <Compile Include="System\Security\Cryptography\LiteHash.Kmac.Unsupported.cs" />
+    <Compile Include="System\Security\Cryptography\MLDsaOpenSsl.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\MLKemOpenSsl.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\OidLookup.NoFallback.cs" />
+    <Compile Include="System\Security\Cryptography\OpenSsl.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\PasswordDeriveBytes.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\Pbkdf2Implementation.Managed.cs" />
+    <Compile Include="System\Security\Cryptography\PinAndClear.cs" />
+    <Compile Include="System\Security\Cryptography\RandomNumberGeneratorImplementation.RinOS.cs" />
+    <Compile Include="System\Security\Cryptography\RC2CryptoServiceProvider.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\RC2Implementation.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\RSACryptoServiceProvider.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\RSA.Create.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\Shake128.NonWindows.cs" />
+    <Compile Include="System\Security\Cryptography\Shake256.NonWindows.cs" />
+    <Compile Include="System\Security\Cryptography\SlhDsaOpenSsl.NotSupported.cs" />
+    <Compile Include="$(CommonPath)System\Security\Cryptography\SP800108HmacCounterKdfImplementationManaged.cs"
+             Link="Common\System\Security\Cryptography\SP800108HmacCounterKdfImplementationManaged.cs" />
+    <Compile Include="System\Security\Cryptography\SP800108HmacCounterKdf.Managed.cs" />
+    <Compile Include="System\Security\Cryptography\SP800108HmacCounterKdfImplementationManaged.cs" />
+    <Compile Include="System\Security\Cryptography\TripleDESCryptoServiceProvider.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\TripleDesImplementation.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\X25519DiffieHellmanOpenSsl.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\X509Certificates\CertificatePal.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\X509Certificates\ChainPal.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\X509Certificates\FindPal.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\X509Certificates\LegacyBasicConstraintsDecoder.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\X509Certificates\StorePal.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\X509Certificates\X509CertificateLoader.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\X509Certificates\X509Pal.NotSupported.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'browser'">

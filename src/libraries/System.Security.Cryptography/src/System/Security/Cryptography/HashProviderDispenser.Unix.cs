@@ -110,6 +110,7 @@ namespace System.Security.Cryptography
             }
         }
 
+#if !TARGET_RINOS
         private sealed class EvpHashProvider : HashProvider
         {
             private readonly LiteHash _liteHash;
@@ -261,5 +262,6 @@ namespace System.Security.Cryptography
                 }
             }
         }
+#endif
     }
 }

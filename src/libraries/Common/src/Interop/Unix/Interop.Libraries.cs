@@ -10,7 +10,11 @@ internal static partial class Interop
         // Shims
         internal const string SystemNative = "libSystem.Native";
         internal const string NetSecurityNative = "libSystem.Net.Security.Native";
+#if TARGET_RINOS
+        internal const string CryptoNative = "libSystem.Security.Cryptography.Native";
+#else
         internal const string CryptoNative = "libSystem.Security.Cryptography.Native.OpenSsl";
+#endif
         internal const string CompressionNative = "libSystem.IO.Compression.Native";
         internal const string GlobalizationNative = "libSystem.Globalization.Native";
         internal const string JavaScriptNative = "libSystem.Runtime.InteropServices.JavaScript.Native";

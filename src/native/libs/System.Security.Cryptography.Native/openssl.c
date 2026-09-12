@@ -10,6 +10,10 @@
 #include "memory_debug.h"
 #include "openssl.h"
 
+#if defined(TARGET_RINOS)
+#include <minipal/random.h>
+#endif
+
 #ifdef FEATURE_DISTRO_AGNOSTIC_SSL
 #include "opensslshim.h"
 #endif
@@ -1076,10 +1080,27 @@ Returns a bool to managed code.
 */
 int32_t CryptoNative_GetRandomBytes(uint8_t* buf, int32_t num)
 {
+#if defined(TARGET_RINOS)
+    /* RinOS owns the CSPRNG through the product getrandom syscall.  Keep the
+     * OpenSSL PAL entry point for managed ABI compatibility, but never route
+     * target entropy through a host crypto provider. */
+    if (num < 0 || (num != 0 && buf == NULL))
+    {
+        return 0;
+    }
+
+    if (num == 0)
+    {
+        return 1;
+    }
+
+    return minipal_get_cryptographically_secure_random_bytes(buf, num) == 0;
+#else
     ERR_clear_error();
     int ret = RAND_bytes(buf, num);
 
     return ret == 1;
+#endif
 }
 
 /*

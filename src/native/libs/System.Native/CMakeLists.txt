@@ -57,8 +57,11 @@ else() # WASI
     )
 endif()
 
-if (CLR_CMAKE_TARGET_APPLE OR CLR_CMAKE_TARGET_ANDROID OR CLR_CMAKE_TARGET_BROWSER OR CLR_CMAKE_TARGET_WASI OR CLR_CMAKE_TARGET_OPENBSD OR CLR_CMAKE_TARGET_HAIKU)
-    # These platforms do not support robust mutexes.
+if (CLR_CMAKE_TARGET_RINOS OR CLR_CMAKE_TARGET_APPLE OR CLR_CMAKE_TARGET_ANDROID OR CLR_CMAKE_TARGET_BROWSER OR CLR_CMAKE_TARGET_WASI OR CLR_CMAKE_TARGET_OPENBSD OR CLR_CMAKE_TARGET_HAIKU)
+    # RinOS exposes process-private pthread mutexes only. Its named-mutex
+    # implementation uses the managed file-lock fallback, so do not compile
+    # the POSIX robust/process-shared adapter against the product libc.
+    # The other platforms in this list do not support robust mutexes either.
     # Keep an OS list instead of CMake configure checks since we also need to synchronize this with
     # the compile-time guards on the managed code side at
     # src/libraries/System.Private.CoreLib/src/System/Threading/NamedMutex.Unix.cs.

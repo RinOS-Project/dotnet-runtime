@@ -2205,7 +2205,9 @@ namespace Internal.JitInterface
                         var target = MethodBeingCompiled.Context.Target;
                         if ((target.IsWindows && target.Architecture is TargetArchitecture.X64 or TargetArchitecture.ARM64) ||
                             ((target.OperatingSystem == TargetOS.Linux) &&
-                            (target.Architecture is TargetArchitecture.X64 or TargetArchitecture.ARM64)))
+                            (target.Architecture is TargetArchitecture.X64 or TargetArchitecture.ARM64)) ||
+                            (target.OperatingSystem == TargetOS.RinOS &&
+                            target.Architecture == TargetArchitecture.X64))
                         {
                             ISortableSymbolNode index = _compilation.NodeFactory.TypeThreadStaticIndex(field.OwningType);
                             if (index is TypeThreadStaticIndexNode ti)

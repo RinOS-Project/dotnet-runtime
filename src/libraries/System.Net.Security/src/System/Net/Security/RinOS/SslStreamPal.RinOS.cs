@@ -18,6 +18,7 @@ namespace System.Net.Security
         private const string TrustStorePath = "/System/Trust/roots.rinca";
         private const int MaxTrustStoreBytes = 4 * 1024 * 1024;
         private const int MaxCustomTrustAnchors = 256;
+        private const long MaxTrustedUnixTime = 253402300799L;
 
         internal const bool StartMutualAuthAsAnonymous = false;
         // RinTLS performs hostname, validity and trust-anchor verification before
@@ -474,6 +475,8 @@ namespace System.Net.Security
         private static RinSslHandle CreateHandle(
             SslAuthenticationOptions sslAuthenticationOptions)
         {
+            X509ChainPolicy? chainPolicy =
+                sslAuthenticationOptions.CertificateChainPolicy;
             if (string.IsNullOrEmpty(sslAuthenticationOptions.TargetHost))
             {
                 throw new AuthenticationException(
@@ -507,9 +510,10 @@ namespace System.Net.Security
             }
 
             uint options = GetRinTlsOptions(sslAuthenticationOptions.EnabledSslProtocols);
+            ulong trustedTime = GetTrustedUnixTime(chainPolicy);
             IntPtr raw = Interop.RinTls.Create(
                 TargetHostNameHelper.NormalizeHostName(sslAuthenticationOptions.TargetHost),
-                options, checked((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds()),
+                options, trustedTime,
                 out int error);
             if (raw == IntPtr.Zero)
             {
@@ -519,8 +523,6 @@ namespace System.Net.Security
             RinSslHandle handle = new RinSslHandle(raw);
             try
             {
-                X509ChainPolicy? chainPolicy =
-                    sslAuthenticationOptions.CertificateChainPolicy;
                 bool useCustomTrust = chainPolicy?.TrustMode ==
                     X509ChainTrustMode.CustomRootTrust;
                 byte[] trust = useCustomTrust
@@ -550,6 +552,20 @@ namespace System.Net.Security
                 handle.Dispose();
                 throw;
             }
+        }
+
+        private static ulong GetTrustedUnixTime(X509ChainPolicy? chainPolicy)
+        {
+            DateTime verificationTime = chainPolicy?.VerificationTime ?? DateTime.UtcNow;
+            long unixTime = new DateTimeOffset(
+                verificationTime.ToUniversalTime()).ToUnixTimeSeconds();
+            if (unixTime <= 0 || unixTime > MaxTrustedUnixTime)
+            {
+                throw new AuthenticationException(
+                    "RinTLS certificate verification time is outside the supported range.");
+            }
+
+            return (ulong)unixTime;
         }
 
         private static byte[] BuildCustomTrustBundle(

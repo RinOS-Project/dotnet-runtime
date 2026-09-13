@@ -17,6 +17,7 @@ namespace System.Net.Security
     {
         private const string TrustStorePath = "/System/Trust/roots.rinca";
         private const int MaxTrustStoreBytes = 4 * 1024 * 1024;
+        private const int MaxCustomTrustAnchors = 256;
 
         internal const bool StartMutualAuthAsAnonymous = false;
         // RinTLS performs hostname, validity and trust-anchor verification before
@@ -493,13 +494,6 @@ namespace System.Net.Security
                 throw new PlatformNotSupportedException(
                     "RinTLS certificate revocation checking is not available yet.");
             }
-            if (sslAuthenticationOptions.CertificateChainPolicy is not null &&
-                (sslAuthenticationOptions.CertificateChainPolicy.CustomTrustStore.Count != 0 ||
-                 sslAuthenticationOptions.CertificateChainPolicy.TrustMode == X509ChainTrustMode.CustomRootTrust))
-            {
-                throw new PlatformNotSupportedException(
-                    "RinTLS uses the product trust bundle; custom managed roots are not connected yet.");
-            }
             if (sslAuthenticationOptions.ApplicationProtocols is { Count: > 0 } protocols)
             {
                 foreach (SslApplicationProtocol protocol in protocols)
@@ -525,16 +519,29 @@ namespace System.Net.Security
             RinSslHandle handle = new RinSslHandle(raw);
             try
             {
-                byte[] trust = File.ReadAllBytes(TrustStorePath);
-                if (trust.Length > MaxTrustStoreBytes)
+                X509ChainPolicy? chainPolicy =
+                    sslAuthenticationOptions.CertificateChainPolicy;
+                bool useCustomTrust = chainPolicy?.TrustMode ==
+                    X509ChainTrustMode.CustomRootTrust;
+                byte[] trust = useCustomTrust
+                    ? BuildCustomTrustBundle(chainPolicy!.CustomTrustStore)
+                    : File.ReadAllBytes(TrustStorePath);
+                try
                 {
-                    throw new AuthenticationException("RinTLS trust bundle is too large.");
-                }
+                    if (trust.Length > MaxTrustStoreBytes)
+                    {
+                        throw new AuthenticationException("RinTLS trust bundle is too large.");
+                    }
 
-                int result = Interop.RinTls.LoadTrustStore(handle, trust);
-                if (result != 0)
+                    int result = Interop.RinTls.LoadTrustStore(handle, trust);
+                    if (result != 0)
+                    {
+                        throw new RinTlsException(result);
+                    }
+                }
+                finally
                 {
-                    throw new RinTlsException(result);
+                    CryptographicOperations.ZeroMemory(trust);
                 }
                 return handle;
             }
@@ -543,6 +550,68 @@ namespace System.Net.Security
                 handle.Dispose();
                 throw;
             }
+        }
+
+        private static byte[] BuildCustomTrustBundle(
+            X509Certificate2Collection certificates)
+        {
+            if (certificates.Count == 0)
+            {
+                throw new AuthenticationException(
+                    "RinTLS CustomRootTrust requires at least one trust anchor.");
+            }
+            if (certificates.Count > MaxCustomTrustAnchors)
+            {
+                throw new AuthenticationException(
+                    "RinTLS CustomRootTrust exceeds the trust-anchor limit.");
+            }
+
+            byte[][] rawCertificates = new byte[certificates.Count][];
+            int bundleLength = 8;
+            for (int i = 0; i < rawCertificates.Length; i++)
+            {
+                byte[] raw = certificates[i].RawData;
+                if (raw.Length == 0 || raw.Length > ushort.MaxValue)
+                {
+                    throw new AuthenticationException(
+                        "RinTLS received an invalid custom trust anchor.");
+                }
+
+                rawCertificates[i] = raw;
+                bundleLength = checked(bundleLength + 4 + raw.Length);
+                if (bundleLength > MaxTrustStoreBytes)
+                {
+                    throw new AuthenticationException(
+                        "RinTLS custom trust bundle is too large.");
+                }
+            }
+
+            byte[] bundle = new byte[bundleLength];
+            bundle[0] = (byte)'R';
+            bundle[1] = (byte)'C';
+            bundle[2] = (byte)'A';
+            bundle[3] = (byte)'1';
+            WriteUInt32LittleEndian(bundle, 4, rawCertificates.Length);
+
+            int offset = 8;
+            foreach (byte[] raw in rawCertificates)
+            {
+                WriteUInt32LittleEndian(bundle, offset, raw.Length);
+                offset += 4;
+                raw.AsSpan().CopyTo(bundle.AsSpan(offset));
+                offset += raw.Length;
+            }
+
+            return bundle;
+        }
+
+        private static void WriteUInt32LittleEndian(
+            Span<byte> destination, int offset, int value)
+        {
+            destination[offset] = (byte)value;
+            destination[offset + 1] = (byte)(value >> 8);
+            destination[offset + 2] = (byte)(value >> 16);
+            destination[offset + 3] = (byte)(value >> 24);
         }
 
         private static uint GetRinTlsOptions(SslProtocols protocols)

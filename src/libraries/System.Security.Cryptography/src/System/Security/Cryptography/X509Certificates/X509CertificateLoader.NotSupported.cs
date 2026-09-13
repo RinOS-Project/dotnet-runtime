@@ -7,12 +7,18 @@ namespace System.Security.Cryptography.X509Certificates
     {
         private static partial ICertificatePal LoadCertificatePal(ReadOnlySpan<byte> data)
         {
-            throw new PlatformNotSupportedException(SR.SystemSecurityCryptographyX509Certificates_PlatformNotSupported);
+            return CertificatePal.FromBlob(
+                data,
+                Microsoft.Win32.SafeHandles.SafePasswordHandle.InvalidHandle,
+                X509KeyStorageFlags.EphemeralKeySet);
         }
 
         private static partial ICertificatePal LoadCertificatePalFromFile(string path)
         {
-            throw new PlatformNotSupportedException(SR.SystemSecurityCryptographyX509Certificates_PlatformNotSupported);
+            return CertificatePal.FromFile(
+                path,
+                Microsoft.Win32.SafeHandles.SafePasswordHandle.InvalidHandle,
+                X509KeyStorageFlags.EphemeralKeySet);
         }
 
         private static partial Pkcs12Return LoadPkcs12(

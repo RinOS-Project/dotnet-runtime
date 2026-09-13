@@ -10,12 +10,12 @@ namespace System.Security.Cryptography.X509Certificates
 #pragma warning disable IDE0060
         internal static partial ICertificatePal FromHandle(IntPtr handle)
         {
-            throw new PlatformNotSupportedException(SR.SystemSecurityCryptographyX509Certificates_PlatformNotSupported);
+            return RinOSCertificatePal.FromHandle(handle);
         }
 
         internal static partial ICertificatePal FromOtherCert(X509Certificate copyFrom)
         {
-            throw new PlatformNotSupportedException(SR.SystemSecurityCryptographyX509Certificates_PlatformNotSupported);
+            return RinOSCertificatePal.FromOtherCert(copyFrom);
         }
 
         internal static partial ICertificatePal FromBlob(
@@ -23,7 +23,7 @@ namespace System.Security.Cryptography.X509Certificates
             SafePasswordHandle password,
             X509KeyStorageFlags keyStorageFlags)
         {
-            throw new PlatformNotSupportedException(SR.SystemSecurityCryptographyX509Certificates_PlatformNotSupported);
+            return RinOSCertificatePal.FromBlob(rawData, password, keyStorageFlags);
         }
 
         internal static partial ICertificatePal FromFile(
@@ -31,7 +31,7 @@ namespace System.Security.Cryptography.X509Certificates
             SafePasswordHandle password,
             X509KeyStorageFlags keyStorageFlags)
         {
-            throw new PlatformNotSupportedException(SR.SystemSecurityCryptographyX509Certificates_PlatformNotSupported);
+            return RinOSCertificatePal.FromFile(fileName, password, keyStorageFlags);
         }
 #pragma warning restore IDE0060
     }

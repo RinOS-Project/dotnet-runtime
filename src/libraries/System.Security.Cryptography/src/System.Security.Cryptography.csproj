@@ -837,9 +837,9 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'rinos'">
-    <!-- RinOS supplies product-owned hashing, symmetric crypto, RSA, P-256 ECDSA, and P-256 ECDH through
-         the crypto PAL. The remaining public-key families and certificate surfaces stay
-         explicit until their product providers are connected. -->
+    <!-- RinOS supplies product-owned hashing, symmetric crypto, RSA, P-256 ECDSA/ECDH, and
+         managed DER X.509 parsing through explicit product PALs. Certificate stores,
+         PKCS#12, and chain building remain separate capabilities. -->
     <Compile Include="$(CommonPath)System\Sha1ForNonSecretPurposes.cs"
              Link="Common\System\Sha1ForNonSecretPurposes.cs" />
     <Compile Include="$(CommonPath)System\Security\Cryptography\CompositeMLDsaImplementation.NotSupported.cs"
@@ -903,12 +903,13 @@
     <Compile Include="System\Security\Cryptography\TripleDesImplementation.NotSupported.cs" />
     <Compile Include="System\Security\Cryptography\X25519DiffieHellmanOpenSsl.NotSupported.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\CertificatePal.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\X509Certificates\CertificatePal.RinOS.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\ChainPal.NotSupported.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\FindPal.NotSupported.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\LegacyBasicConstraintsDecoder.NotSupported.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\StorePal.NotSupported.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\X509CertificateLoader.NotSupported.cs" />
-    <Compile Include="System\Security\Cryptography\X509Certificates\X509Pal.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\X509Certificates\X509Pal.RinOS.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'browser'">

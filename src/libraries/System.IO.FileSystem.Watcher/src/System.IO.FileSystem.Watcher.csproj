@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>$(NetCoreAppCurrent)-windows;$(NetCoreAppCurrent)-linux;$(NetCoreAppCurrent)-osx;$(NetCoreAppCurrent)-maccatalyst;$(NetCoreAppCurrent)-freebsd;$(NetCoreAppCurrent)-openbsd;$(NetCoreAppCurrent)</TargetFrameworks>
+    <TargetFrameworks>$(NetCoreAppCurrent)-windows;$(NetCoreAppCurrent)-linux;$(NetCoreAppCurrent)-osx;$(NetCoreAppCurrent)-maccatalyst;$(NetCoreAppCurrent)-freebsd;$(NetCoreAppCurrent)-openbsd;$(NetCoreAppCurrent)-rinos;$(NetCoreAppCurrent)</TargetFrameworks>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <UseCompilerGeneratedDocXmlFile>false</UseCompilerGeneratedDocXmlFile>
   </PropertyGroup>
@@ -9,8 +9,9 @@
   <!-- DesignTimeBuild requires all the TargetFramework Derived Properties to not be present in the first property group. -->
   <PropertyGroup>
     <TargetPlatformIdentifier>$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)'))</TargetPlatformIdentifier>
+    <!-- Keep both the eng -os=rinos build and the direct net*-rinos TFM on the product watcher. -->
     <GeneratePlatformNotSupportedAssemblyMessage Condition="'$(TargetPlatformIdentifier)' == '' and '$(TargetsRinOS)' != 'true'">SR.FileSystemWatcher_PlatformNotSupported</GeneratePlatformNotSupportedAssemblyMessage>
-    <DefineConstants Condition="'$(TargetsRinOS)' == 'true'">$(DefineConstants);TARGET_RINOS</DefineConstants>
+    <DefineConstants Condition="'$(TargetPlatformIdentifier)' == 'rinos' or '$(TargetsRinOS)' == 'true'">$(DefineConstants);TARGET_RINOS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetPlatformIdentifier)' != '' or '$(TargetsRinOS)' == 'true'">
@@ -78,7 +79,7 @@
              Link="Common\Interop\Unix\Interop.PathConf.cs" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'linux' or '$(TargetPlatformIdentifier)' == 'freebsd' or '$(TargetPlatformIdentifier)' == 'openbsd' or '$(TargetsRinOS)' == 'true'">
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'linux' or '$(TargetPlatformIdentifier)' == 'freebsd' or '$(TargetPlatformIdentifier)' == 'openbsd' or '$(TargetPlatformIdentifier)' == 'rinos' or '$(TargetsRinOS)' == 'true'">
     <Compile Include="System\IO\FileSystemWatcher.Linux.cs" />
     <Compile Include="$(CommonPath)Interop\Linux\System.Native\Interop.INotify.cs"
              Link="Common\Interop\Linux\Interop.inotify.cs" />

@@ -837,9 +837,9 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'rinos'">
-    <!-- RinOS supplies product-owned hashing, symmetric crypto, RSA, P-256 ECDSA/ECDH, and
-         managed DER X.509 parsing through explicit product PALs. Certificate stores,
-         PKCS#12, and chain building remain separate capabilities. -->
+    <!-- RinOS supplies product-owned hashing, symmetric crypto, RSA, P-256 ECDSA/ECDH,
+         managed AES-CCM, and managed DER X.509 parsing through explicit product PALs.
+         Certificate stores, PKCS#12, and chain building remain separate capabilities. -->
     <Compile Include="$(CommonPath)System\Sha1ForNonSecretPurposes.cs"
              Link="Common\System\Sha1ForNonSecretPurposes.cs" />
     <Compile Include="$(CommonPath)System\Security\Cryptography\CompositeMLDsaImplementation.NotSupported.cs"
@@ -858,7 +858,7 @@
              Link="Common\Interop\Unix\Interop.Libraries.cs" />
     <Compile Include="$(CommonPath)Interop\Unix\System.Security.Cryptography.Native\Interop.RAND.cs"
              Link="Common\Interop\Unix\System.Security.Cryptography.Native\Interop.RAND.cs" />
-    <Compile Include="System\Security\Cryptography\AesCcm.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\AesCcm.RinOS.cs" />
     <Compile Include="System\Security\Cryptography\AesGcm.RinOS.cs" />
     <Compile Include="System\Security\Cryptography\AesImplementation.RinOS.cs" />
     <Compile Include="System\Security\Cryptography\AsnFormatter.Managed.cs" />

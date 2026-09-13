@@ -89,6 +89,24 @@ int32_t CryptoNative_RinOSRsaVerifyHash(
     const uint8_t* signature, int32_t signature_length);
 void CryptoNative_RinOSRsaDestroy(void* handle);
 
+void* CryptoNative_RinOSEcdsaCreate(void);
+int32_t CryptoNative_RinOSEcdsaGenerateKey(void* handle);
+int32_t CryptoNative_RinOSEcdsaImportParameters(
+    void* handle, const uint8_t* private_key, int32_t private_key_length,
+    const uint8_t* public_key, int32_t public_key_length);
+int32_t CryptoNative_RinOSEcdsaGetKeySize(const void* handle);
+int32_t CryptoNative_RinOSEcdsaExportParameters(
+    const void* handle, int32_t include_private, uint8_t* private_key,
+    int32_t private_key_capacity, int32_t* private_key_length,
+    uint8_t* public_key, int32_t public_key_capacity, int32_t* public_key_length);
+int32_t CryptoNative_RinOSEcdsaSignHash(
+    const void* handle, const uint8_t* hash, int32_t hash_length,
+    uint8_t* signature, int32_t signature_capacity, int32_t* signature_length);
+int32_t CryptoNative_RinOSEcdsaVerifyHash(
+    const void* handle, const uint8_t* hash, int32_t hash_length,
+    const uint8_t* signature, int32_t signature_length);
+void CryptoNative_RinOSEcdsaDestroy(void* handle);
+
 void* CryptoNative_RinTlsCreate(int32_t is_server, const char* hostname,
                                 uint32_t options, uint64_t trusted_time,
                                 int32_t* error);
@@ -156,6 +174,14 @@ static const Entry s_cryptoNative[] =
     DllImportEntry(CryptoNative_RinOSRsaSignHash)
     DllImportEntry(CryptoNative_RinOSRsaVerifyHash)
     DllImportEntry(CryptoNative_RinOSRsaDestroy)
+    DllImportEntry(CryptoNative_RinOSEcdsaCreate)
+    DllImportEntry(CryptoNative_RinOSEcdsaGenerateKey)
+    DllImportEntry(CryptoNative_RinOSEcdsaImportParameters)
+    DllImportEntry(CryptoNative_RinOSEcdsaGetKeySize)
+    DllImportEntry(CryptoNative_RinOSEcdsaExportParameters)
+    DllImportEntry(CryptoNative_RinOSEcdsaSignHash)
+    DllImportEntry(CryptoNative_RinOSEcdsaVerifyHash)
+    DllImportEntry(CryptoNative_RinOSEcdsaDestroy)
     DllImportEntry(CryptoNative_RinTlsCreate)
     DllImportEntry(CryptoNative_RinTlsDestroy)
     DllImportEntry(CryptoNative_RinTlsLoadTrustStore)

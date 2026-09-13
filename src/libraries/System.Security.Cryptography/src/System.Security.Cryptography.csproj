@@ -837,9 +837,9 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'rinos'">
-    <!-- RinOS supplies product-owned hashing, symmetric crypto, and RSA through the crypto PAL.
-         The remaining public-key families and certificate surfaces stay explicit until their
-         product providers are connected. -->
+    <!-- RinOS supplies product-owned hashing, symmetric crypto, RSA, and P-256 ECDSA through
+         the crypto PAL. The remaining public-key families and certificate surfaces stay
+         explicit until their product providers are connected. -->
     <Compile Include="$(CommonPath)System\Sha1ForNonSecretPurposes.cs"
              Link="Common\System\Sha1ForNonSecretPurposes.cs" />
     <Compile Include="$(CommonPath)System\Security\Cryptography\CompositeMLDsaImplementation.NotSupported.cs"
@@ -871,7 +871,7 @@
     <Compile Include="System\Security\Cryptography\DSA.Create.NotSupported.cs" />
     <Compile Include="System\Security\Cryptography\DSACryptoServiceProvider.NotSupported.cs" />
     <Compile Include="System\Security\Cryptography\ECDiffieHellman.Create.NotSupported.cs" />
-    <Compile Include="System\Security\Cryptography\ECDsa.Create.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\ECDsa.Create.RinOS.cs" />
     <Compile Include="System\Security\Cryptography\HashProviderDispenser.RinOS.cs" />
     <Compile Include="System\Security\Cryptography\HashProviderDispenser.Unix.cs" />
     <Compile Include="System\Security\Cryptography\HKDF.Managed.cs" />
@@ -890,6 +890,7 @@
     <Compile Include="System\Security\Cryptography\RSACryptoServiceProvider.NotSupported.cs" />
     <Compile Include="System\Security\Cryptography\RSA.Create.RinOS.cs" />
     <Compile Include="System\Security\Cryptography\RinOSRsa.cs" />
+    <Compile Include="System\Security\Cryptography\RinOSEcdsa.cs" />
     <Compile Include="System\Security\Cryptography\Shake128.NonWindows.cs" />
     <Compile Include="System\Security\Cryptography\Shake256.NonWindows.cs" />
     <Compile Include="System\Security\Cryptography\SlhDsaOpenSsl.NotSupported.cs" />

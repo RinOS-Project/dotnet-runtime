@@ -68,6 +68,7 @@ if (CLR_CMAKE_TARGET_RINOS)
     set(NATIVECRYPTO_SOURCES
         rinos_crypto.c
         rinos_aes.c
+        rinos_ecdsa.c
         rinos_rsa.c
         rinos_tls.c
         "${RINOS_REPO_ROOT}/libs/rintls/rintls.c"

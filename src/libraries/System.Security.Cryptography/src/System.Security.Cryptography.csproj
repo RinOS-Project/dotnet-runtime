@@ -907,7 +907,7 @@
     <Compile Include="System\Security\Cryptography\X509Certificates\ChainPal.NotSupported.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\FindPal.NotSupported.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\LegacyBasicConstraintsDecoder.NotSupported.cs" />
-    <Compile Include="System\Security\Cryptography\X509Certificates\StorePal.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\X509Certificates\StorePal.RinOS.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\X509CertificateLoader.RinOS.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\X509Pal.RinOS.cs" />
   </ItemGroup>

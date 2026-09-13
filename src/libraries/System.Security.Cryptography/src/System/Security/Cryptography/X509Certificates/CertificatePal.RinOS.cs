@@ -352,6 +352,27 @@ namespace System.Security.Cryptography.X509Certificates
             return FromBlob(copyFrom.GetRawCertData(), SafePasswordHandle.InvalidHandle, X509KeyStorageFlags.EphemeralKeySet);
         }
     }
+
+    internal static partial class CertificatePal
+    {
+        internal static partial ICertificatePal FromHandle(IntPtr handle) =>
+            RinOSCertificatePal.FromHandle(handle);
+
+        internal static partial ICertificatePal FromOtherCert(X509Certificate copyFrom) =>
+            RinOSCertificatePal.FromOtherCert(copyFrom);
+
+        internal static partial ICertificatePal FromBlob(
+            ReadOnlySpan<byte> rawData,
+            SafePasswordHandle password,
+            X509KeyStorageFlags keyStorageFlags) =>
+            RinOSCertificatePal.FromBlob(rawData, password, keyStorageFlags);
+
+        internal static partial ICertificatePal FromFile(
+            string fileName,
+            SafePasswordHandle password,
+            X509KeyStorageFlags keyStorageFlags) =>
+            RinOSCertificatePal.FromFile(fileName, password, keyStorageFlags);
+    }
 }
 
 #endif

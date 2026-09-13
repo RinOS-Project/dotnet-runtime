@@ -837,9 +837,9 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'rinos'">
-    <!-- RinOS supplies SHA-2/HMAC and entropy through the product crypto PAL.  The remaining
-         algorithm families use the same explicit unsupported/managed surface as Browser until a
-         product PAL is connected. -->
+    <!-- RinOS supplies product-owned hashing, symmetric crypto, and RSA through the crypto PAL.
+         The remaining public-key families and certificate surfaces stay explicit until their
+         product providers are connected. -->
     <Compile Include="$(CommonPath)System\Sha1ForNonSecretPurposes.cs"
              Link="Common\System\Sha1ForNonSecretPurposes.cs" />
     <Compile Include="$(CommonPath)System\Security\Cryptography\CompositeMLDsaImplementation.NotSupported.cs"
@@ -888,7 +888,8 @@
     <Compile Include="System\Security\Cryptography\RC2CryptoServiceProvider.NotSupported.cs" />
     <Compile Include="System\Security\Cryptography\RC2Implementation.NotSupported.cs" />
     <Compile Include="System\Security\Cryptography\RSACryptoServiceProvider.NotSupported.cs" />
-    <Compile Include="System\Security\Cryptography\RSA.Create.NotSupported.cs" />
+    <Compile Include="System\Security\Cryptography\RSA.Create.RinOS.cs" />
+    <Compile Include="System\Security\Cryptography\RinOSRsa.cs" />
     <Compile Include="System\Security\Cryptography\Shake128.NonWindows.cs" />
     <Compile Include="System\Security\Cryptography\Shake256.NonWindows.cs" />
     <Compile Include="System\Security\Cryptography\SlhDsaOpenSsl.NotSupported.cs" />

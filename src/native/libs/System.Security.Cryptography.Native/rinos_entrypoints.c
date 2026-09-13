@@ -47,6 +47,48 @@ int32_t CryptoNative_RinOSAesReset(
     void* handle, const uint8_t* iv, int32_t iv_length);
 void CryptoNative_RinOSAesDestroy(void* handle);
 
+void* CryptoNative_RinOSRsaCreate(void);
+int32_t CryptoNative_RinOSRsaGenerateKey(void* handle, int32_t key_size,
+                                         int32_t public_exponent);
+int32_t CryptoNative_RinOSRsaImportParameters(
+    void* handle, const uint8_t* modulus, int32_t modulus_length,
+    const uint8_t* exponent, int32_t exponent_length,
+    const uint8_t* private_exponent, int32_t private_exponent_length,
+    const uint8_t* prime1, int32_t prime1_length,
+    const uint8_t* prime2, int32_t prime2_length,
+    const uint8_t* exponent1, int32_t exponent1_length,
+    const uint8_t* exponent2, int32_t exponent2_length,
+    const uint8_t* coefficient, int32_t coefficient_length);
+int32_t CryptoNative_RinOSRsaGetKeySize(const void* handle);
+int32_t CryptoNative_RinOSRsaExportParameters(
+    const void* handle, int32_t include_private,
+    uint8_t* modulus, int32_t modulus_capacity, int32_t* modulus_length,
+    uint8_t* exponent, int32_t exponent_capacity, int32_t* exponent_length,
+    uint8_t* private_exponent, int32_t private_exponent_capacity,
+    int32_t* private_exponent_length, uint8_t* prime1, int32_t prime1_capacity,
+    int32_t* prime1_length, uint8_t* prime2, int32_t prime2_capacity,
+    int32_t* prime2_length, uint8_t* exponent1, int32_t exponent1_capacity,
+    int32_t* exponent1_length, uint8_t* exponent2, int32_t exponent2_capacity,
+    int32_t* exponent2_length, uint8_t* coefficient,
+    int32_t coefficient_capacity, int32_t* coefficient_length);
+int32_t CryptoNative_RinOSRsaEncrypt(
+    const void* handle, int32_t padding, int32_t hash_algorithm,
+    const uint8_t* input, int32_t input_length, uint8_t* output,
+    int32_t output_capacity, int32_t* output_length);
+int32_t CryptoNative_RinOSRsaDecrypt(
+    const void* handle, int32_t padding, int32_t hash_algorithm,
+    const uint8_t* input, int32_t input_length, uint8_t* output,
+    int32_t output_capacity, int32_t* output_length);
+int32_t CryptoNative_RinOSRsaSignHash(
+    const void* handle, int32_t padding, int32_t hash_algorithm,
+    const uint8_t* hash, int32_t hash_length, int32_t salt_length,
+    uint8_t* signature, int32_t signature_capacity, int32_t* signature_length);
+int32_t CryptoNative_RinOSRsaVerifyHash(
+    const void* handle, int32_t padding, int32_t hash_algorithm,
+    const uint8_t* hash, int32_t hash_length, int32_t salt_length,
+    const uint8_t* signature, int32_t signature_length);
+void CryptoNative_RinOSRsaDestroy(void* handle);
+
 void* CryptoNative_RinTlsCreate(int32_t is_server, const char* hostname,
                                 uint32_t options, uint64_t trusted_time,
                                 int32_t* error);
@@ -104,6 +146,16 @@ static const Entry s_cryptoNative[] =
     DllImportEntry(CryptoNative_RinOSAesTransform)
     DllImportEntry(CryptoNative_RinOSAesReset)
     DllImportEntry(CryptoNative_RinOSAesDestroy)
+    DllImportEntry(CryptoNative_RinOSRsaCreate)
+    DllImportEntry(CryptoNative_RinOSRsaGenerateKey)
+    DllImportEntry(CryptoNative_RinOSRsaImportParameters)
+    DllImportEntry(CryptoNative_RinOSRsaGetKeySize)
+    DllImportEntry(CryptoNative_RinOSRsaExportParameters)
+    DllImportEntry(CryptoNative_RinOSRsaEncrypt)
+    DllImportEntry(CryptoNative_RinOSRsaDecrypt)
+    DllImportEntry(CryptoNative_RinOSRsaSignHash)
+    DllImportEntry(CryptoNative_RinOSRsaVerifyHash)
+    DllImportEntry(CryptoNative_RinOSRsaDestroy)
     DllImportEntry(CryptoNative_RinTlsCreate)
     DllImportEntry(CryptoNative_RinTlsDestroy)
     DllImportEntry(CryptoNative_RinTlsLoadTrustStore)

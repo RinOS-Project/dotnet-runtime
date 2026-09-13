@@ -50,6 +50,8 @@ if (CLR_CMAKE_TARGET_RINOS)
     include_directories(
         "${RINOS_REPO_ROOT}/libs/rintls"
         "${RINOS_REPO_ROOT}/libs/rintls/crypto"
+        "${RINOS_REPO_ROOT}/libs/bearssl/inc"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src"
     )
 else()
     append_extra_cryptography_libs(NATIVE_LIBS_EXTRA)
@@ -61,9 +63,12 @@ if (CLR_CMAKE_TARGET_RINOS)
     # The target crypto boundary is product-owned.  Do not compile any of the
     # OpenSSL PAL sources for RinOS; the product adapter exports only the
     # algorithms that have a checked-in RinTLS implementation.
+    file(GLOB RINOS_BEARSSL_I31_SOURCES CONFIGURE_DEPENDS
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/int/i31_*.c")
     set(NATIVECRYPTO_SOURCES
         rinos_crypto.c
         rinos_aes.c
+        rinos_rsa.c
         rinos_tls.c
         "${RINOS_REPO_ROOT}/libs/rintls/rintls.c"
         "${RINOS_REPO_ROOT}/libs/rintls/crypto/aes.c"
@@ -71,12 +76,43 @@ if (CLR_CMAKE_TARGET_RINOS)
         "${RINOS_REPO_ROOT}/libs/rintls/crypto/ecdh.c"
         "${RINOS_REPO_ROOT}/libs/rintls/crypto/hmac.c"
         "${RINOS_REPO_ROOT}/libs/rintls/crypto/rsa.c"
+        "${RINOS_REPO_ROOT}/libs/rintls/crypto/rsa_webcrypto.c"
         "${RINOS_REPO_ROOT}/libs/rintls/crypto/sha1.c"
         "${RINOS_REPO_ROOT}/libs/rintls/crypto/sha256.c"
         "${RINOS_REPO_ROOT}/libs/rintls/crypto/sha3.c"
         "${RINOS_REPO_ROOT}/libs/rintls/tls/handshake.c"
         "${RINOS_REPO_ROOT}/libs/rintls/tls/record.c"
         "${RINOS_REPO_ROOT}/libs/rintls/x509/cert.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/codec/enc32be.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/codec/dec32be.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/codec/dec64be.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/codec/enc64be.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/codec/ccopy.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/hash/dig_size.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/hash/mgf1.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/hash/sha1.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/hash/sha2big.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/hash/sha2small.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/mac/hmac.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/rand/hmac_drbg.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/rsa/rsa_i31_keygen.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/rsa/rsa_i31_keygen_bounded.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/rsa/rsa_i31_keygen_inner.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/rsa/rsa_i31_modulus.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/rsa/rsa_i31_oaep_decrypt.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/rsa/rsa_i31_oaep_encrypt.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/rsa/rsa_i31_pkcs1_sign.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/rsa/rsa_i31_pkcs1_vrfy.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/rsa/rsa_i31_priv.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/rsa/rsa_i31_privexp.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/rsa/rsa_i31_pub.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/rsa/rsa_i31_pubexp.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/rsa/rsa_oaep_pad.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/rsa/rsa_oaep_unpad.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/rsa/rsa_pkcs1_sig_pad.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/rsa/rsa_pkcs1_sig_unpad.c"
+        "${RINOS_REPO_ROOT}/libs/bearssl/src/int/i32_div32.c"
+        ${RINOS_BEARSSL_I31_SOURCES}
     )
 else()
     set(NATIVECRYPTO_SOURCES

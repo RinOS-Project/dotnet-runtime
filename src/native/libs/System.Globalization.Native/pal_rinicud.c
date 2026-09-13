@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../../../../../rinicu/rin_icu.h"
+#include "../../../../../../public-base/libs/rinicu/include/rinicu/rinicu.h"
 
 typedef uint16_t UChar;
 
@@ -124,11 +124,15 @@ typedef struct SortHandle
     rin_icu_handle_t handle;
 } SortHandle;
 
-static rin_icu_client_t g_client = { -1, 1u, 0u };
+static rin_icu_client_t g_client = {};
 
 static rin_icu_client_t* product_client(void)
 {
-    if (g_client.fd < 0 && rin_icu_client_open(&g_client) != RIN_ICU_STATUS_OK) {
+    if (!rin_icu_client_is_open(&g_client)) {
+        rin_icu_client_init(&g_client);
+    }
+    if (!rin_icu_client_is_open(&g_client) &&
+        rin_icu_client_open(&g_client) != RIN_ICU_STATUS_OK) {
         return NULL;
     }
     return &g_client;

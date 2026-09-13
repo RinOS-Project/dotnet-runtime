@@ -351,6 +351,95 @@ namespace System.Security.Cryptography.X509Certificates
             ArgumentNullException.ThrowIfNull(copyFrom);
             return FromBlob(copyFrom.GetRawCertData(), SafePasswordHandle.InvalidHandle, X509KeyStorageFlags.EphemeralKeySet);
         }
+
+        internal bool TryGetBasicConstraints(out bool certificateAuthority, out int? pathLengthConstraint)
+        {
+            ThrowIfDisposed();
+
+            foreach (X509Extension extension in _certificate.Extensions)
+            {
+                if (extension.Oid?.Value != Oids.BasicConstraints2)
+                {
+                    continue;
+                }
+
+                X509BasicConstraintsExtension constraints = new X509BasicConstraintsExtension(extension, extension.Critical);
+                certificateAuthority = constraints.CertificateAuthority;
+                pathLengthConstraint = constraints.HasPathLengthConstraint
+                    ? constraints.PathLengthConstraint
+                    : null;
+                return true;
+            }
+
+            certificateAuthority = false;
+            pathLengthConstraint = null;
+            return false;
+        }
+
+        internal bool AllowsCertificateSigning()
+        {
+            ThrowIfDisposed();
+
+            foreach (X509Extension extension in _certificate.Extensions)
+            {
+                if (extension.Oid?.Value != Oids.KeyUsage)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    X509KeyUsageExtension keyUsage = new X509KeyUsageExtension(extension, extension.Critical);
+                    return (keyUsage.KeyUsages & X509KeyUsageFlags.KeyCertSign) != 0;
+                }
+                catch (CryptographicException)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        internal bool VerifySignatureBy(RinOSCertificatePal issuer)
+        {
+            ThrowIfDisposed();
+            ArgumentNullException.ThrowIfNull(issuer);
+            issuer.ThrowIfDisposed();
+
+            byte[] toBeSigned = GetTbsCertificate();
+            byte[] signature = _certificate.SignatureValue;
+            using AsymmetricAlgorithm publicKey = X509Pal.Instance.DecodePublicKey(
+                new Oid(issuer.KeyAlgorithm),
+                issuer.PublicKeyValue,
+                issuer.KeyAlgorithmParameters,
+                issuer);
+
+            return _certificate.SignatureAlgorithm.AlgorithmId switch
+            {
+                Oids.RsaPkcs1Sha1 => publicKey is RSA rsa &&
+                    rsa.VerifyData(toBeSigned, signature, HashAlgorithmName.SHA1, RSASignaturePadding.Pkcs1),
+                Oids.RsaPkcs1Sha256 => publicKey is RSA rsa &&
+                    rsa.VerifyData(toBeSigned, signature, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1),
+                Oids.RsaPkcs1Sha384 => publicKey is RSA rsa &&
+                    rsa.VerifyData(toBeSigned, signature, HashAlgorithmName.SHA384, RSASignaturePadding.Pkcs1),
+                Oids.RsaPkcs1Sha512 => publicKey is RSA rsa &&
+                    rsa.VerifyData(toBeSigned, signature, HashAlgorithmName.SHA512, RSASignaturePadding.Pkcs1),
+                Oids.ECDsaWithSha256 => publicKey is ECDsa ecdsa &&
+                    ecdsa.VerifyData(toBeSigned, signature, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence),
+                _ => false,
+            };
+        }
+
+        private byte[] GetTbsCertificate()
+        {
+            ValueAsnReader reader = new ValueAsnReader(_certificate.RawData, AsnEncodingRules.DER);
+            ValueAsnReader certificate = reader.ReadSequence();
+            byte[] tbsCertificate = certificate.ReadEncodedValue().ToArray();
+            certificate.ThrowIfNotEmpty();
+            reader.ThrowIfNotEmpty();
+            return tbsCertificate;
+        }
     }
 
     internal static partial class CertificatePal

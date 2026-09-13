@@ -75,7 +75,8 @@ internal struct MethodTableFlags_1
     private WFLAGS_LOW FlagsLow => (WFLAGS_LOW)MTFlags;
     public int GetTypeDefRid() => (int)(MTFlags2 >> MTFlags2TypeDefRidShift);
 
-    public WFLAGS_LOW GetFlag(WFLAGS_LOW mask) => throw new NotImplementedException("TODO");
+    public WFLAGS_LOW GetFlag(WFLAGS_LOW mask)
+        => (IsStringOrArray ? WFLAGS_LOW.StringArrayValues : FlagsLow) & mask;
     public WFLAGS_HIGH GetFlag(WFLAGS_HIGH mask) => FlagsHigh & mask;
 
     public WFLAGS2_ENUM GetFlag(WFLAGS2_ENUM mask) => (WFLAGS2_ENUM)MTFlags2 & mask;

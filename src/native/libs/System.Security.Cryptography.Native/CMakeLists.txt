@@ -48,8 +48,8 @@ if (CLR_CMAKE_TARGET_RINOS)
         message(FATAL_ERROR "RinOS cryptography requires RINOS_REPO_ROOT")
     endif()
     include_directories(
-        "${RINOS_REPO_ROOT}/libs/rintls"
-        "${RINOS_REPO_ROOT}/libs/rintls/crypto"
+        "${RINOS_REPO_ROOT}/public-base/libs/rintls"
+        "${RINOS_REPO_ROOT}/public-base/libs/rintls/crypto"
         "${RINOS_REPO_ROOT}/libs/bearssl/inc"
         "${RINOS_REPO_ROOT}/libs/bearssl/src"
     )
@@ -72,19 +72,19 @@ if (CLR_CMAKE_TARGET_RINOS)
         rinos_ecdsa.c
         rinos_rsa.c
         rinos_tls.c
-        "${RINOS_REPO_ROOT}/libs/rintls/rintls.c"
-        "${RINOS_REPO_ROOT}/libs/rintls/crypto/aes.c"
-        "${RINOS_REPO_ROOT}/libs/rintls/crypto/bignum.c"
-        "${RINOS_REPO_ROOT}/libs/rintls/crypto/ecdh.c"
-        "${RINOS_REPO_ROOT}/libs/rintls/crypto/hmac.c"
-        "${RINOS_REPO_ROOT}/libs/rintls/crypto/rsa.c"
-        "${RINOS_REPO_ROOT}/libs/rintls/crypto/rsa_webcrypto.c"
-        "${RINOS_REPO_ROOT}/libs/rintls/crypto/sha1.c"
-        "${RINOS_REPO_ROOT}/libs/rintls/crypto/sha256.c"
-        "${RINOS_REPO_ROOT}/libs/rintls/crypto/sha3.c"
-        "${RINOS_REPO_ROOT}/libs/rintls/tls/handshake.c"
-        "${RINOS_REPO_ROOT}/libs/rintls/tls/record.c"
-        "${RINOS_REPO_ROOT}/libs/rintls/x509/cert.c"
+        "${RINOS_REPO_ROOT}/public-base/libs/rintls/rintls.c"
+        "${RINOS_REPO_ROOT}/public-base/libs/rintls/crypto/aes.c"
+        "${RINOS_REPO_ROOT}/public-base/libs/rintls/crypto/bignum.c"
+        "${RINOS_REPO_ROOT}/public-base/libs/rintls/crypto/ecdh.c"
+        "${RINOS_REPO_ROOT}/public-base/libs/rintls/crypto/hmac.c"
+        "${RINOS_REPO_ROOT}/public-base/libs/rintls/crypto/rsa.c"
+        "${RINOS_REPO_ROOT}/public-base/libs/rintls/crypto/rsa_webcrypto.c"
+        "${RINOS_REPO_ROOT}/public-base/libs/rintls/crypto/sha1.c"
+        "${RINOS_REPO_ROOT}/public-base/libs/rintls/crypto/sha256.c"
+        "${RINOS_REPO_ROOT}/public-base/libs/rintls/crypto/sha3.c"
+        "${RINOS_REPO_ROOT}/public-base/libs/rintls/tls/handshake.c"
+        "${RINOS_REPO_ROOT}/public-base/libs/rintls/tls/record.c"
+        "${RINOS_REPO_ROOT}/public-base/libs/rintls/x509/cert.c"
         "${RINOS_REPO_ROOT}/libs/bearssl/src/codec/enc32be.c"
         "${RINOS_REPO_ROOT}/libs/bearssl/src/codec/dec32be.c"
         "${RINOS_REPO_ROOT}/libs/bearssl/src/codec/dec64be.c"

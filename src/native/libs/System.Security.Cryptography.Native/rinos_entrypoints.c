@@ -107,6 +107,22 @@ int32_t CryptoNative_RinOSEcdsaVerifyHash(
     const uint8_t* signature, int32_t signature_length);
 void CryptoNative_RinOSEcdsaDestroy(void* handle);
 
+void* CryptoNative_RinOSEcdhCreate(void);
+int32_t CryptoNative_RinOSEcdhGenerateKey(void* handle);
+int32_t CryptoNative_RinOSEcdhImportParameters(
+    void* handle, const uint8_t* private_key, int32_t private_key_length,
+    const uint8_t* public_key, int32_t public_key_length);
+int32_t CryptoNative_RinOSEcdhGetKeySize(const void* handle);
+int32_t CryptoNative_RinOSEcdhExportParameters(
+    const void* handle, int32_t include_private, uint8_t* private_key,
+    int32_t private_key_capacity, int32_t* private_key_length,
+    uint8_t* public_key, int32_t public_key_capacity, int32_t* public_key_length);
+int32_t CryptoNative_RinOSEcdhDeriveRawSecret(
+    const void* handle, const uint8_t* peer_public_key,
+    int32_t peer_public_key_length, uint8_t* secret, int32_t secret_capacity,
+    int32_t* secret_length);
+void CryptoNative_RinOSEcdhDestroy(void* handle);
+
 void* CryptoNative_RinTlsCreate(int32_t is_server, const char* hostname,
                                 uint32_t options, uint64_t trusted_time,
                                 int32_t* error);
@@ -182,6 +198,13 @@ static const Entry s_cryptoNative[] =
     DllImportEntry(CryptoNative_RinOSEcdsaSignHash)
     DllImportEntry(CryptoNative_RinOSEcdsaVerifyHash)
     DllImportEntry(CryptoNative_RinOSEcdsaDestroy)
+    DllImportEntry(CryptoNative_RinOSEcdhCreate)
+    DllImportEntry(CryptoNative_RinOSEcdhGenerateKey)
+    DllImportEntry(CryptoNative_RinOSEcdhImportParameters)
+    DllImportEntry(CryptoNative_RinOSEcdhGetKeySize)
+    DllImportEntry(CryptoNative_RinOSEcdhExportParameters)
+    DllImportEntry(CryptoNative_RinOSEcdhDeriveRawSecret)
+    DllImportEntry(CryptoNative_RinOSEcdhDestroy)
     DllImportEntry(CryptoNative_RinTlsCreate)
     DllImportEntry(CryptoNative_RinTlsDestroy)
     DllImportEntry(CryptoNative_RinTlsLoadTrustStore)

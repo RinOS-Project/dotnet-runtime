@@ -9,6 +9,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -182,7 +183,7 @@ static char* utf16_to_utf8(const UChar* value, int32_t value_length, size_t* out
     size_t at = 0u;
     char* result;
     size_t i;
-    if (!value) return NULL;
+    if (!value || length > (SIZE_MAX - 1u) / 4u) return NULL;
     result = (char*)malloc(capacity);
     if (!result) return NULL;
     for (i = 0u; i < length; ++i) {
@@ -257,6 +258,7 @@ static int utf8_to_utf16(const char* value, size_t value_length, UChar* dest, in
         if (!decode_utf8((const unsigned char*)value, value_length, &offset, &cp)) return 0;
         required += cp <= 0xffffu ? 1u : 2u;
     }
+    if (required > (size_t)INT32_MAX) return 0;
     if (out_length) *out_length = (int32_t)required;
     if (!dest || required > (size_t)capacity) return required == 0u || !dest ? 1 : 0;
     offset = 0u;
@@ -388,6 +390,7 @@ static int service_text_call(int (*call)(rin_icu_client_t*, const char*, char*, 
     if (!client) return 0;
     status = call(client, input ? input : "", buffer, sizeof(buffer), &length);
     if (status == RIN_ICU_STATUS_NO_SPACE) {
+        if (length == SIZE_MAX) return 0;
         dynamic = (char*)malloc(length + 1u);
         if (!dynamic) return 0;
         status = call(client, input ? input : "", dynamic, length + 1u, &length);
@@ -425,6 +428,10 @@ static int normalize_utf16(NormalizationForm form, const UChar* source, int32_t 
         free(input);
         return -1;
     }
+    if (source_bytes > (SIZE_MAX - 64u) / 12u) {
+        free(input);
+        return -1;
+    }
     output = (char*)malloc(source_bytes * 12u + 64u);
     if (!output) {
         free(input);
@@ -452,7 +459,9 @@ static int case_map(const UChar* source, int32_t source_length, UChar* dest, int
     int status;
     if (!input) return 0;
     client = product_client();
-    output = client ? (char*)malloc(source_bytes * 4u + 64u) : NULL;
+    output = client && source_bytes <= (SIZE_MAX - 64u) / 4u
+        ? (char*)malloc(source_bytes * 4u + 64u)
+        : NULL;
     if (!output) {
         free(input);
         return 0;
@@ -873,8 +882,9 @@ int32_t GlobalizationNative_GetLocaleInfoGroupingSizes(const UChar* locale, Loca
 
 int32_t GlobalizationNative_GetCalendars(const UChar* locale, CalendarId* calendars, int32_t capacity)
 {
-    (void)locale;
-    if (calendars && capacity > 0) calendars[0] = 1;
+    RinIcuDataLocaleRecord record;
+    if (!calendars || capacity <= 0 || !get_locale_record(locale, &record)) return 0;
+    calendars[0] = 1;
     return 1;
 }
 
@@ -883,10 +893,18 @@ ResultCode GlobalizationNative_GetCalendarInfo(const UChar* locale, CalendarId c
     RinIcuDataLocaleRecord record;
     char pattern[128];
     const char* text = "gregorian";
-    if (calendar != 1 || !get_locale_record(locale, &record)) return UnknownError;
-    if (kind == CalendarData_MonthDay || kind == CalendarData_ShortDates || kind == CalendarData_LongDates || kind == CalendarData_YearMonths) {
-        if (!product_pattern(record.date_pattern, sizeof(record.date_pattern), 0, kind == CalendarData_MonthDay, pattern, sizeof(pattern))) return UnknownError;
-        text = pattern;
+    if (calendar != 1 || capacity < 0 || !get_locale_record(locale, &record)) return UnknownError;
+    switch (kind) {
+        case CalendarData_NativeName:
+            break;
+        case CalendarData_MonthDay:
+        case CalendarData_ShortDates:
+        case CalendarData_LongDates:
+            if (!product_pattern(record.date_pattern, sizeof(record.date_pattern), 0, kind == CalendarData_MonthDay, pattern, sizeof(pattern))) return UnknownError;
+            text = pattern;
+            break;
+        default:
+            return UnknownError;
     }
     return copy_utf8(text, strlen(text), value, capacity) > 0 ? Success : InsufficientBuffer;
 }
@@ -894,11 +912,23 @@ ResultCode GlobalizationNative_GetCalendarInfo(const UChar* locale, CalendarId c
 int32_t GlobalizationNative_EnumCalendarInfo(EnumCalendarInfoCallback callback, const UChar* locale, CalendarId calendar, CalendarDataType kind, const void* context)
 {
     static const UChar gregorian[] = { 'g','r','e','g','o','r','i','a','n',0 };
-    (void)locale;
-    (void)calendar;
-    (void)kind;
-    if (!callback) return 0;
-    callback(gregorian, context);
+    RinIcuDataLocaleRecord record;
+    UChar pattern[128];
+    int32_t pattern_length;
+    if (!callback || calendar != 1 || !get_locale_record(locale, &record)) return 0;
+    if (kind == CalendarData_NativeName) {
+        callback(gregorian, context);
+        return 1;
+    }
+    if (kind != CalendarData_ShortDates && kind != CalendarData_LongDates) return 0;
+    {
+        char product_format[128];
+        if (!product_pattern(record.date_pattern, sizeof(record.date_pattern), 0, 0, product_format, sizeof(product_format))) return 0;
+        pattern_length = copy_utf8(product_format, strlen(product_format), pattern, (int32_t)(sizeof(pattern) / sizeof(pattern[0])));
+    }
+    if (pattern_length <= 0) return 0;
+    pattern[pattern_length] = 0;
+    callback(pattern, context);
     return 1;
 }
 

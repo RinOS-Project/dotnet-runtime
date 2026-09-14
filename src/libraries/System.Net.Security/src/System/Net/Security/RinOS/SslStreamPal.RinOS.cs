@@ -527,7 +527,7 @@ namespace System.Net.Security
                     X509ChainTrustMode.CustomRootTrust;
                 byte[] trust = useCustomTrust
                     ? BuildCustomTrustBundle(chainPolicy!.CustomTrustStore)
-                    : File.ReadAllBytes(TrustStorePath);
+                    : LoadProductTrustBundle();
                 try
                 {
                     if (trust.Length > MaxTrustStoreBytes)
@@ -583,42 +583,76 @@ namespace System.Net.Security
             }
 
             byte[][] rawCertificates = new byte[certificates.Count][];
-            int bundleLength = 8;
-            for (int i = 0; i < rawCertificates.Length; i++)
+            try
             {
-                byte[] raw = certificates[i].RawData;
-                if (raw.Length == 0 || raw.Length > ushort.MaxValue)
+                int bundleLength = 8;
+                for (int i = 0; i < rawCertificates.Length; i++)
                 {
-                    throw new AuthenticationException(
-                        "RinTLS received an invalid custom trust anchor.");
+                    byte[] raw = certificates[i].RawData;
+                    if (raw.Length == 0 || raw.Length > ushort.MaxValue)
+                    {
+                        throw new AuthenticationException(
+                            "RinTLS received an invalid custom trust anchor.");
+                    }
+
+                    rawCertificates[i] = raw;
+                    bundleLength = checked(bundleLength + 4 + raw.Length);
+                    if (bundleLength > MaxTrustStoreBytes)
+                    {
+                        throw new AuthenticationException(
+                            "RinTLS custom trust bundle is too large.");
+                    }
                 }
 
-                rawCertificates[i] = raw;
-                bundleLength = checked(bundleLength + 4 + raw.Length);
-                if (bundleLength > MaxTrustStoreBytes)
+                byte[] bundle = new byte[bundleLength];
+                bundle[0] = (byte)'R';
+                bundle[1] = (byte)'C';
+                bundle[2] = (byte)'A';
+                bundle[3] = (byte)'1';
+                WriteUInt32LittleEndian(bundle, 4, rawCertificates.Length);
+
+                int offset = 8;
+                foreach (byte[] raw in rawCertificates)
                 {
-                    throw new AuthenticationException(
-                        "RinTLS custom trust bundle is too large.");
+                    WriteUInt32LittleEndian(bundle, offset, raw.Length);
+                    offset += 4;
+                    raw.AsSpan().CopyTo(bundle.AsSpan(offset));
+                    offset += raw.Length;
+                }
+
+                return bundle;
+            }
+            finally
+            {
+                foreach (byte[]? raw in rawCertificates)
+                {
+                    if (raw is not null)
+                    {
+                        CryptographicOperations.ZeroMemory(raw);
+                    }
                 }
             }
+        }
 
-            byte[] bundle = new byte[bundleLength];
-            bundle[0] = (byte)'R';
-            bundle[1] = (byte)'C';
-            bundle[2] = (byte)'A';
-            bundle[3] = (byte)'1';
-            WriteUInt32LittleEndian(bundle, 4, rawCertificates.Length);
-
-            int offset = 8;
-            foreach (byte[] raw in rawCertificates)
+        private static byte[] LoadProductTrustBundle()
+        {
+            FileInfo trustInfo = new FileInfo(TrustStorePath);
+            if (!trustInfo.Exists || trustInfo.Length <= 0 ||
+                trustInfo.Length > MaxTrustStoreBytes)
             {
-                WriteUInt32LittleEndian(bundle, offset, raw.Length);
-                offset += 4;
-                raw.AsSpan().CopyTo(bundle.AsSpan(offset));
-                offset += raw.Length;
+                throw new AuthenticationException(
+                    "RinTLS product trust bundle is missing or too large.");
             }
 
-            return bundle;
+            byte[] trust = File.ReadAllBytes(TrustStorePath);
+            if (trust.Length == 0 || trust.Length > MaxTrustStoreBytes)
+            {
+                CryptographicOperations.ZeroMemory(trust);
+                throw new AuthenticationException(
+                    "RinTLS product trust bundle is missing or too large.");
+            }
+
+            return trust;
         }
 
         private static void WriteUInt32LittleEndian(

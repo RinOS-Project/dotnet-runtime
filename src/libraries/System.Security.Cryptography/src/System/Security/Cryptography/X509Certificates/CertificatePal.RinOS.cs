@@ -20,17 +20,22 @@ namespace System.Security.Cryptography.X509Certificates
     {
         private CertificateData _certificate;
         private bool _disposed;
+        private AsymmetricAlgorithm? _privateKey;
         private X500DistinguishedName? _subjectName;
         private X500DistinguishedName? _issuerName;
 
-        internal RinOSCertificatePal(ReadOnlySpan<byte> rawData)
+        internal RinOSCertificatePal(
+            ReadOnlySpan<byte> rawData,
+            AsymmetricAlgorithm? privateKey = null)
         {
             try
             {
                 _certificate = new CertificateData(rawData.ToArray());
+                _privateKey = privateKey;
             }
             catch (AsnContentException e)
             {
+                privateKey?.Dispose();
                 throw new CryptographicException(SR.Cryptography_Der_Invalid_Encoding, e);
             }
         }
@@ -64,7 +69,7 @@ namespace System.Security.Cryptography.X509Certificates
             return FromBlob(File.ReadAllBytes(fileName), password, keyStorageFlags);
         }
 
-        public bool HasPrivateKey => false;
+        public bool HasPrivateKey => _privateKey is not null;
 
         public IntPtr Handle
         {
@@ -277,10 +282,29 @@ namespace System.Security.Cryptography.X509Certificates
             }
         }
 
-        public RSA? GetRSAPrivateKey() => null;
-        public DSA? GetDSAPrivateKey() => null;
-        public ECDsa? GetECDsaPrivateKey() => null;
-        public ECDiffieHellman? GetECDiffieHellmanPrivateKey() => null;
+        public RSA? GetRSAPrivateKey()
+        {
+            ThrowIfDisposed();
+            return _privateKey is RSA rsa ? CloneRsa(rsa) : null;
+        }
+
+        public DSA? GetDSAPrivateKey()
+        {
+            ThrowIfDisposed();
+            return null;
+        }
+
+        public ECDsa? GetECDsaPrivateKey()
+        {
+            ThrowIfDisposed();
+            return _privateKey is ECDsa ecdsa ? CloneEcdsa(ecdsa) : null;
+        }
+
+        public ECDiffieHellman? GetECDiffieHellmanPrivateKey()
+        {
+            ThrowIfDisposed();
+            return _privateKey is ECDiffieHellman ecdh ? CloneEcdh(ecdh) : null;
+        }
         public MLDsa? GetMLDsaPrivateKey() => null;
         public MLKem? GetMLKemPrivateKey() => null;
         public SlhDsa? GetSlhDsaPrivateKey() => null;
@@ -294,12 +318,21 @@ namespace System.Security.Cryptography.X509Certificates
         public void AppendPrivateKeyInfo(StringBuilder sb)
         {
             ArgumentNullException.ThrowIfNull(sb);
+            ThrowIfDisposed();
+            if (!HasPrivateKey)
+            {
+                return;
+            }
+
+            sb.AppendLine();
+            sb.AppendLine();
+            sb.AppendLine("[Private Key]");
         }
 
-        public ICertificatePal CopyWithPrivateKey(DSA privateKey) => ThrowPrivateKeyUnsupported();
-        public ICertificatePal CopyWithPrivateKey(ECDsa privateKey) => ThrowPrivateKeyUnsupported();
-        public ICertificatePal CopyWithPrivateKey(RSA privateKey) => ThrowPrivateKeyUnsupported();
-        public ICertificatePal CopyWithPrivateKey(ECDiffieHellman privateKey) => ThrowPrivateKeyUnsupported();
+        public ICertificatePal CopyWithPrivateKey(DSA privateKey) => ThrowAlgorithmUnsupported(privateKey);
+        public ICertificatePal CopyWithPrivateKey(ECDsa privateKey) => CopyWithPrivateKeyCore(privateKey);
+        public ICertificatePal CopyWithPrivateKey(RSA privateKey) => CopyWithPrivateKeyCore(privateKey);
+        public ICertificatePal CopyWithPrivateKey(ECDiffieHellman privateKey) => CopyWithPrivateKeyCore(privateKey);
         public ICertificatePal CopyWithPrivateKey(MLDsa privateKey) => ThrowPrivateKeyUnsupported();
         public ICertificatePal CopyWithPrivateKey(MLKem privateKey) => ThrowPrivateKeyUnsupported();
         public ICertificatePal CopyWithPrivateKey(SlhDsa privateKey) => ThrowPrivateKeyUnsupported();
@@ -323,6 +356,8 @@ namespace System.Security.Cryptography.X509Certificates
 
         public void Dispose()
         {
+            _privateKey?.Dispose();
+            _privateKey = null;
             _disposed = true;
             _certificate = default;
             _subjectName = null;
@@ -337,10 +372,137 @@ namespace System.Security.Cryptography.X509Certificates
             }
         }
 
+        private ICertificatePal CopyWithPrivateKeyCore(AsymmetricAlgorithm privateKey)
+        {
+            ThrowIfDisposed();
+            ArgumentNullException.ThrowIfNull(privateKey);
+            if (HasPrivateKey)
+            {
+                throw new InvalidOperationException(SR.Cryptography_Cert_AlreadyHasPrivateKey);
+            }
+
+            AsymmetricAlgorithm clone = privateKey switch
+            {
+                RSA rsa => CloneRsa(rsa),
+                ECDsa ecdsa => CloneEcdsa(ecdsa),
+                ECDiffieHellman ecdh => CloneEcdh(ecdh),
+                _ => throw new PlatformNotSupportedException(
+                    "RinOS certificate PAL supports RSA, ECDSA, and ECDH private keys.")
+            };
+
+            try
+            {
+                return new RinOSCertificatePal(_certificate.RawData, clone);
+            }
+            catch
+            {
+                clone.Dispose();
+                throw;
+            }
+        }
+
+        private ICertificatePal ThrowAlgorithmUnsupported(AsymmetricAlgorithm privateKey)
+        {
+            ThrowIfDisposed();
+            ArgumentNullException.ThrowIfNull(privateKey);
+            throw new PlatformNotSupportedException(
+                "RinOS certificate PAL does not support DSA private keys.");
+        }
+
         private ICertificatePal ThrowPrivateKeyUnsupported()
         {
             ThrowIfDisposed();
             throw new PlatformNotSupportedException("RinOS certificate PAL does not attach private keys.");
+        }
+
+        private static RSA CloneRsa(RSA source)
+        {
+            RSA clone = RSA.Create();
+            RSAParameters parameters = default;
+            try
+            {
+                parameters = source.ExportParameters(true);
+                clone.ImportParameters(parameters);
+                return clone;
+            }
+            catch
+            {
+                clone.Dispose();
+                throw;
+            }
+            finally
+            {
+                Clear(parameters);
+            }
+        }
+
+        private static ECDsa CloneEcdsa(ECDsa source)
+        {
+            ECDsa clone = ECDsa.Create();
+            ECParameters parameters = default;
+            try
+            {
+                parameters = source.ExportParameters(true);
+                clone.ImportParameters(parameters);
+                return clone;
+            }
+            catch
+            {
+                clone.Dispose();
+                throw;
+            }
+            finally
+            {
+                Clear(parameters);
+            }
+        }
+
+        private static ECDiffieHellman CloneEcdh(ECDiffieHellman source)
+        {
+            ECDiffieHellman clone = ECDiffieHellman.Create();
+            ECParameters parameters = default;
+            try
+            {
+                parameters = source.ExportParameters(true);
+                clone.ImportParameters(parameters);
+                return clone;
+            }
+            catch
+            {
+                clone.Dispose();
+                throw;
+            }
+            finally
+            {
+                Clear(parameters);
+            }
+        }
+
+        private static void Clear(RSAParameters parameters)
+        {
+            Clear(parameters.Modulus);
+            Clear(parameters.Exponent);
+            Clear(parameters.D);
+            Clear(parameters.P);
+            Clear(parameters.Q);
+            Clear(parameters.DP);
+            Clear(parameters.DQ);
+            Clear(parameters.InverseQ);
+        }
+
+        private static void Clear(ECParameters parameters)
+        {
+            Clear(parameters.Q.X);
+            Clear(parameters.Q.Y);
+            Clear(parameters.D);
+        }
+
+        private static void Clear(byte[]? value)
+        {
+            if (value is not null)
+            {
+                CryptographicOperations.ZeroMemory(value);
+            }
         }
 
         internal static ICertificatePal FromHandle(IntPtr handle) =>

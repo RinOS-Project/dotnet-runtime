@@ -3,14 +3,14 @@ project(createdump)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 include_directories(BEFORE ${VM_DIR})
-if(CLR_CMAKE_HOST_OSX)
+if(CLR_CMAKE_TARGET_OSX)
   include_directories(${CLR_DIR}/inc/llvm)
-endif(CLR_CMAKE_HOST_OSX)
+endif(CLR_CMAKE_TARGET_OSX)
 
 remove_definitions(-DUNICODE)
 remove_definitions(-D_UNICODE)
 
-if(CLR_CMAKE_HOST_WIN32)
+if(CLR_CMAKE_TARGET_WIN32)
 
     set(CREATEDUMP_SOURCES
         main.cpp
@@ -35,9 +35,12 @@ if(CLR_CMAKE_HOST_WIN32)
         ntdll.lib
     )
 
-else(CLR_CMAKE_HOST_WIN32)
+else(CLR_CMAKE_TARGET_WIN32)
 
-    if(NOT DEFINED ENV{ROOTFS_DIR})
+    if(CLR_CMAKE_TARGET_RINOS)
+      # RinOS headers come from the target toolchain. Never add the build
+      # machine's /usr/local headers to a cross-target createdump.
+    elseif(NOT DEFINED ENV{ROOTFS_DIR})
       include_directories(SYSTEM /usr/local/include)
     elseif (CLR_CMAKE_TARGET_FREEBSD)
       include_directories(SYSTEM $ENV{ROOTFS_DIR}/usr/local/include)
@@ -49,11 +52,11 @@ else(CLR_CMAKE_HOST_WIN32)
     # For more information: http://www.cmake.org/Wiki/CMake_RPATH_handling.
     if (CORECLR_SET_RPATH)
       set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
-      if(CLR_CMAKE_HOST_OSX)
+      if(CLR_CMAKE_TARGET_OSX)
         set(CMAKE_INSTALL_RPATH "@loader_path")
       else()
         set(CMAKE_INSTALL_RPATH "\$ORIGIN")
-      endif(CLR_CMAKE_HOST_OSX)
+      endif(CLR_CMAKE_TARGET_OSX)
     endif (CORECLR_SET_RPATH)
 
     # This is so we can include "version.c"
@@ -70,7 +73,7 @@ else(CLR_CMAKE_HOST_WIN32)
         crashreportwriter.cpp
     )
 
-if(CLR_CMAKE_HOST_OSX)
+if(CLR_CMAKE_TARGET_OSX)
     add_library_clr(createdump_static
         STATIC
         crashinfomac.cpp
@@ -86,7 +89,7 @@ else()
         dumpwriterelf.cpp
         ${CREATEDUMP_SOURCES}
     )
-endif(CLR_CMAKE_HOST_OSX)
+endif(CLR_CMAKE_TARGET_OSX)
 target_link_libraries(createdump_static PRIVATE minipal)
 
     add_executable_clr(createdump
@@ -102,11 +105,11 @@ target_link_libraries(createdump_static PRIVATE minipal)
         ${CMAKE_DL_LIBS}
     )
 
-endif(CLR_CMAKE_HOST_WIN32)
+endif(CLR_CMAKE_TARGET_WIN32)
 
 target_link_libraries(createdump PRIVATE minipal)
 
-if (CLR_CMAKE_HOST_APPLE)
+if (CLR_CMAKE_TARGET_APPLE)
     adhoc_sign_with_entitlements(createdump "${CLR_ENG_NATIVE_DIR}/createdump-entitlements.plist")
 endif()
 

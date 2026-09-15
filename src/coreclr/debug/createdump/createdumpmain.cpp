@@ -4,7 +4,7 @@
 #include "createdump.h"
 #include "minipal/time.h"
 
-#ifdef HOST_WINDOWS
+#ifdef TARGET_WINDOWS
 #define DEFAULT_DUMP_PATH "%TEMP%\\"
 #define DEFAULT_DUMP_TEMPLATE "dump.%p.dmp"
 #else
@@ -12,7 +12,7 @@
 #define DEFAULT_DUMP_TEMPLATE "coredump.%p"
 #endif
 
-#ifdef HOST_UNIX
+#ifdef TARGET_UNIX
 const char* g_help = "createdump [options] pid\n"
 #else
 const char* g_help = "createdump [options]\n"
@@ -29,7 +29,7 @@ const char* g_help = "createdump [options]\n"
 "-d, --diag - enable diagnostic messages.\n"
 "-v, --verbose - enable verbose diagnostic messages.\n"
 "-l, --logtofile - file path and name to log diagnostic messages.\n"
-#ifdef HOST_UNIX
+#ifdef TARGET_UNIX
 "--crashreport - write crash report file (dump file path + .crashreport.json).\n"
 "--crashreportonly - write crash report file only (no dump).\n"
 "--crashthread <id> - the thread id of the crashing thread.\n"
@@ -52,7 +52,7 @@ uint64_t g_startTime = 0;
 //
 int createdump_main(const int argc, const char* argv[])
 {
-#ifdef HOST_UNIX
+#ifdef TARGET_UNIX
     CLRConfigNoCache waitForAttach = CLRConfigNoCache::Get("CreateDumpWaitForAttach", /*noprefix*/ false, &getenv);
     DWORD value = 0;
     if (waitForAttach.IsSet() && waitForAttach.TryAsInteger(10, value) && value == 1)
@@ -103,7 +103,7 @@ int createdump_main(const int argc, const char* argv[])
             {
                 options.DumpType = DumpType::Full;
             }
-#ifdef HOST_UNIX
+#ifdef TARGET_UNIX
             else if (strcmp(*argv, "--crashreport") == 0)
             {
                 options.CrashReport = true;
@@ -172,7 +172,7 @@ int createdump_main(const int argc, const char* argv[])
             }
             else
             {
-#ifdef HOST_UNIX
+#ifdef TARGET_UNIX
                 options.Pid = atoi(*argv);
 #else
                 printf_error("The pid argument is no longer supported\n");
@@ -183,7 +183,7 @@ int createdump_main(const int argc, const char* argv[])
         }
     }
 
-#ifdef HOST_UNIX
+#ifdef TARGET_UNIX
     if (options.Pid == 0)
     {
         help = true;
@@ -331,7 +331,7 @@ printf_error(const char* format, ...)
     va_end(args);
 }
 
-#ifdef HOST_UNIX
+#ifdef TARGET_UNIX
 
 static void
 trace_prefix(const char* format, va_list args)
@@ -399,4 +399,4 @@ void initialize_static_createdump()
     PAL_SetCreateDumpCallback(createdump_main);
 }
 
-#endif // HOST_UNIX
+#endif // TARGET_UNIX

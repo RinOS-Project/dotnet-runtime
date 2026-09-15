@@ -11,7 +11,7 @@ extern bool g_diagnosticsVerbose;
 
 #include <minipal/types.h>
 
-#ifdef HOST_UNIX
+#ifdef TARGET_UNIX
 extern void trace_printf(const char* format, ...) MINIPAL_ATTR_FORMAT_PRINTF(1, 2);
 extern void trace_verbose_printf(const char* format, ...) MINIPAL_ATTR_FORMAT_PRINTF(1, 2);
 #define TRACE(args...) trace_printf(args)
@@ -24,13 +24,13 @@ extern void trace_verbose_printf(const char* format, ...) MINIPAL_ATTR_FORMAT_PR
 // Keep in sync with the definitions in dbgutil.cpp and daccess.h
 #define DACCESS_TABLE_SYMBOL "g_dacTable"
 
-#ifdef HOST_64BIT
+#ifdef TARGET_64BIT
 #define PRIA "016"
 #else
 #define PRIA "08"
 #endif
 
-#ifdef HOST_UNIX
+#ifdef TARGET_UNIX
 #include "config.h"
 #endif
 
@@ -64,7 +64,7 @@ typedef int T_CONTEXT;
 #undef UNDEF__ASSERTE
 #endif // UNDEF__ASSERTE
 
-#ifdef HOST_UNIX
+#ifdef TARGET_UNIX
 #include <minipal/strings.h>
 #include <minipal/utf8.h>
 #include <dn-u16.h>
@@ -135,7 +135,7 @@ typedef struct
     uint64_t ExceptionRecord;
 } CreateDumpOptions;
 
-#ifdef HOST_UNIX
+#ifdef TARGET_UNIX
 #ifdef __APPLE__
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
@@ -161,7 +161,7 @@ extern bool FormatDumpName(std::string& name, const char* pattern, const char* e
 extern const char* GetDumpTypeString(DumpType dumpType);
 extern MINIDUMP_TYPE GetMiniDumpType(DumpType dumpType);
 
-#ifdef HOST_WINDOWS
+#ifdef TARGET_WINDOWS
 extern std::string GetLastErrorString();
 extern DWORD GetTempPathWrapper(IN DWORD nBufferLength, OUT LPSTR lpBuffer);
 #else

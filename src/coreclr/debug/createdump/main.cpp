@@ -6,7 +6,7 @@
 extern int createdump_main(const int argc, const char* argv[]);
 extern void UninitializePAL(int exitCode);
 
-#if defined(HOST_ARM64)
+#if defined(TARGET_ARM64)
 // Flag to check if atomics feature is available on
 // the machine
 bool g_arm64_atomics_present = false;
@@ -18,13 +18,13 @@ bool g_arm64_atomics_present = false;
 int __cdecl main(const int argc, const char* argv[])
 {
     int exitCode = createdump_main(argc, argv);
-#ifdef HOST_UNIX
+#ifdef TARGET_UNIX
     UninitializePAL(exitCode);
 #endif
     return exitCode;
 }
 
-#ifdef HOST_UNIX
+#ifdef TARGET_UNIX
 
 PALIMPORT
 VOID

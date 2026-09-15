@@ -10,9 +10,12 @@ add_subdirectory(di)
 if(FEATURE_INPROC_CRASHREPORT AND NOT CLR_CROSS_COMPONENTS_BUILD)
     add_subdirectory(crashreport)
 endif()
-if(CLR_CMAKE_HOST_WIN32)
+# A Windows-hosted RinOS cross build must still produce the target Unix
+# createdump. The createdump subdirectory selects its sources from target
+# platform variables, so this is not a host utility selection.
+if(CLR_CMAKE_HOST_WIN32 OR CLR_CMAKE_TARGET_RINOS)
     add_subdirectory(createdump)
-endif(CLR_CMAKE_HOST_WIN32)
+endif(CLR_CMAKE_HOST_WIN32 OR CLR_CMAKE_TARGET_RINOS)
 if(FEATURE_SINGLE_FILE_DIAGNOSTICS)
     add_subdirectory(runtimeinfo)
 endif(FEATURE_SINGLE_FILE_DIAGNOSTICS)

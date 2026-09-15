@@ -65,17 +65,19 @@ if(NOT DEFINED FEATURE_PERFTRACING)
 endif(NOT DEFINED FEATURE_PERFTRACING)
 
 if(NOT DEFINED FEATURE_DBGIPC)
-  if(CLR_CMAKE_TARGET_UNIX)
+  if(CLR_CMAKE_TARGET_UNIX OR CLR_CMAKE_TARGET_RINOS)
+    # RinOS uses the target Unix-shaped diagnostic PAL and its own IPC
+    # transport; do not let the build host suppress the target feature.
     set(FEATURE_DBGIPC 1)
   endif()
 endif(NOT DEFINED FEATURE_DBGIPC)
 
 if(NOT DEFINED FEATURE_CORPROFILER)
   # ICorProfiler isn't supported on non-desktop targets or WASM scenarios
-  if(NOT CLR_CMAKE_TARGET_ARCH_WASM
+  if(CLR_CMAKE_TARGET_RINOS OR (NOT CLR_CMAKE_TARGET_ARCH_WASM
     # AND NOT CLR_CMAKE_TARGET_ANDROID
     # AND NOT CLR_CMAKE_TARGET_APPLE_MOBILE
-    )
+    ))
     set(FEATURE_CORPROFILER 1)
   endif()
 endif()
@@ -112,7 +114,11 @@ if(NOT DEFINED FEATURE_SINGLE_FILE_DIAGNOSTICS)
 endif(NOT DEFINED FEATURE_SINGLE_FILE_DIAGNOSTICS)
 
 if(NOT DEFINED FEATURE_INPROC_CRASHREPORT)
-  if(CLR_CMAKE_TARGET_WIN32 OR CLR_CMAKE_TARGET_BROWSER OR CLR_CMAKE_TARGET_WASI)
+  if(CLR_CMAKE_TARGET_RINOS)
+    # RinOS supplies the Unix-shaped fatal-signal PAL callback used by the
+    # in-process report writer. Keep this target policy explicit.
+    set(FEATURE_INPROC_CRASHREPORT 1)
+  elseif(CLR_CMAKE_TARGET_WIN32 OR CLR_CMAKE_TARGET_BROWSER OR CLR_CMAKE_TARGET_WASI)
     # Windows, which requires a different native crash-context implementation.
     # Browser and WASI, which do not provide the required native fatal-signal process model.
     set(FEATURE_INPROC_CRASHREPORT 0)

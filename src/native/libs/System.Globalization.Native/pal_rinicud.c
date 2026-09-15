@@ -899,7 +899,7 @@ int32_t GlobalizationNative_GetLocaleInfoInt(const UChar* locale, LocaleNumberDa
         case LocaleNumber_MonetaryFractionalDigitsCount: *value = (int32_t)record.currency_digits; break;
         case LocaleNumber_Monetary: *value = record.currency_code[0] != '\0'; break;
         case LocaleNumber_Digit: *value = 0; break;
-        default: *value = 0; break;
+        default: return 0;
     }
     return 1;
 }
@@ -969,16 +969,18 @@ int32_t GlobalizationNative_EnumCalendarInfo(EnumCalendarInfoCallback callback, 
 
 int32_t GlobalizationNative_GetLatestJapaneseEra(void)
 {
-    return 5;
+    /* rinicud currently publishes Gregorian data only; do not invent a
+       Japanese era from a stale hardcoded value. */
+    return 0;
 }
 
 int32_t GlobalizationNative_GetJapaneseEraStartDate(int32_t era, int32_t* year, int32_t* month, int32_t* day)
 {
-    if (!year || !month || !day || era != 5) return 0;
-    *year = 2019;
-    *month = 5;
-    *day = 1;
-    return 1;
+    (void)era;
+    (void)year;
+    (void)month;
+    (void)day;
+    return 0;
 }
 
 int32_t GlobalizationNative_LoadICU(void)
@@ -1032,13 +1034,25 @@ static int u16_ascii_equal(const UChar* value, size_t length, const char* ascii)
 int32_t GlobalizationNative_ToAscii(uint32_t flags, const UChar* source, int32_t source_length, UChar* dest, int32_t dest_length)
 {
     (void)flags;
-    return copy_ascii_id(source, source_length, dest, dest_length);
+    (void)source;
+    (void)source_length;
+    (void)dest;
+    (void)dest_length;
+    /* No product IDNA ABI is available yet. Identity-copying a Unicode name
+       would report a false successful conversion. */
+    return 0;
 }
 
 int32_t GlobalizationNative_ToUnicode(uint32_t flags, const UChar* source, int32_t source_length, UChar* dest, int32_t dest_length)
 {
     (void)flags;
-    return copy_ascii_id(source, source_length, dest, dest_length);
+    (void)source;
+    (void)source_length;
+    (void)dest;
+    (void)dest_length;
+    /* Keep the unsupported product boundary explicit until rinicud exposes
+       UTS-46/IDNA conversion. */
+    return 0;
 }
 
 static int timezone_text_call(const UChar* source, UChar* dest, int32_t dest_length, int (*call)(rin_icu_client_t*, const char*, char*, size_t, size_t*))
@@ -1048,24 +1062,18 @@ static int timezone_text_call(const UChar* source, UChar* dest, int32_t dest_len
 
 int32_t GlobalizationNative_WindowsIdToIanaId(const UChar* windows_id, const char* region, UChar* iana_id, int32_t iana_length)
 {
-    static const UChar eastern[] = { 'A','m','e','r','i','c','a','/','N','e','w','_','Y','o','r','k',0 };
-    static const UChar tokyo[] = { 'A','s','i','a','/','T','o','k','y','o',0 };
-    static const UChar utc[] = { 'E','t','c','/','U','T','C',0 };
+    static const UChar eastern_iana[] = { 'A','m','e','r','i','c','a','/','N','e','w','_','Y','o','r','k',0 };
+    static const UChar tokyo_iana[] = { 'A','s','i','a','/','T','o','k','y','o',0 };
+    static const UChar utc_iana[] = { 'E','t','c','/','U','T','C',0 };
+    const UChar* value = NULL;
+    size_t length;
     (void)region;
-    if (!windows_id) return 0;
-    if (windows_id[0] == 'E' && windows_id[1] == 'a' && windows_id[2] == 's' && windows_id[3] == 't') {
-        if (iana_id && iana_length < (int32_t)(sizeof(eastern) / sizeof(eastern[0]))) return 0;
-        if (iana_id) memcpy(iana_id, eastern, sizeof(eastern));
-        return (int32_t)(sizeof(eastern) / sizeof(eastern[0]) - 1u);
-    }
-    if (windows_id[0] == 'T' && windows_id[1] == 'o' && windows_id[2] == 'k') {
-        if (iana_id && iana_length < (int32_t)(sizeof(tokyo) / sizeof(tokyo[0]))) return 0;
-        if (iana_id) memcpy(iana_id, tokyo, sizeof(tokyo));
-        return (int32_t)(sizeof(tokyo) / sizeof(tokyo[0]) - 1u);
-    }
-    if (iana_id && iana_length < (int32_t)(sizeof(utc) / sizeof(utc[0]))) return 0;
-    if (iana_id) memcpy(iana_id, utc, sizeof(utc));
-    return (int32_t)(sizeof(utc) / sizeof(utc[0]) - 1u);
+    length = u16_length(windows_id, -1);
+    if (u16_ascii_equal(windows_id, length, "Eastern Standard Time")) value = eastern_iana;
+    else if (u16_ascii_equal(windows_id, length, "Tokyo Standard Time")) value = tokyo_iana;
+    else if (u16_ascii_equal(windows_id, length, "UTC")) value = utc_iana;
+    if (!value) return 0;
+    return copy_ascii_id(value, (int32_t)u16_length(value, -1), iana_id, iana_length);
 }
 
 int32_t GlobalizationNative_IanaIdToWindowsId(const UChar* iana_id, UChar* windows_id, int32_t windows_length)
@@ -1074,18 +1082,22 @@ int32_t GlobalizationNative_IanaIdToWindowsId(const UChar* iana_id, UChar* windo
     static const UChar tokyo[] = { 'T','o','k','y','o',' ','S','t','a','n','d','a','r','d',' ','T','i','m','e',0 };
     static const UChar utc[] = { 'U','T','C',0 };
     size_t length = u16_length(iana_id, -1);
-    const UChar* value = utc;
+    const UChar* value = NULL;
     if (u16_ascii_equal(iana_id, length, "America/New_York")) value = eastern;
     else if (u16_ascii_equal(iana_id, length, "Asia/Tokyo")) value = tokyo;
-    length = u16_length(value, -1);
-    if (windows_id && windows_length < (int32_t)length + 1) return 0;
-    if (windows_id) memcpy(windows_id, value, (length + 1u) * sizeof(UChar));
-    return 1;
+    else if (u16_ascii_equal(iana_id, length, "Etc/UTC")) value = utc;
+    if (!value) return 0;
+    return copy_ascii_id(value, (int32_t)u16_length(value, -1), windows_id, windows_length);
 }
 
 ResultCode GlobalizationNative_GetTimeZoneDisplayName(const UChar* locale, const UChar* time_zone, TimeZoneDisplayNameType type, UChar* result, int32_t result_length)
 {
     (void)locale;
+    (void)time_zone;
     (void)type;
-    return copy_ascii_id(time_zone, (int32_t)u16_length(time_zone, -1), result, result_length) >= 0 ? Success : UnknownError;
+    (void)result;
+    (void)result_length;
+    /* rinicud has no localized timezone-name operation; returning the ID as a
+       display name is a false success. */
+    return UnknownError;
 }

@@ -8,6 +8,7 @@ set(CRASHREPORT_SOURCES
     inproccrashreportlifecycle.cpp
     inproccrashreporter.cpp
     inproccrashreportwatchdog.cpp
+    rinoscrashhandoff.cpp
 )
 
 include(configure.cmake)

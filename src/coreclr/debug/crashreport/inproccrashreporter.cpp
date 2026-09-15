@@ -9,6 +9,7 @@
 #include "inproccrashreportlifecycle.h"
 #include "crashreportstringutils.h"
 #include "inproccrashreportwatchdog.h"
+#include "rinoscrashhandoff.h"
 #include "signalsafeconsolewriter.h"
 #include "signalsafejsonwriter.h"
 #include "signalsafeformatter.h"
@@ -430,6 +431,9 @@ private:
     volatile LONGLONG m_reportInFlightThreadId = 0;
     uint32_t m_frameLimitPerThread = 0;
     InProcCrashReportLifecycle m_lifecycle;
+#if defined(TARGET_RINOS)
+    RinOSCrashReportHandoff m_rinosCrashHandoff;
+#endif
     char m_reportFilePath[CRASHREPORT_PATH_BUFFER_SIZE];
     char m_processName[CRASHREPORT_STRING_BUFFER_SIZE];
     char m_stringScratch[CRASHREPORT_STRING_BUFFER_SIZE];
@@ -640,6 +644,13 @@ InProcCrashReporter::CreateReport(
     EmitThreads(crashKind, context);
     bool jsonSucceeded = EndJsonReport(signal, /*finalizeReportFile*/ jsonEnabled);
     bool consoleSucceeded = EndConsoleReport();
+
+#if defined(TARGET_RINOS)
+    // Publish the notice only after the signal-safe lifecycle has finalized
+    // the local report. The adapter performs no transport work beyond one
+    // non-blocking write from this fatal-signal path.
+    (void)m_rinosCrashHandoff.Notify(signal, jsonEnabled && jsonSucceeded);
+#endif
 
     return jsonSucceeded && consoleSucceeded;
 }
@@ -854,6 +865,12 @@ InProcCrashReporter::InitializeServices(const InProcCrashReporterServicesSetting
     {
         m_lifecycle.Initialize(settings.reportRootPath, settings.maxFileCount);
     }
+
+#if defined(TARGET_RINOS)
+    // Resolve and authenticate crashd before PAL can enter the fatal-signal
+    // callback. Failure leaves local CoreCLR/kernel crash capture intact.
+    (void)m_rinosCrashHandoff.Initialize();
+#endif
 }
 
 void

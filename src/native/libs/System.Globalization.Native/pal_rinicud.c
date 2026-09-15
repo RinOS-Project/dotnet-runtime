@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "../../../../../../public-base/libs/rinicu/include/rinicu/rinicu.h"
+#include "../../../../../../public-base/libs/libunicode/rin_unicode.h"
 
 typedef uint16_t UChar;
 
@@ -490,14 +491,48 @@ void GlobalizationNative_ChangeCaseTurkish(const UChar* source, int32_t source_l
 
 void GlobalizationNative_InitOrdinalCasingPage(int32_t page_number, UChar* target)
 {
-    (void)page_number;
-    if (target) memset(target, 0, 256u * sizeof(UChar));
+    uint32_t first_codepoint;
+    int i;
+    if (!target) return;
+    first_codepoint = ((uint32_t)page_number) << 8;
+    for (i = 0; i < 256; ++i) {
+        target[i] = (UChar)rin_unicode_toupper(first_codepoint + (uint32_t)i);
+    }
+
+    /* Ordinal casing deliberately does not use Turkish-I behavior. */
+    if (first_codepoint == 0x0100u) {
+        target[0x31] = (UChar)0x0131;
+        target[0x7f] = (UChar)0x017f;
+    }
 }
 
 void GlobalizationNative_InitOrdinalLowerCasingPage(int32_t page_number, UChar* target)
 {
-    (void)page_number;
-    if (target) memset(target, 0, 256u * sizeof(UChar));
+    uint32_t first_codepoint;
+    int i;
+    if (!target) return;
+    first_codepoint = ((uint32_t)page_number) << 8;
+    for (i = 0; i < 256; ++i) {
+        target[i] = (UChar)rin_unicode_tolower(first_codepoint + (uint32_t)i);
+    }
+
+    /* Keep ordinal ignore-case equivalence symmetric with the upper table. */
+    switch (first_codepoint) {
+        case 0x0100u:
+            target[0x30] = (UChar)0x0130;
+            break;
+        case 0x0300u:
+            target[0xf4] = (UChar)0x03f4;
+            break;
+        case 0x1e00u:
+            target[0x9e] = (UChar)0x1e9e;
+            break;
+        case 0x2100u:
+            target[0x26] = (UChar)0x2126;
+            target[0x2a] = (UChar)0x212a;
+            target[0x2b] = (UChar)0x212b;
+            break;
+    }
 }
 
 int32_t GlobalizationNative_IsNormalized(NormalizationForm form, const UChar* source, int32_t source_length)

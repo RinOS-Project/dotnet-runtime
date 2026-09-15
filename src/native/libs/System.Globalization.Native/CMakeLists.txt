@@ -82,9 +82,11 @@ include(configure.cmake)
 if (RINOS_USE_RINICUD_BACKEND)
     set(NATIVEGLOBALIZATION_SOURCES
         pal_rinicud.c
+        ${RINOS_REPO_ROOT}/public-base/libs/libunicode/core.c
         ${RINOS_REPO_ROOT}/public-base/libs/rinicu/src/client.c
     )
     include_directories(
+        ${RINOS_REPO_ROOT}/public-base/libs/libunicode
         ${RINOS_REPO_ROOT}/public-base/libs/rinicu/include
         ${RINOS_REPO_ROOT}/public-base/RinOS-SDK/include
     )

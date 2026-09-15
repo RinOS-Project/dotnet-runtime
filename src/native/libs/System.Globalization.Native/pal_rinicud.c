@@ -802,12 +802,40 @@ static int locale_is_english(const UChar* locale)
     return result;
 }
 
+static int locale_parent_name(rin_icu_client_t* client, const char* locale_name, char* parent, size_t capacity)
+{
+    char canonical[128];
+    char* separator;
+    char* underscore;
+    size_t length = 0u;
+    if (!client || !locale_name || !parent || capacity == 0u ||
+        rin_icu_locale_canonicalize(client, locale_name, canonical, sizeof(canonical), &length) != RIN_ICU_STATUS_OK ||
+        length >= sizeof(canonical)) {
+        return 0;
+    }
+    canonical[length] = '\0';
+    separator = strrchr(canonical, '-');
+    underscore = strrchr(canonical, '_');
+    if (!separator || (underscore && underscore > separator)) separator = underscore;
+    if (!separator) {
+        if (capacity < 5u) return 0;
+        memcpy(parent, "root", 5u);
+        return 1;
+    }
+    length = (size_t)(separator - canonical);
+    if (length == 0u || length >= capacity) return 0;
+    memcpy(parent, canonical, length);
+    parent[length] = '\0';
+    return 1;
+}
+
 int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStringData kind, UChar* value, int32_t value_length, const UChar* ui_locale)
 {
     char* locale_name = locale_utf8(locale);
     char* ui_name = locale_utf8(ui_locale);
     RinIcuDataLocaleRecord record;
     char buffer[256];
+    char parent[128];
     const char* field = NULL;
     size_t field_capacity = 0u;
     size_t length = 0u;
@@ -847,7 +875,12 @@ int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStrin
             case LocaleString_PercentSymbol: field = record.percent_sign; field_capacity = sizeof(record.percent_sign); break;
             case LocaleString_Iso639LanguageTwoLetterName: field = record.language; field_capacity = sizeof(record.language); break;
             case LocaleString_Iso3166CountryName: field = record.region; field_capacity = sizeof(record.region); break;
-            case LocaleString_ParentName: field = "root"; field_capacity = 5u; break;
+            case LocaleString_ParentName:
+                if (locale_parent_name(client, locale_name, parent, sizeof(parent))) {
+                    field = parent;
+                    field_capacity = sizeof(parent);
+                }
+                break;
             case LocaleString_Digits: field = "0123456789"; field_capacity = 11u; break;
             default: break;
         }
@@ -858,7 +891,7 @@ int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStrin
         }
     }
     if (status != RIN_ICU_STATUS_OK) {
-        const char* fallback = ".";
+        const char* fallback = NULL;
         if (kind == LocaleString_ThousandSeparator || kind == LocaleString_MonetaryThousandSeparator) fallback = ",";
         else if (kind == LocaleString_MonetarySymbol) fallback = locale_is_english(locale) ? "$" : "¤";
         else if (kind == LocaleString_Iso4217MonetarySymbol) fallback = locale_is_english(locale) ? "USD" : "XXX";
@@ -873,10 +906,12 @@ int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStrin
         else if (kind == LocaleString_PositiveInfinitySymbol) fallback = "Infinity";
         else if (kind == LocaleString_NegativeInfinitySymbol) fallback = "-Infinity";
         else if (kind == LocaleString_Digits) fallback = "0\uffff1\uffff2\uffff3\uffff4\uffff5\uffff6\uffff7\uffff8\uffff9";
-        length = strlen(fallback);
-        if (length >= sizeof(buffer)) length = sizeof(buffer) - 1u;
-        memcpy(buffer, fallback, length);
-        status = RIN_ICU_STATUS_OK;
+        if (fallback) {
+            length = strlen(fallback);
+            if (length >= sizeof(buffer)) length = sizeof(buffer) - 1u;
+            memcpy(buffer, fallback, length);
+            status = RIN_ICU_STATUS_OK;
+        }
     }
     free(locale_name);
     free(ui_name);
@@ -898,7 +933,6 @@ int32_t GlobalizationNative_GetLocaleInfoInt(const UChar* locale, LocaleNumberDa
         case LocaleNumber_FractionalDigitsCount:
         case LocaleNumber_MonetaryFractionalDigitsCount: *value = (int32_t)record.currency_digits; break;
         case LocaleNumber_Monetary: *value = record.currency_code[0] != '\0'; break;
-        case LocaleNumber_Digit: *value = 0; break;
         default: return 0;
     }
     return 1;
@@ -907,8 +941,8 @@ int32_t GlobalizationNative_GetLocaleInfoInt(const UChar* locale, LocaleNumberDa
 int32_t GlobalizationNative_GetLocaleInfoGroupingSizes(const UChar* locale, LocaleNumberData kind, int32_t* primary, int32_t* secondary)
 {
     RinIcuDataLocaleRecord record;
-    (void)kind;
     if (!primary || !secondary) return 0;
+    if (kind != LocaleNumber_Digit && kind != LocaleNumber_Monetary) return 0;
     if (!get_locale_record(locale, &record)) return 0;
     *primary = record.group_sep[0] == '\0' ? 0 : 3;
     *secondary = *primary;

@@ -25,6 +25,18 @@ endif()
 
 # FEATURE_EVENT_TRACE: Enables the full eventing infrastructure (generated FireEtw* functions,
 # EventPipe write calls, ETW on Windows). Set on all platforms except cross-component WASM builds.
+if(CLR_CMAKE_TARGET_RINOS)
+  # RinOS exposes EventPipe through its product diagnostic IPC. Keep the
+  # feature defaults explicit so a host build cannot accidentally inherit a
+  # platform-specific trace configuration.
+  if(NOT DEFINED FEATURE_EVENT_TRACE)
+    set(FEATURE_EVENT_TRACE 1)
+  endif()
+  if(NOT DEFINED FEATURE_PERFTRACING)
+    set(FEATURE_PERFTRACING 1)
+  endif()
+endif()
+
 if(NOT DEFINED FEATURE_EVENT_TRACE)
   if (NOT (CLR_CROSS_COMPONENTS_BUILD AND CLR_CMAKE_TARGET_ARCH_WASM))
     # To actually disable FEATURE_EVENT_TRACE, also change clr.featuredefines.props

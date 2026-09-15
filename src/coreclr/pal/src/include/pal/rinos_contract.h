@@ -24,6 +24,12 @@
 #define RINOS_PAL_NATIVE_LIBRARY_EXT ".rll"
 #define RINOS_PAL_TEMP_DIRECTORY "/tmp/"
 
+/* Diagnostics use the product-owned Unix-domain socket transport. EventPipe
+ * is available on RinOS, but Linux tracepoints are not part of its ABI. */
+#define RINOS_PAL_HAS_EVENTPIPE 1
+#define RINOS_PAL_DIAGNOSTICS_TRANSPORT_UDS 1
+#define RINOS_PAL_HAS_LINUX_TRACEPOINTS 0
+
 /* Exclusive upper bound for user mappings.  This is the product address-space
  * contract, not a host Linux canonical-address guess.  Keep it in the PAL
  * contract so GetSystemInfo/VirtualQuery and the GC/JIT see the same limit as

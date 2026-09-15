@@ -7,6 +7,17 @@
 
 #include "ds-rt-config.h"
 
+/* Select the socket implementation from the target ABI. A Windows host may
+ * cross-build RinOS, so HOST_WIN32 must not decide whether this is a Unix
+ * socket implementation. */
+#if defined(TARGET_UNIX)
+#define DS_IPC_PAL_SOCKET_TARGET_WINDOWS 0
+#elif defined(TARGET_WINDOWS) || defined(HOST_WIN32)
+#define DS_IPC_PAL_SOCKET_TARGET_WINDOWS 1
+#else
+#define DS_IPC_PAL_SOCKET_TARGET_WINDOWS 0
+#endif
+
 #ifdef ENABLE_PERFTRACING
 
 #define DS_IMPL_IPC_PAL_SOCKET_GETTER_SETTER
@@ -21,7 +32,7 @@
 #error "Unsupported PAL socket configuration"
 #endif
 
-#ifndef HOST_WIN32
+#if !DS_IPC_PAL_SOCKET_TARGET_WINDOWS
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -44,7 +55,7 @@
 #endif
 #endif
 
-#ifdef HOST_WIN32
+#if DS_IPC_PAL_SOCKET_TARGET_WINDOWS
 #define DS_IPC_INVALID_SOCKET INVALID_SOCKET
 #define DS_IPC_SOCKET_ERROR SOCKET_ERROR
 #define DS_IPC_SOCKET_ERROR_WOULDBLOCK WSAEWOULDBLOCK
@@ -247,7 +258,7 @@ inline
 int
 ipc_get_last_error (void)
 {
-#ifdef HOST_WIN32
+#if DS_IPC_PAL_SOCKET_TARGET_WINDOWS
 	return WSAGetLastError ();
 #else
 	return errno;
@@ -259,7 +270,7 @@ inline
 void
 ipc_set_last_error (int error)
 {
-#ifdef HOST_WIN32
+#if DS_IPC_PAL_SOCKET_TARGET_WINDOWS
 	WSASetLastError (error);
 #else
 	errno = error;
@@ -273,7 +284,7 @@ ipc_get_last_socket_error (ds_ipc_socket_t s)
 {
 	int opt_value = DS_IPC_SOCKET_ERROR;
 	int result_getsockopt;
-#ifdef HOST_WIN32
+#if DS_IPC_PAL_SOCKET_TARGET_WINDOWS
 	int opt_value_len = sizeof (opt_value);
 	DS_ENTER_BLOCKING_PAL_SECTION;
 	result_getsockopt = getsockopt (s, SOL_SOCKET, SO_ERROR, (char *)&opt_value, &opt_value_len);
@@ -374,9 +385,9 @@ ipc_socket_create_tcp (DiagnosticsIpc *ipc)
 	new_socket = socket (ipc->server_address_family, socket_type, IPPROTO_TCP);
 	if (new_socket != DS_IPC_INVALID_SOCKET) {
 #ifndef SOCK_CLOEXEC
-#ifndef HOST_WIN32
+#if !DS_IPC_PAL_SOCKET_TARGET_WINDOWS
 		fcntl (new_socket, F_SETFD, FD_CLOEXEC); // ignore any failures; this is best effort
-#endif // HOST_WIN32
+#endif // !DS_IPC_PAL_SOCKET_TARGET_WINDOWS
 #endif // SOCK_CLOEXEC
 		int option_value = 1;
 		setsockopt (new_socket, IPPROTO_TCP, TCP_NODELAY, (const char*)&option_value, sizeof (option_value));
@@ -417,7 +428,7 @@ ipc_socket_close (ds_ipc_socket_t s)
 {
 	int result_close;
 	DS_ENTER_BLOCKING_PAL_SECTION;
-#ifdef HOST_WIN32
+#if DS_IPC_PAL_SOCKET_TARGET_WINDOWS
 	result_close = closesocket (s);
 #else
 	result_close = close (s);
@@ -453,7 +464,7 @@ ipc_socket_set_blocking (
 {
 	int result = DS_IPC_SOCKET_ERROR;
 	DS_ENTER_BLOCKING_PAL_SECTION;
-#ifdef HOST_WIN32
+#if DS_IPC_PAL_SOCKET_TARGET_WINDOWS
 	u_long blocking_mode = blocking ? 0 : 1;
 	result = ioctlsocket (s, FIONBIO, &blocking_mode);
 #else
@@ -475,7 +486,7 @@ ipc_poll_fds (
 {
 	int result_poll;
 	DS_ENTER_BLOCKING_PAL_SECTION;
-#ifdef HOST_WIN32
+#if DS_IPC_PAL_SOCKET_TARGET_WINDOWS
 	result_poll = WSAPoll (fds, (ULONG)nfds, (INT)timeout);
 #else
 #ifndef EP_NO_RT_DEPENDENCY
@@ -556,7 +567,7 @@ ipc_socket_accept (
 #endif
 	} while (ipc_retry_syscall (client_socket));
 
-#ifndef HOST_WIN32
+#if !DS_IPC_PAL_SOCKET_TARGET_WINDOWS
 #if !HAVE_ACCEPT4 || !defined(SOCK_CLOEXEC)
 #if defined(FD_CLOEXEC)
 		if (client_socket != -1)
@@ -1029,7 +1040,7 @@ ipc_free_address (DiagnosticsIpc *ipc)
 bool
 ds_ipc_pal_init (void)
 {
-#ifdef HOST_WIN32
+#if DS_IPC_PAL_SOCKET_TARGET_WINDOWS
 	if (!_ipc_pal_socket_init) {
 		WSADATA wsaData;
 		if (!WSAStartup(MAKEWORD(2, 2), &wsaData))
@@ -1044,7 +1055,7 @@ ds_ipc_pal_init (void)
 bool
 ds_ipc_pal_shutdown (void)
 {
-#ifdef HOST_WIN32
+#if DS_IPC_PAL_SOCKET_TARGET_WINDOWS
 	if (_ipc_pal_socket_init)
 		WSACleanup ();
 #endif

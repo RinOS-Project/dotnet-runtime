@@ -13,6 +13,11 @@ if(NOT CLR_CMAKE_TARGET_ARCH_AMD64)
 endif()
 
 set(CLR_CMAKE_RINOS_PAL 1)
+# EventPipe and the PAL share the product socket ABI. Keep this capability
+# explicit in the target contract so a host header probe cannot change the
+# diagnostics build when RinOS is cross-compiled from Windows or Linux.
+set(HAVE_SYS_SOCKET_H 1)
+set(HAVE_POLL 1)
 # The target unwind ABI is built from the runtime snapshot's bundled
 # libunwind sources.  Never inherit a host system libunwind during a cross
 # configure; its ucontext and register layout are not the RinOS contract.

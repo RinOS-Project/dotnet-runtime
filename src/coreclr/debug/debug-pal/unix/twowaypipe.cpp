@@ -3,11 +3,17 @@
 
 #include <pal.h>
 #include "volatile.h"
+#include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#if defined(TARGET_RINOS)
+#include <sys/socket.h>
+#include <sys/un.h>
+#endif
 #include <limits.h>
+#include <string.h>
 #include <pal_assert.h>
 #include "twowaypipe.h"
 
@@ -34,6 +40,65 @@ static void AbortPipeServerImpl()
 // Defined here and extern-declared in dbgtransportsession.h for use by Debugger::CleanupTransportSocket().
 void (*g_pfnAbortTransportCallback)(void) = nullptr;
 
+#if defined(TARGET_RINOS)
+// RinOS does not expose filesystem FIFOs.  Keep the existing TwoWayPipe
+// abstraction, but back each half-duplex channel with a private pathname UDS.
+// The path is owner-private and the process instance cookie is already part of
+// PAL_GetTransportPipeName(), so a recycled PID cannot attach to an old target.
+static int CreateRinOSUnixServer(const char* path)
+{
+    if (path == nullptr || path[0] == '\0' ||
+        strlen(path) >= sizeof(((struct sockaddr_un*)nullptr)->sun_path))
+    {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+
+    int descriptor = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (descriptor < 0)
+        return -1;
+
+    struct sockaddr_un address = {};
+    address.sun_family = AF_UNIX;
+    memcpy(address.sun_path, path, strlen(path) + 1u);
+    unlink(path);
+    if (bind(descriptor, reinterpret_cast<const sockaddr*>(&address),
+             sizeof(address)) != 0 ||
+        chmod(path, S_IRUSR | S_IWUSR) != 0 || listen(descriptor, 1) != 0)
+    {
+        close(descriptor);
+        unlink(path);
+        return -1;
+    }
+    return descriptor;
+}
+
+static int ConnectRinOSUnix(const char* path)
+{
+    if (path == nullptr || path[0] == '\0' ||
+        strlen(path) >= sizeof(((struct sockaddr_un*)nullptr)->sun_path))
+    {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+
+    int descriptor = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (descriptor < 0)
+        return -1;
+
+    struct sockaddr_un address = {};
+    address.sun_family = AF_UNIX;
+    memcpy(address.sun_path, path, strlen(path) + 1u);
+    if (connect(descriptor, reinterpret_cast<const sockaddr*>(&address),
+                sizeof(address)) != 0)
+    {
+        close(descriptor);
+        return -1;
+    }
+    return descriptor;
+}
+#endif // TARGET_RINOS
+
 // Creates a server side of the pipe.
 // Id is used to create pipes names and uniquely identify the pipe on the machine.
 // true - success, false - failure (use GetLastError() for more details)
@@ -57,21 +122,30 @@ bool TwoWayPipe::CreateServer(const ProcessDescriptor& pd)
         VolatileStore(&g_pfnAbortTransportCallback, static_cast<void(*)(void)>(AbortPipeServerImpl));
     }
 
-    unlink(m_inPipeName);
-
-    if (mkfifo(m_inPipeName, S_IRWXU) == -1)
+#if defined(TARGET_RINOS)
+    m_inboundPipe = CreateRinOSUnixServer(m_inPipeName);
+    if (m_inboundPipe == INVALID_PIPE)
+        return false;
+    m_outboundPipe = CreateRinOSUnixServer(m_outPipeName);
+    if (m_outboundPipe == INVALID_PIPE)
     {
+        close(m_inboundPipe);
+        m_inboundPipe = INVALID_PIPE;
+        unlink(m_inPipeName);
         return false;
     }
-
+#else
+    unlink(m_inPipeName);
+    if (mkfifo(m_inPipeName, S_IRWXU) == -1)
+        return false;
 
     unlink(m_outPipeName);
-
     if (mkfifo(m_outPipeName, S_IRWXU) == -1)
     {
         unlink(m_inPipeName);
         return false;
     }
+#endif
 
     m_state = Created;
     return true;
@@ -90,6 +164,20 @@ bool TwoWayPipe::Connect(const ProcessDescriptor& pd)
     PAL_GetTransportPipeName(m_inPipeName, pd.m_Pid, pd.m_ApplicationGroupId, "out");
     PAL_GetTransportPipeName(m_outPipeName, pd.m_Pid, pd.m_ApplicationGroupId, "in");
 
+#if defined(TARGET_RINOS)
+    // Connect the server's inbound channel first, matching the server's
+    // accept order and avoiding a two-channel startup deadlock.
+    m_outboundPipe = ConnectRinOSUnix(m_outPipeName);
+    if (m_outboundPipe == INVALID_PIPE)
+        return false;
+    m_inboundPipe = ConnectRinOSUnix(m_inPipeName);
+    if (m_inboundPipe == INVALID_PIPE)
+    {
+        close(m_outboundPipe);
+        m_outboundPipe = INVALID_PIPE;
+        return false;
+    }
+#else
     // Pipe opening order is reversed compared to WaitForConnection()
     // in order to avoid deadlock.
     m_outboundPipe = open(m_outPipeName, O_WRONLY);
@@ -97,7 +185,6 @@ bool TwoWayPipe::Connect(const ProcessDescriptor& pd)
     {
         return false;
     }
-
     m_inboundPipe = open(m_inPipeName, O_RDONLY);
     if (m_inboundPipe == INVALID_PIPE)
     {
@@ -105,6 +192,7 @@ bool TwoWayPipe::Connect(const ProcessDescriptor& pd)
         m_outboundPipe = INVALID_PIPE;
         return false;
     }
+#endif
 
     m_state = ClientConnected;
     return true;
@@ -119,11 +207,24 @@ bool TwoWayPipe::WaitForConnection()
     if (m_state != Created)
         return false;
 
-    m_inboundPipe = open(m_inPipeName, O_RDONLY);
-    if (m_inboundPipe == INVALID_PIPE)
+#if defined(TARGET_RINOS)
+    int inbound = accept(m_inboundPipe, nullptr, nullptr);
+    if (inbound == INVALID_PIPE)
+        return false;
+    int outbound = accept(m_outboundPipe, nullptr, nullptr);
+    if (outbound == INVALID_PIPE)
     {
+        close(inbound);
         return false;
     }
+    close(m_inboundPipe);
+    close(m_outboundPipe);
+    m_inboundPipe = inbound;
+    m_outboundPipe = outbound;
+#else
+    m_inboundPipe = open(m_inPipeName, O_RDONLY);
+    if (m_inboundPipe == INVALID_PIPE)
+        return false;
 
     m_outboundPipe = open(m_outPipeName, O_WRONLY);
     if (m_outboundPipe == INVALID_PIPE)
@@ -132,6 +233,7 @@ bool TwoWayPipe::WaitForConnection()
         m_inboundPipe = INVALID_PIPE;
         return false;
     }
+#endif
 
     m_state = ServerConnected;
     return true;
@@ -198,6 +300,17 @@ bool TwoWayPipe::Disconnect()
     // IMPORTANT NOTE: This function must not call any signal unsafe functions
     // since it is called from signal handlers.
     // That includes ASSERT and TRACE macros.
+
+    if (m_inboundPipe != INVALID_PIPE)
+    {
+        close(m_inboundPipe);
+        m_inboundPipe = INVALID_PIPE;
+    }
+    if (m_outboundPipe != INVALID_PIPE)
+    {
+        close(m_outboundPipe);
+        m_outboundPipe = INVALID_PIPE;
+    }
 
     if (m_state == ServerConnected || m_state == Created)
     {

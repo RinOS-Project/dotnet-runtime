@@ -277,8 +277,16 @@ int TwoWayPipe::Write(const void *data, DWORD dataSize)
     int bytesWritten;
     int cb = dataSize;
 
-    while ((bytesWritten = (int)write(m_outboundPipe, data, cb)) > 0)
+    while (true)
     {
+#if defined(TARGET_RINOS)
+        bytesWritten = (int)send(m_outboundPipe, data, cb, MSG_NOSIGNAL);
+#else
+        bytesWritten = (int)write(m_outboundPipe, data, cb);
+#endif
+        if (bytesWritten <= 0)
+            break;
+
         totalBytesWritten += bytesWritten;
         _ASSERTE(totalBytesWritten <= (int)dataSize);
         if (totalBytesWritten >= (int)dataSize)

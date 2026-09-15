@@ -292,12 +292,7 @@ static char* locale_utf8(const UChar* locale)
         if (result) memcpy(result, "root", 5u);
         return result;
     }
-    result = utf16_to_utf8(locale, -1, NULL);
-    if (!result) {
-        result = (char*)malloc(5u);
-        if (result) memcpy(result, "root", 5u);
-    }
-    return result;
+    return utf16_to_utf8(locale, -1, NULL);
 }
 
 static int get_locale_record(const UChar* locale, RinIcuDataLocaleRecord* record)
@@ -842,6 +837,10 @@ int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStrin
     int status = RIN_ICU_STATUS_UNSUPPORTED;
     rin_icu_client_t* client = product_client();
     int have_record = get_locale_record(locale, &record);
+    if (!locale_name) {
+        free(ui_name);
+        return 0;
+    }
     if (client && have_record && (kind == LocaleString_EnglishDisplayName || kind == LocaleString_NativeDisplayName || kind == LocaleString_LocalizedDisplayName ||
                                   kind == LocaleString_EnglishLanguageName || kind == LocaleString_NativeLanguageName || kind == LocaleString_LocalizedLanguageName ||
                                   kind == LocaleString_EnglishCountryName || kind == LocaleString_NativeCountryName ||

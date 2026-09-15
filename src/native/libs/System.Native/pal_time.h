@@ -50,6 +50,13 @@ PALEXPORT int64_t SystemNative_GetTimestamp(void);
 PALEXPORT int64_t SystemNative_GetBootTimeTicks(void);
 
 /**
+ * Gets the current resident-byte aggregate for the calling RinOS process.
+ * The target implementation is self-only and returns zero when the product
+ * telemetry ABI is unavailable.
+ */
+PALEXPORT int64_t SystemNative_GetWorkingSet(void);
+
+/**
  * The main purpose of this function is to compute the overall CPU utilization
  * for the CLR thread pool to regulate the number of worker threads.
  * Since there is no consistent API on Unix to get the CPU utilization

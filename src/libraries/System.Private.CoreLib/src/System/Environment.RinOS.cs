@@ -5,10 +5,9 @@ namespace System
 {
     public static partial class Environment
     {
-        // RinOS does not expose an unauthenticated process-RSS query to the
-        // runtime PAL. Keep the public contract deterministic until a
-        // capability-gated process telemetry ABI is available; reporting a
-        // fabricated value would make RuntimeEventSource misleading.
-        public static long WorkingSet => 0;
+        // The product kernel exposes an authenticated, self-only resident
+        // page-accounting snapshot. A failed/unsupported query remains zero,
+        // matching the existing Browser/iOS fallback without fabricating RSS.
+        public static long WorkingSet => Interop.Sys.GetWorkingSet();
     }
 }

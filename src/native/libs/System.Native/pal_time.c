@@ -14,6 +14,11 @@
 #include <sys/resource.h>
 #include <minipal/time.h>
 
+#if defined(TARGET_RINOS)
+#include <rin/process/memory_abi.h>
+#include <unistd.h>
+#endif
+
 enum
 {
     MicroSecondsToNanoSeconds = 1000,   // 10^3
@@ -186,6 +191,21 @@ double SystemNative_GetCpuUtilization(ProcessCpuInformation* previousCpuInfo)
 #else
     (void)previousCpuInfo; // unused
     assert(false);
+    return 0;
+#endif
+}
+
+int64_t SystemNative_GetWorkingSet(void)
+{
+#if defined(TARGET_RINOS)
+    RinProcessMemoryInfoV1 info = {0};
+    if (rin_process_memory_info_get(&info) != 0 ||
+        (info.flags & RIN_PROCESS_MEMORY_INFO_FLAG_RESIDENT_VALID) == 0u)
+        return 0;
+    if (info.resident_bytes > (uint64_t)INT64_MAX)
+        return INT64_MAX;
+    return (int64_t)info.resident_bytes;
+#else
     return 0;
 #endif
 }

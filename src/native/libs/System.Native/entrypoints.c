@@ -272,6 +272,7 @@ static const Entry s_sysNative[] =
     DllImportEntry(SystemNative_GetTimestamp)
     DllImportEntry(SystemNative_GetLowResolutionTimestamp)
     DllImportEntry(SystemNative_GetBootTimeTicks)
+    DllImportEntry(SystemNative_GetWorkingSet)
     DllImportEntry(SystemNative_GetCpuUtilization)
     DllImportEntry(SystemNative_GetPwUidR)
     DllImportEntry(SystemNative_GetPwNamR)

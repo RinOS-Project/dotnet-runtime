@@ -44,6 +44,12 @@
 #undef AF_PACKET
 #endif
 
+#if defined(TARGET_RINOS)
+// AF_PACKET is reserved in the socket constants, while the link-layer
+// sockaddr ABI is not connected yet.  Keep this parser on IPv4/IPv6 only.
+#undef AF_PACKET
+#endif
+
 #if defined(AF_PACKET)
 #include <sys/ioctl.h>
 #if HAVE_NETPACKET_PACKET_H
@@ -54,7 +60,11 @@
 #elif defined(AF_LINK)
 #include <net/if_dl.h>
 #include <net/if_types.h>
-#elif defined(TARGET_WASI)
+#elif defined(TARGET_WASI) || defined(TARGET_RINOS)
+#if defined(TARGET_RINOS)
+// RinOS's ifaddrs ABI currently carries IPv4/IPv6 entries only.  There is no
+// stable POSIX link-layer sockaddr or ARPHRD namespace to include here.
+#endif
 #else
 #error System must have AF_PACKET or AF_LINK.
 #endif
@@ -392,7 +402,7 @@ int32_t SystemNative_GetNetworkInterfaces(int32_t * interfaceCount, NetworkInter
 
         //current = NULL;
         nii = NULL;
-        uint ifindex = if_nametoindex(ifa_name);
+        uint32_t ifindex = if_nametoindex(ifa_name);
         if (ifindex == 0)
         {
             int savedErrno = errno;

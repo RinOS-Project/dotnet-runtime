@@ -21,7 +21,7 @@ set(SOURCES
     log.c
 )
 
-if(CLR_CMAKE_HOST_UNIX)
+if(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
     list(APPEND SOURCES
         cpucount.c
         cpuid.c
@@ -34,6 +34,12 @@ include_directories(${CLR_SRC_NATIVE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 
 add_library(minipal_objects OBJECT ${SOURCES})
 
+if(CLR_CMAKE_TARGET_RINOS)
+    # minipal's HOST_* switches describe the OS whose primitives are being
+    # compiled.  A Windows host cross build must take the target's POSIX path.
+    target_compile_options(minipal_objects PRIVATE -UHOST_WINDOWS -DHOST_UNIX)
+endif()
+
 if (WIN32)
     target_link_libraries(minipal_objects PUBLIC bcrypt)
 endif()
@@ -43,6 +49,10 @@ endif()
 # a variety of toolchain versions, not only the exact one we built with.
 add_library(aotminipal STATIC ${SOURCES})
 set_target_properties(aotminipal PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
+
+if(CLR_CMAKE_TARGET_RINOS)
+    target_compile_options(aotminipal PRIVATE -UHOST_WINDOWS -DHOST_UNIX)
+endif()
 
 if (WIN32)
     target_link_libraries(aotminipal PUBLIC bcrypt)

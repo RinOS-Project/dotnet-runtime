@@ -6,14 +6,24 @@ endif()
 
 add_compile_options(-Wno-incompatible-pointer-types-discards-qualifiers)
 
-include(${CMAKE_CURRENT_LIST_DIR}/extra_libs.cmake)
-
 set(NATIVE_LIBS_EXTRA)
-append_extra_security_libs(NATIVE_LIBS_EXTRA)
+if (CLR_CMAKE_TARGET_RINOS)
+    # RinOS TLS is provided by System.Security.Cryptography.Native through
+    # the product RinTLS adapter.  This library is the separate GSSAPI PAL
+    # used by Negotiate/Kerberos/NTLM; do not discover or link a host GSS
+    # implementation while producing a target RLL.  The target PAL returns a
+    # stable unsupported status so managed callers fail closed.
+    set(NATIVEGSS_SOURCES
+        pal_gssapi_rinos.c
+    )
+else()
+    include(${CMAKE_CURRENT_LIST_DIR}/extra_libs.cmake)
+    append_extra_security_libs(NATIVE_LIBS_EXTRA)
 
-set(NATIVEGSS_SOURCES
-    pal_gssapi.c
-)
+    set(NATIVEGSS_SOURCES
+        pal_gssapi.c
+    )
+endif()
 
 if (GEN_SHARED_LIB)
     add_library(System.Net.Security.Native

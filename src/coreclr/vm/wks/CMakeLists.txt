@@ -71,7 +71,7 @@ if (FEATURE_PERFTRACING AND FEATURE_PERFTRACING_DISABLE_THREADS)
   target_compile_definitions(cee_wks_core PRIVATE PERFTRACING_DISABLE_THREADS)
 endif()
 
-if (CLR_CMAKE_HOST_WIN32)
+if (CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
     link_natvis_sources_for_target(cee_wks INTERFACE ../vm.natvis)
     link_natvis_sources_for_target(cee_wks_mergeable INTERFACE ../vm.natvis)
 endif()

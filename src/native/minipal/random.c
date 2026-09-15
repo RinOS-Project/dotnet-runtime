@@ -42,11 +42,12 @@ void minipal_get_non_cryptographically_secure_random_bytes(uint8_t* buffer, int3
     // Fall back to the secure version
     minipal_get_cryptographically_secure_random_bytes(buffer, bufferLength);
 #else
-    long num = 0;
-    static bool sInitializedMRand;
-
     // Fall back to the secure version
     minipal_get_cryptographically_secure_random_bytes(buffer, bufferLength);
+
+#if !defined(TARGET_RINOS)
+    long num = 0;
+    static bool sInitializedMRand;
 
     if (!sInitializedMRand)
     {
@@ -67,6 +68,7 @@ void minipal_get_non_cryptographically_secure_random_bytes(uint8_t* buffer, int3
         *(buffer + i) ^= num;
         num >>= 8;
     }
+#endif
 #endif // HAVE_ARC4RANDOM_BUF
 }
 

@@ -218,6 +218,7 @@ int32_t SystemNative_GetAllMountPoints(MountPointFound onFound, void* context)
 
     onFound(context, "/");
     return 0;
+}
 #else
 #error "Don't know how to enumerate mount points on this platform"
 #endif

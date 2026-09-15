@@ -57,7 +57,9 @@ else()
     append_extra_cryptography_libs(NATIVE_LIBS_EXTRA)
 endif()
 
-include_directories(${OPENSSL_INCLUDE_DIR})
+if (NOT CLR_CMAKE_TARGET_RINOS)
+    include_directories(${OPENSSL_INCLUDE_DIR})
+endif()
 
 if (CLR_CMAKE_TARGET_RINOS)
     # The target crypto boundary is product-owned.  Do not compile any of the

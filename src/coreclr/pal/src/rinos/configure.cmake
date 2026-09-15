@@ -33,7 +33,9 @@ set(HAVE_PTHREAD_GETATTR_NP 1)
 set(HAVE_PTHREAD_GETCPUCLOCKID 0)
 set(HAVE_PTHREAD_GETAFFINITY_NP 0)
 set(HAVE_PTHREAD_CONDATTR_SETCLOCK 1)
-set(HAVE_CLOCK_THREAD_CPUTIME 0)
+# RinOS libc maps CLOCK_THREAD_CPUTIME_ID to the product CPU-time syscall
+# contract, so CoreCLR can use its normal clock_gettime implementation.
+set(HAVE_CLOCK_THREAD_CPUTIME 1)
 
 # These are host probe results on the other Unix ports, not RinOS ABI
 # features. Keep them explicit so a cross configure never inherits a Windows
@@ -56,7 +58,9 @@ set(HAVE_CRT_EXTERNS_H 0)
 set(HAVE_GNU_LIBNAMES_H 0)
 set(HAVE_SYS_MOUNT_H 0)
 set(HAVE_SYS_VMPARAM_H 0)
-set(HAVE_GET_PROC_INFO_IN_RANGE 0)
+# The bundled target libunwind builds the generic DWARF range lookup used by
+# the PAL's remote-unwind adapter.
+set(HAVE_GET_PROC_INFO_IN_RANGE 1)
 set(HAVE_TTRACE 0)
 set(HAVE_UNW_AARCH64_X19 0)
 set(HAVE_UNW_GET_ACCESSORS 0)

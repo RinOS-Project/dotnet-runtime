@@ -23,7 +23,7 @@ set(GC_SOURCES
 
 if(CLR_CMAKE_TARGET_ARCH_WASM)
   add_subdirectory(wasm)
-elseif(CLR_CMAKE_HOST_UNIX)
+elseif(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
   add_subdirectory(unix)
   include(unix/configure.cmake)
 else()
@@ -78,13 +78,13 @@ if (CLR_CMAKE_TARGET_WIN32)
   )
 endif(CLR_CMAKE_TARGET_WIN32)
 
-if(CLR_CMAKE_HOST_WIN32)
+if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
   set (GC_LINK_LIBRARIES
     ${STATIC_MT_CRT_LIB}
     ${STATIC_MT_VCRT_LIB}
     kernel32.lib
     advapi32.lib)
-endif(CLR_CMAKE_HOST_WIN32)
+endif(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
 
 set (GC_LINK_LIBRARIES
     ${GC_LINK_LIBRARIES}

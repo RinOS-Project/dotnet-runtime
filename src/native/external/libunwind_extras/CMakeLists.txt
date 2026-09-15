@@ -123,8 +123,11 @@ if(CLR_CMAKE_HOST_WIN32)
       add_definitions(-D__linux__)
     endif ()
 
-    # Assume we are using default MSVC compiler
-    add_compile_options(/permissive-)
+    # The Windows-hosted RinOS cross build uses clang with the target's C/C++
+    # driver, not MSVC.  Keep MSVC-only switches on the native Windows path.
+    if(NOT CLR_CMAKE_TARGET_RINOS)
+        add_compile_options(/permissive-)
+    endif()
 
     # include paths
     include_directories(${CLR_SRC_NATIVE_DIR}/external/libunwind/include/tdep)
@@ -134,18 +137,23 @@ if(CLR_CMAKE_HOST_WIN32)
 
     # files for cross os compilation
     include_directories(${CLR_SRC_NATIVE_DIR}/external/libunwind/include/remote)
-    include_directories(${CLR_SRC_NATIVE_DIR}/external/libunwind/include/remote/win)
+    if(NOT CLR_CMAKE_TARGET_RINOS)
+        include_directories(${CLR_SRC_NATIVE_DIR}/external/libunwind/include/remote/win)
+    endif()
+    include_directories(${CLR_DIR}/pal/src/include)
 
     add_definitions(-D_CRT_DECLARE_NONSTDC_NAMES)
 
-    # Warnings in release builds
-    add_compile_options(-wd4068) # ignore unknown pragma warnings (gcc pragmas)
-    add_compile_options(-wd4334) # 32-bit shift implicitly converted to 64 bits
+    if(NOT CLR_CMAKE_TARGET_RINOS)
+        # Warnings in release builds
+        add_compile_options(-wd4068) # ignore unknown pragma warnings (gcc pragmas)
+        add_compile_options(-wd4334) # 32-bit shift implicitly converted to 64 bits
 
-    # Disable warning due to incorrect format specifier in debugging printf via the Debug macro
-    add_compile_options(-wd4311) # pointer truncation from 'unw_word_t *' to 'long'
-    add_compile_options(-wd4475) # 'fprintf' : length modifier 'L' cannot be used
-    add_compile_options(-wd4477) # fprintf argument type
+        # Disable warning due to incorrect format specifier in debugging printf via the Debug macro
+        add_compile_options(-wd4311) # pointer truncation from 'unw_word_t *' to 'long'
+        add_compile_options(-wd4475) # 'fprintf' : length modifier 'L' cannot be used
+        add_compile_options(-wd4477) # fprintf argument type
+    endif()
 elseif(CLR_CMAKE_HOST_APPLE)
     include_directories(${CLR_SRC_NATIVE_DIR}/external/libunwind/include/remote)
     include_directories(${CLR_SRC_NATIVE_DIR}/external/libunwind/include/remote/mac)
@@ -161,9 +169,9 @@ endif()
 include(configure.cmake)
 include(${CLR_SRC_NATIVE_DIR}/external/libunwind.cmake)
 
-if(CLR_CMAKE_HOST_WIN32)
+if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
     set_source_files_properties(${LIBUNWIND_SOURCES} PROPERTIES COMPILE_FLAGS /TC) # compile all files as C
-endif(CLR_CMAKE_HOST_WIN32)
+endif()
 
 # TODO: https://github.com/dotnet/runtime/issues/111527
 if(CLR_CMAKE_TARGET_ANDROID)
@@ -177,7 +185,16 @@ if(CLR_CMAKE_HOST_UNIX)
         add_library(libunwind OBJECT ${LIBUNWIND_SOURCES})
     endif(CLR_CMAKE_HOST_APPLE)
 else(CLR_CMAKE_HOST_UNIX)
-    set_source_files_properties(${CLR_DIR}/pal/src/exception/remote-unwind.cpp PROPERTIES COMPILE_FLAGS /TP INCLUDE_DIRECTORIES ${CLR_DIR}/inc)
+    if(CLR_CMAKE_TARGET_RINOS)
+        # remote-unwind.cpp is added from this external project and otherwise
+        # misses the PAL-generated config.h, so it would silently select the
+        # old hand-rolled ELF lookup branch instead of the bundled libunwind
+        # range API.
+        set_source_files_properties(${CLR_DIR}/pal/src/exception/remote-unwind.cpp PROPERTIES
+            INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/pal/src;${CLR_DIR}/inc")
+    else()
+        set_source_files_properties(${CLR_DIR}/pal/src/exception/remote-unwind.cpp PROPERTIES COMPILE_FLAGS /TP INCLUDE_DIRECTORIES ${CLR_DIR}/inc)
+    endif()
 
     add_library(libunwind_xdac OBJECT
       ${CLR_DIR}/pal/src/exception/remote-unwind.cpp

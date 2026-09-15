@@ -282,7 +282,10 @@ if "%__TargetOS%"=="browser" (
     set __CrossTarget=1
 )
 
-if %__CrossTarget% EQU 0 (
+if /i "%__TargetOS%"=="rinos" (
+    del /q "%__RootBinDir%\obj\_version.h" >nul 2>&1
+    call powershell -NoProfile -ExecutionPolicy ByPass -File "%__RepoRootDir%\eng\native\version\copy_version_files.ps1"
+) else if %__CrossTarget% EQU 0 (
     call "%__RepoRootDir%\eng\native\version\copy_version_files.cmd"
 ) else (
     call powershell -NoProfile -ExecutionPolicy ByPass -File "%__RepoRootDir%\eng\native\version\copy_version_files.ps1"

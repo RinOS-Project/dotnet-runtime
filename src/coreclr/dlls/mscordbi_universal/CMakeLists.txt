@@ -34,7 +34,7 @@ set(MSCORDBI_UNIVERSAL_SOURCES
 # Unlike mscordbi, the DAC PAL export redefines file (palredefines.S) is deliberately
 # not linked here: this binary provides its own PAL rather than importing the DAC's.
 
-if(CLR_CMAKE_HOST_WIN32)
+if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
     add_definitions(-DFX_VER_INTERNALNAME_STR=mscordbi_universal.dll)
 
     list(APPEND MSCORDBI_UNIVERSAL_SOURCES
@@ -50,19 +50,19 @@ if(CLR_CMAKE_HOST_WIN32)
     preprocess_file(${DEF_SOURCES} ${CMAKE_CURRENT_BINARY_DIR}/mscordbi_universal.def)
 
     list(APPEND MSCORDBI_UNIVERSAL_SOURCES ${CMAKE_CURRENT_BINARY_DIR}/mscordbi_universal.def)
-else(CLR_CMAKE_HOST_WIN32)
+else()
     set(DEF_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/mscordbi_universal_unixexports.src)
     set(EXPORTS_FILE ${CMAKE_CURRENT_BINARY_DIR}/mscordbi_universal.exports)
     generate_exports_file(${DEF_SOURCES} ${EXPORTS_FILE})
 
-    if(CLR_CMAKE_HOST_LINUX OR CLR_CMAKE_HOST_FREEBSD OR CLR_CMAKE_HOST_NETBSD OR CLR_CMAKE_HOST_SUNOS OR CLR_CMAKE_HOST_HAIKU)
+    if(CLR_CMAKE_HOST_LINUX OR CLR_CMAKE_TARGET_RINOS OR CLR_CMAKE_HOST_FREEBSD OR CLR_CMAKE_HOST_NETBSD OR CLR_CMAKE_HOST_SUNOS OR CLR_CMAKE_HOST_HAIKU)
         # This option is necessary to ensure that the overloaded new/delete operators defined inside
         # of the utilcode will be used instead of the standard library delete operator.
         add_link_options(LINKER:-Bsymbolic)
-    endif(CLR_CMAKE_HOST_LINUX OR CLR_CMAKE_HOST_FREEBSD OR CLR_CMAKE_HOST_NETBSD OR CLR_CMAKE_HOST_SUNOS OR CLR_CMAKE_HOST_HAIKU)
+    endif()
 
     set_exports_linker_option(${EXPORTS_FILE})
-endif(CLR_CMAKE_HOST_WIN32)
+endif()
 
 add_library_clr(mscordbi_universal SHARED ${MSCORDBI_UNIVERSAL_SOURCES})
 set_target_properties(mscordbi_universal PROPERTIES DBI_COMPONENT TRUE)
@@ -71,13 +71,13 @@ set_target_properties(mscordbi_universal PROPERTIES DBI_COMPONENT TRUE)
 target_compile_definitions(mscordbi_universal PRIVATE MSCORDBI_LINKS_PRIVATE_PAL)
 target_precompile_headers(mscordbi_universal PRIVATE $<$<COMPILE_LANGUAGE:CXX>:stdafx.h>)
 
-if(CLR_CMAKE_HOST_UNIX)
+if(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
     add_custom_target(mscordbi_universal_exports DEPENDS ${EXPORTS_FILE})
     add_dependencies(mscordbi_universal mscordbi_universal_exports)
 
     set_property(TARGET mscordbi_universal APPEND_STRING PROPERTY LINK_FLAGS ${EXPORTS_LINKER_OPTION})
     set_property(TARGET mscordbi_universal APPEND_STRING PROPERTY LINK_DEPENDS ${EXPORTS_FILE})
-endif(CLR_CMAKE_HOST_UNIX)
+endif()
 
 set(COREDBI_LIBRARIES
     debug-pal
@@ -90,7 +90,7 @@ set(COREDBI_LIBRARIES
     minipal
 )
 
-if(CLR_CMAKE_HOST_WIN32)
+if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
 
     list(APPEND COREDBI_LIBRARIES
         cordbdi
@@ -107,7 +107,7 @@ if(CLR_CMAKE_HOST_WIN32)
 
     target_link_libraries(mscordbi_universal PRIVATE ${COREDBI_LIBRARIES})
 
-elseif(CLR_CMAKE_HOST_UNIX)
+elseif(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
 
     list(APPEND COREDBI_LIBRARIES
         cordbdi_universal
@@ -141,7 +141,7 @@ elseif(CLR_CMAKE_HOST_UNIX)
     # find all symbols.
     target_link_libraries(mscordbi_universal PRIVATE ${COREDBI_LIBRARIES} ${COREDBI_LIBRARIES})
 
-endif(CLR_CMAKE_HOST_WIN32)
+endif()
 
 esrp_sign(mscordbi_universal)
 

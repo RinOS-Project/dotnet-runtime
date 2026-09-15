@@ -44,7 +44,7 @@ set(CORDBDI_HEADERS
     symbolinfo.h)
 
 
-if(CLR_CMAKE_HOST_WIN32)
+if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
     #use static crt
     set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
 
@@ -57,7 +57,7 @@ if(CLR_CMAKE_HOST_WIN32)
         convert_to_absolute_path(CORDBDI_SOURCES_ASM_FILE ${CORDBDI_SOURCES_ASM_FILE})
         preprocess_files(CORDBDI_SOURCES_ASM_FILE ${CORDBDI_SOURCES_ASM_FILE})
     endif()
-elseif(CLR_CMAKE_HOST_UNIX)
+elseif(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
 
     if(CLR_CMAKE_TARGET_ARCH_AMD64 OR CLR_CMAKE_TARGET_ARCH_ARM64 OR CLR_CMAKE_TARGET_ARCH_ARM OR CLR_CMAKE_TARGET_ARCH_LOONGARCH64 OR CLR_CMAKE_TARGET_ARCH_RISCV64)
       set(CORDBDI_SOURCES_ASM_FILE
@@ -65,7 +65,7 @@ elseif(CLR_CMAKE_HOST_UNIX)
       )
     endif()
 
-endif(CLR_CMAKE_HOST_WIN32)
+endif()
 
 if (CLR_CMAKE_TARGET_WIN32)
     convert_to_absolute_path(CORDBDI_HEADERS ${CORDBDI_HEADERS})
@@ -79,10 +79,10 @@ set_target_properties(cordbdi PROPERTIES DBI_COMPONENT TRUE)
 target_precompile_headers(cordbdi PRIVATE stdafx.h)
 add_dependencies(cordbdi eventing_headers)
 
-if(CLR_CMAKE_HOST_UNIX)
+if(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
     add_library_clr(cordbdi_universal STATIC ${CORDBDI_SOURCES})
     set_target_properties(cordbdi_universal PROPERTIES DBI_COMPONENT TRUE)
     target_compile_definitions(cordbdi_universal PRIVATE MSCORDBI_LINKS_PRIVATE_PAL)
     target_precompile_headers(cordbdi_universal PRIVATE stdafx.h)
     add_dependencies(cordbdi_universal eventing_headers)
-endif(CLR_CMAKE_HOST_UNIX)
+endif(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)

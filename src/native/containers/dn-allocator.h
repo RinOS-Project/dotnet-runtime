@@ -6,7 +6,7 @@
 
 #include "dn-utils.h"
 #include <stdlib.h>
-#include <memory.h>
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {

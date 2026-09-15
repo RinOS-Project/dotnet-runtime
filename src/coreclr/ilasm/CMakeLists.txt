@@ -46,6 +46,13 @@ if(CLR_CMAKE_TARGET_UNIX AND NOT CLR_CMAKE_TARGET_APPLE)
   include_directories(${CMAKE_CURRENT_BINARY_DIR})
 endif(CLR_CMAKE_TARGET_UNIX AND NOT CLR_CMAKE_TARGET_APPLE)
 
+if(CLR_CMAKE_TARGET_RINOS)
+  if(NOT RINOS_REPO_ROOT)
+    message(FATAL_ERROR "RinOS ilasm requires RINOS_REPO_ROOT for product SHA-256")
+  endif()
+  include_directories("${RINOS_REPO_ROOT}/public-base/libs/rintls")
+endif()
+
 if(CLR_CMAKE_TARGET_WIN32)
   list(APPEND ILASM_SOURCES ${ILASM_HEADERS})
 
@@ -118,7 +125,9 @@ if(CLR_CMAKE_TARGET_UNIX AND NOT CLR_CMAKE_TARGET_APPLE)
 endif(CLR_CMAKE_TARGET_UNIX AND NOT CLR_CMAKE_TARGET_APPLE)
 
 
-if(CLR_CMAKE_HOST_UNIX)
+# RinOS is a Unix-shaped target with a Windows host toolchain.  Use the
+# target-side PAL link set; host COM libraries are not part of the product ABI.
+if(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
   target_link_libraries(ilasm
     PRIVATE
     ${ILASM_LINK_LIBRARIES}
@@ -135,6 +144,6 @@ else()
     oleaut32
     shell32
   )
-endif(CLR_CMAKE_HOST_UNIX)
+endif(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
 
 install_clr(TARGETS ilasm DESTINATIONS . COMPONENT iltools)

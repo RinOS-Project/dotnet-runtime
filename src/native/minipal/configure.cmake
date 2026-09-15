@@ -20,6 +20,14 @@ check_symbol_exists(CLOCK_MONOTONIC_COARSE time.h HAVE_CLOCK_MONOTONIC_COARSE)
 check_symbol_exists(clock_gettime_nsec_np time.h HAVE_CLOCK_GETTIME_NSEC_NP)
 
 if(CLR_CMAKE_TARGET_RINOS)
+    # These checks run on the Windows build host during a cross build.  Their
+    # result is not evidence that the RinOS target exposes the host's Darwin
+    # or Linux CPU-discovery headers/APIs.
+    set(HAVE_AUXV_HWCAP_H 0)
+    set(HAVE_HWPROBE_H 0)
+    set(HAVE_SYSCTLBYNAME 0)
+    set(HAVE_ELF_AUX_INFO 0)
+
     # RinOS owns CLOCK_MONOTONIC/REALTIME in its product libc.  Do not let a
     # host-only uptime extension or probe alter the freestanding time path.
     set(HAVE_CLOCK_MONOTONIC_COARSE 1)

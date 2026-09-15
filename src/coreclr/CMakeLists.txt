@@ -6,6 +6,10 @@ project(CoreCLR)
 include(../../eng/native/configurepaths.cmake)
 include(${CLR_ENG_NATIVE_DIR}/configurecompiler.cmake)
 
+if(CLR_CMAKE_TARGET_RINOS)
+  enable_language(ASM)
+endif()
+
 include_directories("${CLR_SRC_NATIVE_DIR}")
 include_directories("${CLR_SRC_NATIVE_DIR}/inc")
 
@@ -78,7 +82,10 @@ include(components.cmake)
 #---------------------------
 # Build the single file host
 #---------------------------
-if(NOT CLR_CROSS_COMPONENTS_BUILD AND NOT CLR_CMAKE_TARGET_APPLE_MOBILE AND NOT CLR_CMAKE_TARGET_ARCH_WASM)
+# singlefilehost is a host-side apphost helper.  RinOS needs its signed
+# apphost/import mapping before this executable can be linked as a target
+# image, so keep it out of the target runtime aggregate for now.
+if(NOT CLR_CROSS_COMPONENTS_BUILD AND NOT CLR_CMAKE_TARGET_RINOS AND NOT CLR_CMAKE_TARGET_APPLE_MOBILE AND NOT CLR_CMAKE_TARGET_ARCH_WASM)
   set(CLR_SINGLE_FILE_HOST_ONLY 1)
   add_subdirectory(${CLR_SRC_NATIVE_DIR}/corehost/apphost/static Corehost.Static)
   add_dependencies(runtime singlefilehost)
@@ -115,7 +122,7 @@ endif()
 #     - project which require platform header not clr's
 #     - do not depend on clr's compile definitions
 #-----------------------------------------
-if(CLR_CMAKE_HOST_UNIX)
+if(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
     if(CLR_CMAKE_TARGET_ANDROID AND NOT DEFINED CMAKE_ANDROID_NDK)
         find_library(LZMA NAMES lzma)
         if(LZMA STREQUAL LZMA-NOTFOUND)
@@ -142,7 +149,10 @@ endif()
 #----------------------------------------------------
 # Build the test watchdog alongside the CLR
 #----------------------------------------------------
-if(NOT CLR_CMAKE_HOST_MACCATALYST AND NOT CLR_CMAKE_HOST_IOS AND NOT CLR_CMAKE_HOST_TVOS AND NOT CLR_CMAKE_TARGET_BROWSER AND NOT CLR_CMAKE_TARGET_WASI)
+# The watchdog is a host-side test harness.  It uses host process-control,
+# libc++ and exception-runtime facilities that are intentionally not part of
+# the RinOS target ABI, so do not add it to target runtime builds.
+if(NOT CLR_CMAKE_TARGET_RINOS AND NOT CLR_CMAKE_HOST_MACCATALYST AND NOT CLR_CMAKE_HOST_IOS AND NOT CLR_CMAKE_HOST_TVOS AND NOT CLR_CMAKE_TARGET_BROWSER AND NOT CLR_CMAKE_TARGET_WASI)
   add_subdirectory("${CLR_SRC_NATIVE_DIR}/watchdog" test-watchdog)
 endif()
 
@@ -185,9 +195,9 @@ endif(NOT CLR_CROSS_COMPONENTS_BUILD)
 # Above projects do not build with these compile options
 # All of the compiler options are specified in file compileoptions.cmake
 # Do not add any new options here. They should be added in compileoptions.cmake
-if(CLR_CMAKE_HOST_WIN32)
+if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
   add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Zl>) # omit default library name in .OBJ
-endif(CLR_CMAKE_HOST_WIN32)
+endif(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
 
 #--------------------------------
 # Definition directives
@@ -262,11 +272,11 @@ endif()
 
 add_subdirectory(gc)
 
-if (CLR_CMAKE_HOST_UNIX)
+if (CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
   include_directories("pal/inc")
   include_directories("pal/inc/rt")
   include_directories("pal/src/safecrt")
-endif (CLR_CMAKE_HOST_UNIX)
+endif (CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
 
 #------------------------------
 # Add Product Directories
@@ -291,7 +301,7 @@ endif(CLR_CMAKE_TARGET_WIN32 AND FEATURE_EVENT_TRACE)
 
 add_subdirectory(debug/dbgutil)
 
-if(CLR_CMAKE_HOST_UNIX)
+if(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
   if(NOT CLR_CMAKE_TARGET_RINOS AND (CLR_CMAKE_HOST_OSX OR (CLR_CMAKE_HOST_LINUX AND NOT CLR_CMAKE_HOST_UNIX_X86 AND NOT CLR_CMAKE_HOST_ANDROID)))
     add_subdirectory(debug/createdump)
   endif(NOT CLR_CMAKE_TARGET_RINOS AND (CLR_CMAKE_HOST_OSX OR (CLR_CMAKE_HOST_LINUX AND NOT CLR_CMAKE_HOST_UNIX_X86 AND NOT CLR_CMAKE_HOST_ANDROID)))
@@ -349,7 +359,7 @@ if(CLR_CMAKE_HOST_UNIX)
   endfunction()
 
   add_subdirectory(nativeresources)
-endif(CLR_CMAKE_HOST_UNIX)
+endif(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
 
 add_subdirectory(utilcode)
 add_subdirectory(inc)

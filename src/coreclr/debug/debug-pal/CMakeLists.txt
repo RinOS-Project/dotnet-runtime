@@ -5,7 +5,7 @@ add_definitions(-DFEATURE_CORECLR)
 add_definitions(-DFEATURE_PERFTRACING)
 add_definitions(-DFEATURE_PERFTRACING_STANDALONE_PAL)
 
-if(CLR_CMAKE_HOST_WIN32)
+if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
     add_definitions(-DWIN32_LEAN_AND_MEAN)
     include_directories(../../inc) #needed for warning control
 
@@ -21,9 +21,9 @@ if(CLR_CMAKE_HOST_WIN32)
             dummy/twowaypipe.cpp
         )
     endif(CLR_CMAKE_TARGET_WIN32)
-endif(CLR_CMAKE_HOST_WIN32)
+endif(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
 
-if(CLR_CMAKE_HOST_UNIX)
+if(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
     if (NOT CLR_CMAKE_TARGET_WASI)
         # ds-ipc-pal-socket.c needs UNIX/TCP sockets; re-enable once
         # WASI PERFTRACING is wired. Tracked by https://github.com/dotnet/runtime/issues/130383
@@ -42,7 +42,7 @@ if(CLR_CMAKE_HOST_UNIX)
       unix/processdescriptor.cpp
     )
 
-endif(CLR_CMAKE_HOST_UNIX)
+endif(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
 
 add_library_clr(debug-pal OBJECT ${TWO_WAY_PIPE_SOURCES})
 

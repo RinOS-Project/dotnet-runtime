@@ -41,6 +41,7 @@
 #include <net/if.h>
 #endif
 #include <string.h>
+#include <strings.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #if HAVE_SYS_SOCKIO_H
@@ -55,6 +56,9 @@
 #include <stdio.h>
 #endif
 #include <unistd.h>
+#if defined(TARGET_RINOS) && !defined(IOV_MAX)
+#define IOV_MAX RIN_SOCKET_MAX_IOV
+#endif
 #if defined(TARGET_SUNOS) && HAVE_GETDOMAINNAME
 // SunOS has getdomainname in libnsl but no header declaration
 extern int getdomainname(char *name, int namelen);
@@ -135,7 +139,7 @@ static uint16_t GetKeventFlags(uint32_t flags)
 #endif
 #endif
 
-#if !HAVE_IN_PKTINFO
+#if !HAVE_IN_PKTINFO && !defined(TARGET_RINOS)
 // On platforms, such as FreeBSD, where in_pktinfo
 // is not available, fallback to custom definition
 // with required members.
@@ -1006,7 +1010,7 @@ int32_t SystemNative_GetControlMessageBufferSize(int32_t isIPv4, int32_t isIPv6)
     // Note: it is possible that the address family of the socket is neither
     //       AF_INET nor AF_INET6. In this case both inputs will be 0 and
     //       the control message buffer size should be zero.
-#if defined(CMSG_SPACE)
+#if defined(CMSG_SPACE) && !defined(TARGET_RINOS)
     return (isIPv4 != 0 ? CMSG_SPACE(sizeof(struct in_pktinfo)) : 0) + (isIPv6 != 0 ? CMSG_SPACE(sizeof(struct in6_pktinfo)) : 0);
 #else // CMSG_SPACE
     (void)isIPv4;
@@ -1015,7 +1019,7 @@ int32_t SystemNative_GetControlMessageBufferSize(int32_t isIPv4, int32_t isIPv6)
 #endif // CMSG_SPACE
 }
 
-#if defined(CMSG_SPACE)
+#if defined(CMSG_SPACE) && !defined(TARGET_RINOS)
 static int32_t GetIPv4PacketInformation(struct cmsghdr* controlMessage, IPPacketInformation* packetInfo)
 {
     assert(controlMessage != NULL);
@@ -1136,6 +1140,15 @@ SystemNative_TryGetIPPacketInformation(MessageHeader* messageHeader, int32_t isI
 int32_t
 SystemNative_TryGetIPPacketInformation(MessageHeader* messageHeader, int32_t isIPv4, IPPacketInformation* packetInfo)
 {
+#if defined(TARGET_RINOS)
+    // RinOS has not published the ancillary-data packet-info ABI yet.  Do not
+    // infer interface metadata from the payload address; callers must treat
+    // the absence of packet information as a normal unsupported result.
+    (void)messageHeader;
+    (void)isIPv4;
+    (void)packetInfo;
+    return 0;
+#else
     if (messageHeader == NULL || packetInfo == NULL)
     {
         return 0;
@@ -1158,6 +1171,7 @@ SystemNative_TryGetIPPacketInformation(MessageHeader* messageHeader, int32_t isI
     }
     packetInfo->InterfaceIndex = 0;
     return 1;
+#endif
 }
 #endif // !CMSG_SPACE
 

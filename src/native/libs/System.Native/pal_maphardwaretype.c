@@ -14,6 +14,13 @@
 #undef AF_PACKET
 #endif
 
+#if defined(TARGET_RINOS)
+// The public RinOS socket header reserves AF_PACKET for future raw-packet
+// support, but does not yet publish sockaddr_ll/ARPHRD definitions.  Do not
+// let that reservation select the Linux implementation below.
+#undef AF_PACKET
+#endif
+
 #if defined(AF_PACKET)
 #if HAVE_NETPACKET_PACKET_H
 #include <netpacket/packet.h>
@@ -28,7 +35,12 @@
 #elif defined(AF_LINK)
 #include <net/if_dl.h>
 #include <net/if_types.h>
-#elif defined(TARGET_WASI)
+#elif defined(TARGET_WASI) || defined(TARGET_RINOS)
+#if defined(TARGET_RINOS)
+// RinOS publishes interface addresses through its netif ABI, but does not
+// expose a POSIX link-layer sockaddr or a stable ARPHRD namespace yet.
+// Keep the mapping conservative until that ABI is connected.
+#endif
 #else
 #error System must have AF_PACKET or AF_LINK.
 #endif
@@ -121,6 +133,9 @@ uint16_t MapHardwareType(uint16_t nativeType)
             return NetworkInterfaceType_Unknown;
     }
 #elif defined(TARGET_WASI)
+    return NetworkInterfaceType_Unknown;
+#elif defined(TARGET_RINOS)
+    (void)nativeType;
     return NetworkInterfaceType_Unknown;
 #endif
 }

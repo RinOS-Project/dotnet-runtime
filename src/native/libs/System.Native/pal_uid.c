@@ -100,7 +100,16 @@ uint32_t SystemNative_GetEGid(void)
 
 int32_t SystemNative_SetEUid(uint32_t euid)
 {
+#if defined(TARGET_RINOS)
+    // RinOS currently exposes credential replacement (setuid), but not the
+    // POSIX effective-only seteuid operation.  Never emulate this by changing
+    // the real UID; fail closed until an effective-credential ABI is added.
+    (void)euid;
+    errno = ENOTSUP;
+    return -1;
+#else
     return seteuid(euid);
+#endif
 }
 
 #ifdef USE_GROUPLIST_LOCK

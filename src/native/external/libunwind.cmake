@@ -85,6 +85,11 @@ if(CLR_CMAKE_TARGET_LINUX)
     set(libunwind_la_SOURCES_aarch64_os         aarch64/Gos-linux.c)
     set(libunwind_la_SOURCES_aarch64_os_local   aarch64/Los-linux.c)
     list(APPEND libunwind_coredump_la_SOURCES   coredump/_UCD_access_reg_linux.c)
+elseif(CLR_CMAKE_TARGET_RINOS)
+    # RinOS does not expose Linux's signal/syscall frame ABI.  Keep the
+    # remote unwinder buildable with an explicit fail-closed OS hook instead
+    # of silently treating RinOS as Linux.
+    set(libunwind_la_SOURCES_x86_64_os          x86_64/Gos-rinos.c)
 elseif(CLR_CMAKE_TARGET_FREEBSD)
     set(libunwind_la_SOURCES_os                 ${libunwind_la_SOURCES_os_freebsd})
     set(libunwind_la_SOURCES_os_local           ${libunwind_la_SOURCES_os_freebsd_local})
@@ -503,7 +508,6 @@ else(CLR_CMAKE_HOST_UNIX)
     endif()
 
     set(LIBUNWIND_SOURCES_BASE
-      remote/win/missing-functions.c
       # ${libunwind_la_SOURCES}  Local...
       ${libunwind_remote_la_SOURCES}
       # Commented out above for LOCAL + REMOTE runtime build
@@ -513,6 +517,9 @@ else(CLR_CMAKE_HOST_UNIX)
       ${libunwind_dwarf_generic_la_SOURCES}
       ${libunwind_elf_la_SOURCES}
     )
+    if(NOT CLR_CMAKE_TARGET_RINOS)
+      list(PREPEND LIBUNWIND_SOURCES_BASE remote/win/missing-functions.c)
+    endif()
 endif(CLR_CMAKE_HOST_UNIX)
 
 addprefix(LIBUNWIND_SOURCES "${CMAKE_CURRENT_LIST_DIR}/libunwind/src" "${LIBUNWIND_SOURCES_BASE}")

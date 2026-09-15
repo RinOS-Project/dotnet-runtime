@@ -97,7 +97,9 @@ typedef BOOL(*UnwindReadMemoryCallback)(PVOID address, PVOID buffer, SIZE_T size
 #include <link.h>
 #endif // HOST_UNIX
 
+#if !defined(TARGET_RINOS)
 #include <elf.h>
+#endif
 
 #if defined(TARGET_X86) || defined(TARGET_ARM)
 #define PRIx PRIx32

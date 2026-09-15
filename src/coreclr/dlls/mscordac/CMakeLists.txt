@@ -4,7 +4,7 @@ set(CLR_DAC_SOURCES)
 
 add_definitions(-DFX_VER_INTERNALNAME_STR=mscordaccore.dll)
 
-if(CLR_CMAKE_HOST_WIN32)
+if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
     list(APPEND CLR_DAC_SOURCES
         Native.rc
     )
@@ -19,16 +19,16 @@ if(CLR_CMAKE_HOST_WIN32)
 
     # Create target to add file dependency on mscordac.def
     add_custom_target(mscordaccore_def DEPENDS ${CURRENT_BINARY_DIR_FOR_CONFIG}/mscordac.def)
-else(CLR_CMAKE_HOST_WIN32)
+else()
     set(DEF_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/mscordac_unixexports.src)
     set(EXPORTS_FILE ${CMAKE_CURRENT_BINARY_DIR}/mscordac.exports)
 
     # Add dependency on export file
     add_custom_target(mscordaccore_exports DEPENDS ${EXPORTS_FILE})
 
-    if(CLR_CMAKE_HOST_APPLE OR CLR_CMAKE_HOST_FREEBSD OR CLR_CMAKE_HOST_NETBSD OR CLR_CMAKE_HOST_OPENBSD OR CLR_CMAKE_HOST_SUNOS OR CLR_CMAKE_HOST_HAIKU)
+    if(CLR_CMAKE_HOST_APPLE OR CLR_CMAKE_HOST_FREEBSD OR CLR_CMAKE_HOST_NETBSD OR CLR_CMAKE_HOST_OPENBSD OR CLR_CMAKE_HOST_SUNOS OR CLR_CMAKE_HOST_HAIKU OR CLR_CMAKE_TARGET_RINOS)
         generate_exports_file(${DEF_SOURCES} ${EXPORTS_FILE})
-    endif(CLR_CMAKE_HOST_APPLE OR CLR_CMAKE_HOST_FREEBSD OR CLR_CMAKE_HOST_NETBSD OR CLR_CMAKE_HOST_OPENBSD OR CLR_CMAKE_HOST_SUNOS OR CLR_CMAKE_HOST_HAIKU)
+    endif()
 
     if(CORECLR_SET_RPATH AND CLR_CMAKE_HOST_OSX AND CLR_CMAKE_HOST_ARCH_ARM64)
       set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
@@ -110,7 +110,7 @@ else(CLR_CMAKE_HOST_WIN32)
     endif(CLR_CMAKE_HOST_LINUX OR CLR_CMAKE_HOST_FREEBSD OR CLR_CMAKE_HOST_NETBSD OR CLR_CMAKE_HOST_SUNOS OR CLR_CMAKE_HOST_HAIKU)
 
     set_exports_linker_option(${EXPORTS_FILE})
-endif(CLR_CMAKE_HOST_WIN32)
+endif()
 
 # Create object library to enable creation of proper dependency of mscordaccore.exp on mscordac.obj and
 # mscordaccore on both the mscordaccore.exp and mscordac.obj.
@@ -124,11 +124,11 @@ if(CLR_CMAKE_HOST_LINUX)
     add_dependencies(mscordaccore lib_redefines_inc)
 endif(CLR_CMAKE_HOST_LINUX)
 
-if(CLR_CMAKE_HOST_UNIX)
+if(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
     add_dependencies(mscordaccore mscordaccore_exports)
     set_property(TARGET mscordaccore APPEND_STRING PROPERTY LINK_FLAGS ${EXPORTS_LINKER_OPTION})
     set_property(TARGET mscordaccore APPEND_STRING PROPERTY LINK_DEPENDS ${EXPORTS_FILE})
-endif(CLR_CMAKE_HOST_UNIX)
+endif()
 
 # IMPORTANT! Please do not rearrange the order of the libraries. The linker on Linux is
 # order dependent and changing the order can result in undefined symbols in the shared
@@ -143,7 +143,7 @@ set(COREDAC_LIBRARIES
     utilcode_dac
 )
 
-if(CLR_CMAKE_HOST_WIN32)
+if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
     # mscordac.def should be generated before mscordaccore.dll is built
     add_dependencies(mscordaccore mscordaccore_def)
 
@@ -177,13 +177,13 @@ if(CLR_CMAKE_HOST_WIN32)
         ${STATIC_MT_CRT_LIB}
         ${STATIC_MT_VCRT_LIB}
     )
-else(CLR_CMAKE_HOST_WIN32)
+else()
     list(APPEND COREDAC_LIBRARIES
         mscorrc
         coreclrpal
         coreclrminipal
     )
-endif(CLR_CMAKE_HOST_WIN32)
+endif()
 
 if(CLR_CMAKE_HOST_WIN32 AND CLR_CMAKE_TARGET_UNIX)
     list(APPEND COREDAC_LIBRARIES
@@ -191,11 +191,11 @@ if(CLR_CMAKE_HOST_WIN32 AND CLR_CMAKE_TARGET_UNIX)
     )
 endif(CLR_CMAKE_HOST_WIN32 AND CLR_CMAKE_TARGET_UNIX)
 
-if (CLR_CMAKE_HOST_UNIX)
+if (CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
     list(APPEND COREDAC_LIBRARIES
         coreclrpal_dac
     )
-endif (CLR_CMAKE_HOST_UNIX)
+endif()
 
 target_link_libraries(mscordaccore PRIVATE ${COREDAC_LIBRARIES})
 
@@ -204,7 +204,7 @@ esrp_sign(mscordaccore)
 # add the install targets
 install_clr(TARGETS mscordaccore DESTINATIONS . sharedFramework COMPONENT debug)
 
-if(CLR_CMAKE_HOST_WIN32)
+if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
     set(LONG_NAME_HOST_ARCH ${CLR_CMAKE_HOST_ARCH})
     set(LONG_NAME_TARGET_ARCH ${CLR_CMAKE_TARGET_ARCH})
     if (LONG_NAME_HOST_ARCH STREQUAL x64)
@@ -224,5 +224,7 @@ if(CLR_CMAKE_HOST_WIN32)
     # It doesn't make sense to complicate install_clr for this purpose, so keep it self-contained here.
     set(LONG_NAME_BASE mscordaccore_${LONG_NAME_HOST_ARCH}_${LONG_NAME_TARGET_ARCH}_${FILE_VERSION})
     install(PROGRAMS $<TARGET_FILE:mscordaccore> RENAME ${LONG_NAME_BASE}.dll DESTINATION sharedFramework COMPONENT debug)
-    install(FILES $<TARGET_PDB_FILE:mscordaccore> RENAME ${LONG_NAME_BASE}.pdb DESTINATION sharedFramework/PDB COMPONENT debug)
+    if(NOT CLR_CMAKE_TARGET_RINOS)
+        install(FILES $<TARGET_PDB_FILE:mscordaccore> RENAME ${LONG_NAME_BASE}.pdb DESTINATION sharedFramework/PDB COMPONENT debug)
+    endif()
 endif()

@@ -380,7 +380,7 @@ public:
 #if defined(TARGET_APPLE)
 #include <mach-o/dyld.h>
 #include <mach-o/loader.h>
-#elif !defined(TARGET_WASM)
+#elif !defined(TARGET_WASM) && !defined(TARGET_RINOS)
 #include <link.h>
 #include <elf.h>
 #include <cstring>
@@ -396,8 +396,14 @@ public:
 #endif // ElfW
 #endif
 
-// CMake generated
+// CMake generated on Unix hosts. RinOS supplies d_type in its product dirent
+// contract, but does not use the host-side configure probe while cross-building.
+#if !defined(TARGET_RINOS)
 #include <config.h>
+#else
+#define HAVE_GETAUXVAL 0
+#define HAVE_DIRENT_D_TYPE 1
+#endif
 #include <minipal/getexepath.h>
 
 #if __GNUC__ >= 4
@@ -629,7 +635,7 @@ namespace pal
 
     inline void* get_image_base(mod_t m, void* sym)
     {
-#ifndef TARGET_WASM
+#if !defined(TARGET_WASM) && !defined(TARGET_RINOS)
         Dl_info info;
         if (dladdr(sym, &info) != 0)
         {
@@ -675,7 +681,7 @@ namespace pal
 
             return image_size;
         }
-#elif !defined(TARGET_WASM)
+#elif !defined(TARGET_WASM) && !defined(TARGET_RINOS)
         ElfW(Ehdr)* ehdr = reinterpret_cast<ElfW(Ehdr)*>(base_address);
         if (std::memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0)
             return 0;

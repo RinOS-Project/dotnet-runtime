@@ -72,6 +72,43 @@ inline HRESULT Sha256Hash(BYTE* pSrc, DWORD srcSize, BYTE* pDst, DWORD dstSize)
     CC_SHA256(pSrc, (CC_LONG)srcSize, pDst);
     return S_OK;
 }
+#elif defined(TARGET_RINOS)
+// RinOS does not ship OpenSSL headers or an OpenSSL provider.  ilasm still
+// needs SHA-256 for deterministic metadata/PDB output, so use the product
+// RinTLS implementation that is linked into the target crypto PAL.
+#include <stdint.h>
+#ifndef _RIN_TYPES_DEFINED
+#define _RIN_TYPES_DEFINED
+typedef uint8_t u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+typedef uint64_t u64;
+typedef int8_t i8;
+typedef int16_t i16;
+typedef int32_t i32;
+typedef int64_t i64;
+#endif
+extern "C" {
+    #include "crypto/sha256.h"
+}
+
+inline bool IsOpenSslAvailable()
+{
+    // Keep the existing ilasm availability contract: the product SHA-256
+    // implementation is always present in the RinOS static crypto boundary.
+    return true;
+}
+
+inline HRESULT Sha256Hash(BYTE* pSrc, DWORD srcSize, BYTE* pDst, DWORD dstSize)
+{
+    if (dstSize != SHA256_DIGEST_SIZE)
+    {
+        return E_FAIL;
+    }
+
+    sha256(pSrc, (rin_size_t)srcSize, pDst);
+    return S_OK;
+}
 #else
 extern "C" {
     #include "openssl.h"

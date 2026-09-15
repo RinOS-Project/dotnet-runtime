@@ -17,8 +17,16 @@ set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME coreclr_misc)
 add_component(coreclr_misc)
 add_dependencies(runtime coreclr_misc)
 
-# The runtime build requires the clrjit and iltools builds
-add_dependencies(runtime jit iltools)
+# The runtime build requires the clrjit build.  ilasm/ildasm are host-side
+# build tools in the upstream graph; a RinOS cross build cannot link them as
+# target executables until a target C++ ABI/runtime is supplied.  Keep the
+# iltools component available for an explicit host build, but do not make it a
+# prerequisite of the target runtime aggregate.
+if(CLR_CMAKE_TARGET_RINOS)
+  add_dependencies(runtime jit)
+else()
+  add_dependencies(runtime jit iltools)
+endif()
 
 # The runtime build requires the debugger tools builds
 add_dependencies(runtime debug)

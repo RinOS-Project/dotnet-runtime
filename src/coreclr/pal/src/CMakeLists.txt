@@ -223,7 +223,11 @@ set_source_files_properties(
 )
 
 if(NOT CLR_CMAKE_USE_SYSTEM_LIBUNWIND AND NOT CLR_CMAKE_HOST_ARCH_WASM)
-  set(LIBUNWIND_OBJECTS $<TARGET_OBJECTS:libunwind>)
+  if(TARGET libunwind)
+    set(LIBUNWIND_OBJECTS $<TARGET_OBJECTS:libunwind>)
+  elseif(TARGET libunwind_xdac)
+    set(LIBUNWIND_OBJECTS $<TARGET_OBJECTS:libunwind_xdac>)
+  endif()
 endif(NOT CLR_CMAKE_USE_SYSTEM_LIBUNWIND AND NOT CLR_CMAKE_HOST_ARCH_WASM)
 
 add_library(coreclrpal_objects

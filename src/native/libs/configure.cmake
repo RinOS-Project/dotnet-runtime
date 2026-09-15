@@ -806,8 +806,17 @@ check_c_source_compiles(
     "
     HAVE_MKSTEMP)
 
+if (CLR_CMAKE_TARGET_RINOS)
+  # The RinOS libc publishes both temporary-file helpers in its product
+  # stdlib contract. The configure probes intentionally do not link against
+  # the target libc while CMake is running on Windows, so their host result is
+  # not evidence about the target ABI.
+  set(HAVE_MKSTEMPS 1)
+  set(HAVE_MKSTEMP 1)
+endif()
+
 if (NOT HAVE_MKSTEMPS AND NOT HAVE_MKSTEMP AND NOT CLR_CMAKE_TARGET_WASI)
-    message(FATAL_ERROR "Cannot find mkstemps nor mkstemp on this platform.")
+  message(FATAL_ERROR "Cannot find mkstemps nor mkstemp on this platform.")
 endif()
 
 check_c_source_compiles(
@@ -1202,6 +1211,14 @@ if (CLR_CMAKE_TARGET_RINOS)
     set(HAVE_GETHOSTNAME 1)
     set(HAVE_GETNAMEINFO 1)
     set(HAVE_NET_IF_H 1)
+    # The product utime contract is carried by <utime.h> and dispatches to
+    # RinOS's FUTIMENS/UTIMENSAT syscall ABI.  Host configure probes cannot
+    # observe these target-inline entry points, so select the nanosecond path
+    # explicitly and avoid the unavailable hosted futimes fallback.
+    set(HAVE_FUTIMENS 1)
+    set(HAVE_UTIMENSAT 1)
+    set(HAVE_LUTIMES 1)
+    set(HAVE_FUTIMES 0)
     set(HAVE_IP_MREQN 0)
     set(HAVE_IP_MULTICAST_IFINDEX 0)
     set(HAVE_FORK 1)

@@ -30,7 +30,7 @@ function(create_standalone_jit)
   set(oneValueArgs TARGET OS ARCH)
   cmake_parse_arguments(TARGETDETAILS "" "${oneValueArgs}" "" ${ARGN})
 
-  if(TARGETDETAILS_OS STREQUAL "unix_osx" OR TARGETDETAILS_OS STREQUAL "unix_anyos")
+  if(TARGETDETAILS_OS STREQUAL "unix_osx" OR TARGETDETAILS_OS STREQUAL "unix_anyos" OR TARGETDETAILS_OS STREQUAL "rinos")
     set(JIT_ARCH_LINK_LIBRARIES gcinfo_unix_${TARGETDETAILS_ARCH})
   else()
     set(JIT_ARCH_LINK_LIBRARIES gcinfo_${TARGETDETAILS_OS}_${TARGETDETAILS_ARCH})
@@ -580,7 +580,7 @@ endif()
 
 set(JIT_DLL_MAIN_FILE ${CMAKE_CURRENT_LIST_DIR}/dllmain.cpp)
 
-if(CLR_CMAKE_HOST_WIN32)
+if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
   set(CLRJIT_EXPORTS ${CMAKE_CURRENT_LIST_DIR}/ClrJit.exports)
   set(JIT_EXPORTS_FILE ${CMAKE_CURRENT_BINARY_DIR}/ClrJit.exports.def)
   preprocess_file (${CLRJIT_EXPORTS} ${JIT_EXPORTS_FILE})
@@ -592,7 +592,7 @@ else()
   set(JIT_EXPORTS_FILE ${CMAKE_CURRENT_BINARY_DIR}/clrjit.exports)
   generate_exports_file(${CLRJIT_EXPORTS} ${JIT_EXPORTS_FILE})
 
-  if(CLR_CMAKE_TARGET_LINUX OR CLR_CMAKE_TARGET_FREEBSD OR CLR_CMAKE_TARGET_NETBSD OR CLR_CMAKE_TARGET_SUNOS)
+  if(CLR_CMAKE_TARGET_LINUX OR CLR_CMAKE_TARGET_RINOS OR CLR_CMAKE_TARGET_FREEBSD OR CLR_CMAKE_TARGET_NETBSD OR CLR_CMAKE_TARGET_SUNOS)
     # This is required to force using our own PAL, not one that we are loaded with.
     add_link_options(LINKER:-Bsymbolic)
   endif()
@@ -612,7 +612,7 @@ set(JIT_ARCH_LINK_LIBRARIES
    gcinfo
 )
 
-if(CLR_CMAKE_HOST_UNIX)
+if(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
     list(APPEND JIT_LINK_LIBRARIES
        mscorrc
        coreclrpal
@@ -634,7 +634,7 @@ else()
        crypt32.lib
        coreclrminipal
     )
-endif(CLR_CMAKE_HOST_UNIX)
+endif(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
 
 if (CLR_CMAKE_HOST_ANDROID)
     list(APPEND JIT_LINK_LIBRARIES log)
@@ -689,7 +689,7 @@ function(add_jit jitName)
         ${JIT_ARCH_LINK_LIBRARIES}
     )
 
-    if (CLR_CMAKE_HOST_WIN32)
+    if (CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
         link_natvis_sources_for_target(${jitName} PRIVATE clrjit.natvis)
     endif()
 

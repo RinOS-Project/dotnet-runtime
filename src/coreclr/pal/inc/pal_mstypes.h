@@ -81,7 +81,11 @@ extern "C" {
 #define DLLEXPORT __attribute__((visibility("default")))
 #endif
 
+#if defined(MIDL_PASS)
+#define PAL_NORETURN
+#else
 #define PAL_NORETURN    __attribute__((noreturn))
+#endif
 
 #define PALAPI             DLLEXPORT __cdecl
 #define PALAPI_NOEXPORT    __cdecl
@@ -213,7 +217,11 @@ typedef intptr_t SSIZE_T;
 
 typedef LONG_PTR LPARAM;
 
+#ifdef __cplusplus
 typedef char16_t WCHAR;
+#else
+typedef uint16_t WCHAR;
+#endif
 
 typedef DWORD LCID;
 

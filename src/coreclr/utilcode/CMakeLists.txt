@@ -107,7 +107,7 @@ if(CLR_CMAKE_HOST_UNIX)
 endif(CLR_CMAKE_HOST_UNIX)
 
 
-if(CLR_CMAKE_HOST_WIN32)
+if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
     target_compile_definitions(utilcodestaticnohost PRIVATE _CRTIMP=) # use static version of crt
 
     link_natvis_sources_for_target(utilcodestaticnohost INTERFACE utilcode.natvis)
@@ -115,7 +115,7 @@ if(CLR_CMAKE_HOST_WIN32)
       link_natvis_sources_for_target(utilcode_dac INTERFACE utilcode.natvis)
     endif()
     link_natvis_sources_for_target(utilcode INTERFACE utilcode.natvis)
-endif(CLR_CMAKE_HOST_WIN32)
+endif()
 
 if (NOT CLR_CMAKE_TARGET_ARCH_WASM)
   set_target_properties(utilcode_dac PROPERTIES DAC_COMPONENT TRUE)

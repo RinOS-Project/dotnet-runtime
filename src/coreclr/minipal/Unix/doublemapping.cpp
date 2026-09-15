@@ -67,6 +67,11 @@ bool VMToOSInterface::CreateDoubleMemoryMapper(void** pHandle, size_t *pMaxExecu
     int fd = shm_open(SHM_ANON, O_RDWR | O_CREAT, S_IRWXU);
 #elif defined(TARGET_LINUX)
     int fd = memfd_create("doublemapper", MFD_CLOEXEC);
+#elif defined(TARGET_RINOS)
+    // RinOS exposes named shared memory through rin_shm_* rather than a POSIX
+    // shm_open file descriptor.  Until the executable allocator is connected
+    // to that ABI, fail closed and let it use its non-double-mapped path.
+    int fd = -1;
 #else
     int fd = -1;
 
@@ -424,6 +429,8 @@ TemplateThunkMappingData *InitializeTemplateThunkMappingData(void* pTemplate)
         int fd = shm_open(SHM_ANON, O_RDWR | O_CREAT, S_IRWXU);
 #elif defined(TARGET_LINUX)
         int fd = memfd_create("doublemapper-template", MFD_CLOEXEC);
+#elif defined(TARGET_RINOS)
+        int fd = -1;
 #else
         int fd = -1;
     

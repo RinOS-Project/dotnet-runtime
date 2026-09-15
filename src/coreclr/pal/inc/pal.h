@@ -119,6 +119,12 @@ extern bool g_arm64_atomics_present;
 /******************* Compiler-specific glue *******************************/
 #define DECLSPEC_NORETURN   PAL_NORETURN
 
+#if defined(MIDL_PASS) || !defined(__cplusplus)
+#define PAL_DEFAULT_ARG(value)
+#else
+#define PAL_DEFAULT_ARG(value) = value
+#endif
+
 #if !defined(_MSC_VER) || defined(SOURCE_FORMATTING)
 #if __has_builtin(__builtin_assume)
 #define __assume(condition) do { bool assume_cond = (condition); __builtin_assume(assume_cond); } while (0)
@@ -1032,6 +1038,7 @@ typedef struct _XMM_SAVE_AREA32 {
 
 typedef struct DECLSPEC_ALIGN(16) _CONTEXT {
 
+#if defined(__cplusplus) && !defined(MIDL_PASS)
     _CONTEXT() = default;
     _CONTEXT(const _CONTEXT& ctx)
     {
@@ -1039,6 +1046,7 @@ typedef struct DECLSPEC_ALIGN(16) _CONTEXT {
     }
 
     _CONTEXT& operator=(const _CONTEXT& ctx);
+#endif
 
     //
     // Register parameter home addresses.
@@ -2348,8 +2356,8 @@ HMODULE
 PALAPI
 LoadLibraryExW(
         IN LPCWSTR lpLibFileName,
-        IN /*Reserved*/ HANDLE hFile = NULL,
-        IN DWORD dwFlags = 0);
+        IN /*Reserved*/ HANDLE hFile PAL_DEFAULT_ARG(NULL),
+        IN DWORD dwFlags PAL_DEFAULT_ARG(0));
 
 PALIMPORT
 NATIVE_LIBRARY_HANDLE
@@ -2471,7 +2479,7 @@ PAL_GetSymbolModuleBase(PVOID symbol);
 PALIMPORT
 int
 PALAPI
-PAL_CopyModuleData(PVOID moduleBase, PVOID destinationBufferStart, PVOID destinationBufferEnd);;
+PAL_CopyModuleData(PVOID moduleBase, PVOID destinationBufferStart, PVOID destinationBufferEnd);
 
 PALIMPORT
 LPCSTR
@@ -2788,6 +2796,7 @@ PAL_nanosleep(
 typedef EXCEPTION_DISPOSITION (PALAPI_NOEXPORT *PVECTORED_EXCEPTION_HANDLER)(
                            struct _EXCEPTION_POINTERS *ExceptionPointers);
 
+#ifndef MIDL_PASS
 // Define BitScanForward64 and BitScanForward
 // Per MSDN, BitScanForward64 will search the mask data from LSB to MSB for a set bit.
 // If one is found, its bit position is stored in the out PDWORD argument and 1 is returned;
@@ -2879,7 +2888,9 @@ BitScanReverse64(
     *Index = (DWORD)(63 - lzcount);
     return qwMask != 0;
 }
+#endif // !MIDL_PASS
 
+#ifndef MIDL_PASS
 FORCEINLINE void PAL_InterlockedOperationBarrier()
 {
 #if (defined(HOST_ARM64) && !defined(LSE_INSTRUCTIONS_ENABLED_BY_DEFAULT) && !defined(__clang__)) || defined(HOST_LOONGARCH64) || defined(HOST_RISCV64)
@@ -3268,6 +3279,7 @@ YieldProcessor()
     return;
 #endif
 }
+#endif // !MIDL_PASS
 
 #define FORMAT_MESSAGE_ALLOCATE_BUFFER 0x00000100
 #define FORMAT_MESSAGE_IGNORE_INSERTS  0x00000200
@@ -3366,7 +3378,7 @@ GetSystemInfo(
 #define EVENTLOG_AUDIT_SUCCESS          0x0008
 #define EVENTLOG_AUDIT_FAILURE          0x0010
 
-#if defined FEATURE_PAL_ANSI
+#if defined FEATURE_PAL_ANSI && !defined(MIDL_PASS)
 #include "palprivate.h"
 #endif //FEATURE_PAL_ANSI
 /******************* C Runtime Entrypoints *******************************/
@@ -3418,6 +3430,7 @@ PALIMPORT DLLEXPORT double __cdecl PAL_wcstod(const WCHAR *, WCHAR **);
 PALIMPORT errno_t __cdecl _wcslwr_s(WCHAR *, size_t sz);
 PALIMPORT int __cdecl _wtoi(const WCHAR *);
 
+#ifndef MIDL_PASS
 inline int _stricmp(const char* a, const char* b)
 {
     return strcasecmp(a, b);
@@ -3491,6 +3504,7 @@ unsigned int __cdecl _rotr(unsigned int value, int shift)
 }
 
 #endif // !__has_builtin(_rotr)
+#endif // !MIDL_PASS
 
 PALIMPORT DLLEXPORT char * __cdecl PAL_getenv(const char *);
 PALIMPORT DLLEXPORT int __cdecl _putenv(const char *);
@@ -3565,7 +3579,7 @@ public:
     void(*ManagedToNativeExceptionCallback)(void* context);
     void* ManagedToNativeExceptionCallbackContext;
 
-    PAL_SEHException(EXCEPTION_RECORD *pExceptionRecord, CONTEXT *pContextRecord, bool onStack = false)
+    PAL_SEHException(EXCEPTION_RECORD *pExceptionRecord, CONTEXT *pContextRecord, bool onStack PAL_DEFAULT_ARG(false))
     {
         ExceptionPointers.ExceptionRecord = pExceptionRecord;
         ExceptionPointers.ContextRecord = pContextRecord;

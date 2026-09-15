@@ -1,7 +1,7 @@
 set(EVENT_MANIFEST ${VM_DIR}/ClrEtwAll.man)
 set(EVENT_EXCLUSIONS ${VM_DIR}/ClrEtwAllMeta.lst)
 
-if (CLR_CMAKE_HOST_WIN32)
+if (CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
   set(NONEXTERN_ARG "--nonextern")
   set(NOXPLATHEADER_ARG "--noxplatheader")
 else()
@@ -41,7 +41,7 @@ set_source_files_properties(${EventingHeaders} PROPERTIES GENERATED TRUE)
 
 add_custom_target(eventing_headers DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/eventing_headers.timestamp)
 
-if(CLR_CMAKE_HOST_WIN32)
+if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
   add_subdirectory(EtwProvider)
 endif()
 

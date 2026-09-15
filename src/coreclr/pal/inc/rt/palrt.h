@@ -183,7 +183,11 @@ typedef enum tagEFaultRepRetVal
 #define REFGUID const GUID *
 #endif
 
+#ifdef __cplusplus
 EXTERN_C const GUID GUID_NULL;
+#else
+extern const GUID GUID_NULL;
+#endif
 
 typedef GUID *LPGUID;
 typedef const GUID FAR *LPCGUID;

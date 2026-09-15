@@ -4,7 +4,7 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 set(CORERUN_IN_BROWSER 0)
 
-if(CLR_CMAKE_HOST_WIN32)
+if(CLR_CMAKE_HOST_WIN32 OR CLR_CMAKE_TARGET_RINOS)
     add_definitions(-DFX_VER_INTERNALNAME_STR=corerun.exe)
 else()
     include(configure.cmake)
@@ -29,7 +29,7 @@ add_executable_clr(corerun
 
 target_link_libraries(corerun PRIVATE minipal)
 
-if(CLR_CMAKE_HOST_WIN32)
+if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
     target_link_libraries(corerun
         PRIVATE
         advapi32.lib
@@ -145,7 +145,7 @@ else()
             install(FILES "./wasm/corerun.html" DESTINATION . COMPONENT hosts)
         endif()
     endif()
-endif(CLR_CMAKE_HOST_WIN32)
+endif(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
 
 if (CLR_CMAKE_HOST_APPLE)
     adhoc_sign_with_entitlements(corerun "${CLR_ENG_NATIVE_DIR}/entitlements.plist")

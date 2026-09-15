@@ -2781,6 +2781,10 @@
     <Compile Include="$(MSBuildThisFileDirectory)System\IO\PersistedFiles.Browser.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)System\Runtime\InteropServices\RuntimeInformation.Browser.cs" />
   </ItemGroup>
+  <ItemGroup Condition="'$(TargetsRinOS)' == 'true'">
+    <SupportedPlatform Include="RINOS" />
+    <Compile Include="$(MSBuildThisFileDirectory)System\Environment.RinOS.cs" />
+  </ItemGroup>
   <ItemGroup Condition="'$(UseMinimalGlobalizationData)' == 'true'">
     <Compile Include="$(MSBuildThisFileDirectory)System\TimeZoneInfo.MinimalGlobalizationData.cs" />
   </ItemGroup>

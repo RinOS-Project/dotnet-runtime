@@ -299,8 +299,10 @@ elseif(CLR_CMAKE_HOST_WASI)
 elseif(CLR_CMAKE_HOST_UNIX_MIPS64)
     set(CLR_CMAKE_HOST_ARCH_MIPS64 1)
     set(CLR_CMAKE_HOST_ARCH "mips64")
-elseif(WIN32)
-    # CLR_CMAKE_HOST_ARCH is passed in as param to cmake
+elseif(WIN32 OR CLR_CMAKE_HOST_OS STREQUAL windows)
+    # CLR_CMAKE_HOST_ARCH is passed in as a parameter to cmake. During a
+    # Windows -> RinOS cross build CMAKE_SYSTEM_NAME is RinOS, so WIN32 is
+    # false even though the host toolchain is Windows.
     if (CLR_CMAKE_HOST_ARCH STREQUAL x64)
         set(CLR_CMAKE_HOST_ARCH_AMD64 1)
     elseif(CLR_CMAKE_HOST_ARCH STREQUAL x86)

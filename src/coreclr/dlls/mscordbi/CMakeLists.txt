@@ -24,7 +24,7 @@ if(CLR_CMAKE_HOST_LINUX)
     list(APPEND MSCORDBI_SOURCES ${PAL_REDEFINES_FILE})
 endif(CLR_CMAKE_HOST_LINUX)
 
-if(CLR_CMAKE_HOST_WIN32)
+if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
     add_definitions(-DFX_VER_INTERNALNAME_STR=mscordbi.dll)
 
     list(APPEND MSCORDBI_SOURCES
@@ -40,7 +40,7 @@ if(CLR_CMAKE_HOST_WIN32)
     preprocess_file(${DEF_SOURCES} ${CMAKE_CURRENT_BINARY_DIR}/mscordbi.def)
 
     list(APPEND MSCORDBI_SOURCES ${CMAKE_CURRENT_BINARY_DIR}/mscordbi.def)
-else(CLR_CMAKE_HOST_WIN32)
+else()
     set(DEF_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/mscordbi_unixexports.src)
     set(EXPORTS_FILE ${CMAKE_CURRENT_BINARY_DIR}/mscordbi.exports)
     generate_exports_file(${DEF_SOURCES} ${EXPORTS_FILE})
@@ -52,19 +52,19 @@ else(CLR_CMAKE_HOST_WIN32)
     endif(CLR_CMAKE_HOST_LINUX OR CLR_CMAKE_HOST_FREEBSD OR CLR_CMAKE_HOST_NETBSD OR CLR_CMAKE_HOST_SUNOS OR CLR_CMAKE_HOST_HAIKU)
 
     set_exports_linker_option(${EXPORTS_FILE})
-endif(CLR_CMAKE_HOST_WIN32)
+endif()
 
 add_library_clr(mscordbi SHARED ${MSCORDBI_SOURCES})
 set_target_properties(mscordbi PROPERTIES DBI_COMPONENT TRUE)
 target_precompile_headers(mscordbi PRIVATE $<$<COMPILE_LANGUAGE:CXX>:stdafx.h>)
 
-if(CLR_CMAKE_HOST_UNIX)
+if(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
     add_custom_target(mscordbi_exports DEPENDS ${EXPORTS_FILE})
     add_dependencies(mscordbi mscordbi_exports)
 
     set_property(TARGET mscordbi APPEND_STRING PROPERTY LINK_FLAGS ${EXPORTS_LINKER_OPTION})
     set_property(TARGET mscordbi APPEND_STRING PROPERTY LINK_DEPENDS ${EXPORTS_FILE})
-endif(CLR_CMAKE_HOST_UNIX)
+endif()
 
 set(COREDBI_LIBRARIES
     debug-pal
@@ -78,7 +78,7 @@ set(COREDBI_LIBRARIES
     minipal
 )
 
-if(CLR_CMAKE_HOST_WIN32)
+if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
 
     list(APPEND COREDBI_LIBRARIES
         kernel32.lib
@@ -94,7 +94,7 @@ if(CLR_CMAKE_HOST_WIN32)
 
     target_link_libraries(mscordbi PRIVATE ${COREDBI_LIBRARIES})
 
-elseif(CLR_CMAKE_HOST_UNIX)
+elseif(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
 
     list(APPEND COREDBI_LIBRARIES
         # share the PAL in the dac module
@@ -111,12 +111,12 @@ elseif(CLR_CMAKE_HOST_UNIX)
     # flipped to `--no-undefined-version` in lld 16, so we will explicitly set it to
     # `--undefined-version` for our use-case.
     include(CheckLinkerFlag OPTIONAL)
-    if(COMMAND check_linker_flag)
+    if(COMMAND check_linker_flag AND NOT CLR_CMAKE_TARGET_RINOS)
         check_linker_flag(CXX -Wl,--undefined-version LINKER_SUPPORTS_UNDEFINED_VERSION)
         if (LINKER_SUPPORTS_UNDEFINED_VERSION)
             add_linker_flag(-Wl,--undefined-version)
         endif(LINKER_SUPPORTS_UNDEFINED_VERSION)
-    endif(COMMAND check_linker_flag)
+    endif()
 
     # COREDBI_LIBRARIES is mentioned twice because ld is one pass linker and will not find symbols
     # if they are defined after they are used. Having all libs twice makes sure that ld will actually
@@ -129,7 +129,7 @@ elseif(CLR_CMAKE_HOST_UNIX)
         add_dependencies(mscordbi pal_redefines_file)
     endif(CLR_CMAKE_HOST_LINUX)
 
-endif(CLR_CMAKE_HOST_WIN32)
+endif()
 
 esrp_sign(mscordbi)
 

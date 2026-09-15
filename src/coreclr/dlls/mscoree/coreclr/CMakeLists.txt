@@ -11,7 +11,7 @@ if (CLR_CMAKE_TARGET_WIN32)
     list(APPEND CLR_SOURCES ${CMAKE_CURRENT_BINARY_DIR}/coreclr.def)
 endif (CLR_CMAKE_TARGET_WIN32)
 
-if (CLR_CMAKE_HOST_WIN32)
+if (CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
     set (DEF_FILE  ${CMAKE_CURRENT_BINARY_DIR}/coreclr.def)
     preprocess_file(${DEF_SOURCES} ${DEF_FILE})
 
@@ -25,19 +25,19 @@ if (CLR_CMAKE_HOST_WIN32)
     set(START_LIBRARY_GROUP)
     set(END_LIBRARY_GROUP)
 
-else(CLR_CMAKE_HOST_WIN32)
+else()
     set(EXPORTS_FILE ${CMAKE_CURRENT_BINARY_DIR}/coreclr.exports)
     generate_exports_file(${DEF_SOURCES} ${EXPORTS_FILE})
 
-    if(CLR_CMAKE_TARGET_LINUX OR CLR_CMAKE_TARGET_FREEBSD OR CLR_CMAKE_TARGET_NETBSD OR CLR_CMAKE_TARGET_SUNOS OR CLR_CMAKE_HOST_HAIKU)
+    if(CLR_CMAKE_TARGET_LINUX OR CLR_CMAKE_TARGET_FREEBSD OR CLR_CMAKE_TARGET_NETBSD OR CLR_CMAKE_TARGET_SUNOS OR CLR_CMAKE_TARGET_RINOS OR CLR_CMAKE_HOST_HAIKU)
         # This option is necessary to ensure that the overloaded delete operator defined inside
         # of the utilcode will be used instead of the standard library delete operator.
         add_linker_flag("-Wl,-Bsymbolic")
-    endif(CLR_CMAKE_TARGET_LINUX OR CLR_CMAKE_TARGET_FREEBSD OR CLR_CMAKE_TARGET_NETBSD OR CLR_CMAKE_TARGET_SUNOS OR CLR_CMAKE_HOST_HAIKU)
+    endif()
 
     set_exports_linker_option(${EXPORTS_FILE})
 
-endif (CLR_CMAKE_HOST_WIN32)
+endif()
 
 add_definitions(-DFX_VER_INTERNALNAME_STR=CoreCLR.dll)
 

@@ -26,6 +26,8 @@
 #if defined(__linux__)
 #include <sys/syscall.h>
 #include <unistd.h>
+#elif defined(__rinos__)
+#include <unistd.h>
 #elif defined(__FreeBSD__)
 #include <pthread_np.h>
 #elif defined(__OpenBSD__)
@@ -62,6 +64,8 @@ size_t minipal_get_current_thread_id_no_cache(void)
 
 #if defined(__linux__)
     tid = (size_t)syscall(SYS_gettid);
+#elif defined(__rinos__)
+    tid = (size_t)gettid();
 #elif defined(__APPLE__)
     uint64_t thread_id;
     pthread_threadid_np(pthread_self(), &thread_id);

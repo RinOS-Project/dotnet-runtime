@@ -114,8 +114,13 @@ static int ConnectRinOSUnix(const char* path)
     struct sockaddr_un address = {};
     address.sun_family = AF_UNIX;
     memcpy(address.sun_path, path, strlen(path) + 1u);
-    if (connect(descriptor, reinterpret_cast<const sockaddr*>(&address),
-                sizeof(address)) != 0)
+    int result;
+    do
+    {
+        result = connect(descriptor, reinterpret_cast<const sockaddr*>(&address),
+                         sizeof(address));
+    } while (result != 0 && errno == EINTR);
+    if (result != 0)
     {
         close(descriptor);
         return -1;
@@ -245,7 +250,11 @@ bool TwoWayPipe::WaitForConnection()
         return false;
 
 #if defined(TARGET_RINOS)
-    int inbound = accept(m_inboundPipe, nullptr, nullptr);
+    int inbound;
+    do
+    {
+        inbound = accept(m_inboundPipe, nullptr, nullptr);
+    } while (inbound == -1 && errno == EINTR);
     if (inbound == INVALID_PIPE)
         return false;
     if (fcntl(inbound, F_SETFD, FD_CLOEXEC) != 0)
@@ -294,12 +303,24 @@ int TwoWayPipe::Read(void *buffer, DWORD bufferSize)
 {
     _ASSERTE(m_state == ServerConnected || m_state == ClientConnected);
 
+    if (bufferSize > static_cast<DWORD>(INT_MAX))
+    {
+        errno = EOVERFLOW;
+        return -1;
+    }
+
     int totalBytesRead = 0;
     int bytesRead;
     int cb = bufferSize;
 
-    while ((bytesRead = (int)read(m_inboundPipe, buffer, cb)) > 0)
+    while (true)
     {
+        bytesRead = (int)read(m_inboundPipe, buffer, cb);
+        if (bytesRead == -1 && errno == EINTR)
+            continue;
+        if (bytesRead <= 0)
+            break;
+
         totalBytesRead += bytesRead;
         _ASSERTE(totalBytesRead <= (int)bufferSize);
         if (totalBytesRead >= (int)bufferSize)
@@ -321,6 +342,12 @@ int TwoWayPipe::Write(const void *data, DWORD dataSize)
 {
     _ASSERTE(m_state == ServerConnected || m_state == ClientConnected);
 
+    if (dataSize > static_cast<DWORD>(INT_MAX))
+    {
+        errno = EOVERFLOW;
+        return -1;
+    }
+
     int totalBytesWritten = 0;
     int bytesWritten;
     int cb = dataSize;
@@ -332,6 +359,8 @@ int TwoWayPipe::Write(const void *data, DWORD dataSize)
 #else
         bytesWritten = (int)write(m_outboundPipe, data, cb);
 #endif
+        if (bytesWritten == -1 && errno == EINTR)
+            continue;
         if (bytesWritten <= 0)
             break;
 

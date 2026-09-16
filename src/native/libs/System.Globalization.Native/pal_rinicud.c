@@ -1180,9 +1180,17 @@ static int compare_slice(SortHandle* handle, const UChar* source, int32_t source
     char* left;
     char* right;
     int result = 0;
+    rin_icu_handle_t service_handle;
+
+    if (!handle || !source || !target || source_length < 0 || offset < 0 || target_length < 0 ||
+        (size_t)offset > (size_t)source_length ||
+        (size_t)target_length > (size_t)source_length - (size_t)offset) {
+        return 0;
+    }
+
     left = sort_text(source + offset, target_length, NULL);
     right = sort_text(target, target_length, NULL);
-    rin_icu_handle_t service_handle = collator_handle_for_options(handle, options);
+    service_handle = collator_handle_for_options(handle, options);
     if (!left || !right || service_handle == 0u ||
         rin_icu_collator_compare(handle->client, service_handle, left, right, &result) != RIN_ICU_STATUS_OK) result = 1;
     free(left);

@@ -588,6 +588,55 @@ static int product_locale_language_id(const char* locale_id)
     return 0;
 }
 
+typedef struct RinLocaleCode
+{
+    const char* id;
+    const char* code;
+} RinLocaleCode;
+
+static const char* product_language_three_letter(const char* language)
+{
+    static const RinLocaleCode codes[] = {
+        { "ar", "ara" }, { "cs", "ces" }, { "da", "dan" },
+        { "de", "deu" }, { "en", "eng" }, { "es", "spa" },
+        { "fi", "fin" }, { "fr", "fra" }, { "hi", "hin" },
+        { "hu", "hun" }, { "id", "ind" }, { "it", "ita" },
+        { "ja", "jpn" }, { "ko", "kor" }, { "nl", "nld" },
+        { "pl", "pol" }, { "pt", "por" }, { "ro", "ron" },
+        { "ru", "rus" }, { "sv", "swe" }, { "th", "tha" },
+        { "tr", "tur" }, { "uk", "ukr" }, { "vi", "vie" },
+        { "zh", "zho" }
+    };
+    size_t index;
+    if (!language || language[0] == '\0') return NULL;
+    for (index = 0u; index < sizeof(codes) / sizeof(codes[0]); ++index) {
+        if (strcmp(codes[index].id, language) == 0) return codes[index].code;
+    }
+    return NULL;
+}
+
+static const char* product_region_three_letter(const char* region)
+{
+    static const RinLocaleCode codes[] = {
+        { "BR", "BRA" }, { "CN", "CHN" }, { "CZ", "CZE" },
+        { "DE", "DEU" }, { "DK", "DNK" }, { "ES", "ESP" },
+        { "FI", "FIN" }, { "FR", "FRA" }, { "GB", "GBR" },
+        { "HU", "HUN" }, { "ID", "IDN" }, { "IN", "IND" },
+        { "IT", "ITA" }, { "JP", "JPN" }, { "KR", "KOR" },
+        { "MX", "MEX" }, { "NL", "NLD" }, { "PL", "POL" },
+        { "PT", "PRT" }, { "RO", "ROU" }, { "RU", "RUS" },
+        { "SA", "SAU" }, { "SE", "SWE" }, { "TH", "THA" },
+        { "TR", "TUR" }, { "TW", "TWN" }, { "UA", "UKR" },
+        { "US", "USA" }, { "VN", "VNM" }
+    };
+    size_t index;
+    if (!region || region[0] == '\0') return NULL;
+    for (index = 0u; index < sizeof(codes) / sizeof(codes[0]); ++index) {
+        if (strcmp(codes[index].id, region) == 0) return codes[index].code;
+    }
+    return NULL;
+}
+
 static int product_pattern_order(const char* pattern, const char* first_token,
                                  const char* second_token, int* first_is_left,
                                  int* separated)
@@ -1273,7 +1322,15 @@ int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStrin
             case LocaleString_NegativeSign: field = record.minus_sign; field_capacity = sizeof(record.minus_sign); break;
             case LocaleString_PercentSymbol: field = record.percent_sign; field_capacity = sizeof(record.percent_sign); break;
             case LocaleString_Iso639LanguageTwoLetterName: field = record.language; field_capacity = sizeof(record.language); break;
+            case LocaleString_Iso639LanguageThreeLetterName:
+                field = product_language_three_letter(record.language);
+                field_capacity = field ? strlen(field) + 1u : 0u;
+                break;
             case LocaleString_Iso3166CountryName: field = record.region; field_capacity = sizeof(record.region); break;
+            case LocaleString_Iso3166CountryName2:
+                field = product_region_three_letter(record.region);
+                field_capacity = field ? strlen(field) + 1u : 0u;
+                break;
             case LocaleString_ParentName:
                 if (locale_parent_name(client, locale_name, parent, sizeof(parent))) {
                     field = parent;
@@ -1281,6 +1338,10 @@ int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStrin
                 }
                 break;
             case LocaleString_Digits: field = "0123456789"; field_capacity = 11u; break;
+            case LocaleString_NaNSymbol: field = "NaN"; field_capacity = sizeof("NaN"); break;
+            case LocaleString_PositiveInfinitySymbol: field = "Infinity"; field_capacity = sizeof("Infinity"); break;
+            case LocaleString_NegativeInfinitySymbol: field = "-Infinity"; field_capacity = sizeof("-Infinity"); break;
+            case LocaleString_PerMilleSymbol: field = "‰"; field_capacity = sizeof("‰"); break;
             default: break;
         }
         if (field) {

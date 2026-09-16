@@ -2028,6 +2028,7 @@ static char* idna_normalize_casefold(const char* source, size_t source_length)
         }
         offset += consumed;
     }
+    folded[folded_length] = '\0';
     free(normalized);
     free(input);
     return folded;

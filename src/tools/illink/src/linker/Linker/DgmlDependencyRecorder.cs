@@ -157,7 +157,12 @@ namespace Mono.Linker
 
         public void RecordDependency(object source, object target, bool marked)
         {
-            throw new NotImplementedException();
+            if (writer == null)
+                throw new InvalidOperationException();
+
+            // Keep the overload contract aligned with XmlDependencyRecorder while
+            // retaining the mark bit in DGML's human-readable reason field.
+            RecordDependency(source, target, marked ? "Marked" : "Unmarked");
         }
     }
 }

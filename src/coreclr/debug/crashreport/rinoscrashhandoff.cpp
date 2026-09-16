@@ -51,6 +51,7 @@ RinOSCrashReportHandoff::Initialize()
     struct sockaddr_un address = {};
     size_t pathSize = sizeof(RIN_CRASH_SERVICE_SOCKET_PATH) - 1u;
     int fd;
+    int connectResult;
 
     if (m_fd >= 0)
         return true;
@@ -74,8 +75,12 @@ RinOSCrashReportHandoff::Initialize()
 
     address.sun_family = AF_UNIX;
     memcpy(address.sun_path, RIN_CRASH_SERVICE_SOCKET_PATH, pathSize);
-    if (connect(fd, reinterpret_cast<const sockaddr*>(&address),
-                sizeof(address)) != 0 || !IsCrashdEndpoint(fd, slot))
+    do
+    {
+        connectResult = connect(
+            fd, reinterpret_cast<const sockaddr*>(&address), sizeof(address));
+    } while (connectResult != 0 && errno == EINTR);
+    if (connectResult != 0 || !IsCrashdEndpoint(fd, slot))
     {
         close(fd);
         return false;

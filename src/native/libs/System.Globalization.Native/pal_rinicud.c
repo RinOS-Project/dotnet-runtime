@@ -126,6 +126,33 @@ typedef struct SortHandle
     rin_icu_handle_t handle;
 } SortHandle;
 
+typedef struct RinJapaneseEra
+{
+    int32_t start_year;
+    int32_t start_month;
+    int32_t start_day;
+} RinJapaneseEra;
+
+/* JapaneseCalendar era numbers are stable historical data, not a host ICU
+ * probe.  ICU uses zero-based era indices from Meiji through Reiwa.  A future
+ * era is an explicit product data update; it must not be guessed from
+ * wall-clock time. */
+static const RinJapaneseEra g_japanese_eras[] = {
+    { 1868, 9, 8 },   /* Meiji */
+    { 1912, 7, 30 },  /* Taisho */
+    { 1926, 12, 25 }, /* Showa */
+    { 1989, 1, 8 },   /* Heisei */
+    { 2019, 5, 1 },   /* Reiwa */
+};
+
+static const char* const g_japanese_era_names[] = {
+    "明治", "大正", "昭和", "平成", "令和"
+};
+
+static const char* const g_japanese_era_abbreviations[] = {
+    "M", "T", "S", "H", "R"
+};
+
 static rin_icu_client_t g_client = {};
 
 static rin_icu_client_t* product_client(void)
@@ -953,6 +980,10 @@ int32_t GlobalizationNative_GetCalendars(const UChar* locale, CalendarId* calend
     RinIcuDataLocaleRecord record;
     if (!calendars || capacity <= 0 || !get_locale_record(locale, &record)) return 0;
     calendars[0] = 1;
+    if (strcmp(record.language, "ja") == 0 && capacity > 1) {
+        calendars[1] = 3;
+        return 2;
+    }
     return 1;
 }
 
@@ -960,8 +991,8 @@ ResultCode GlobalizationNative_GetCalendarInfo(const UChar* locale, CalendarId c
 {
     RinIcuDataLocaleRecord record;
     char pattern[128];
-    const char* text = "gregorian";
-    if (calendar != 1 || capacity < 0 || !get_locale_record(locale, &record)) return UnknownError;
+    const char* text = calendar == 3 ? "japanese" : "gregorian";
+    if ((calendar != 1 && calendar != 3) || capacity < 0 || !get_locale_record(locale, &record)) return UnknownError;
     switch (kind) {
         case CalendarData_NativeName:
             break;
@@ -980,13 +1011,28 @@ ResultCode GlobalizationNative_GetCalendarInfo(const UChar* locale, CalendarId c
 int32_t GlobalizationNative_EnumCalendarInfo(EnumCalendarInfoCallback callback, const UChar* locale, CalendarId calendar, CalendarDataType kind, const void* context)
 {
     static const UChar gregorian[] = { 'g','r','e','g','o','r','i','a','n',0 };
+    static const UChar japanese[] = { 'j','a','p','a','n','e','s','e',0 };
     RinIcuDataLocaleRecord record;
     UChar pattern[128];
     int32_t pattern_length;
-    if (!callback || calendar != 1 || !get_locale_record(locale, &record)) return 0;
+    if (!callback || (calendar != 1 && calendar != 3) || !get_locale_record(locale, &record)) return 0;
     if (kind == CalendarData_NativeName) {
-        callback(gregorian, context);
+        callback(calendar == 3 ? japanese : gregorian, context);
         return 1;
+    }
+    if (calendar == 3 && (kind == CalendarData_EraNames || kind == CalendarData_AbbrevEraNames)) {
+        size_t index;
+        for (index = 0u; index < sizeof(g_japanese_era_names) / sizeof(g_japanese_era_names[0]); ++index) {
+            UChar era_name[32];
+            const char* name = kind == CalendarData_EraNames
+                ? g_japanese_era_names[index]
+                : g_japanese_era_abbreviations[index];
+            int32_t length = copy_utf8(name, strlen(name), era_name, (int32_t)(sizeof(era_name) / sizeof(era_name[0])));
+            if (length <= 0) return 0;
+            era_name[length] = 0;
+            callback(era_name, context);
+        }
+        return (int32_t)(sizeof(g_japanese_era_names) / sizeof(g_japanese_era_names[0]));
     }
     if (kind != CalendarData_ShortDates && kind != CalendarData_LongDates) return 0;
     {
@@ -1002,18 +1048,21 @@ int32_t GlobalizationNative_EnumCalendarInfo(EnumCalendarInfoCallback callback, 
 
 int32_t GlobalizationNative_GetLatestJapaneseEra(void)
 {
-    /* rinicud currently publishes Gregorian data only; do not invent a
-       Japanese era from a stale hardcoded value. */
-    return 0;
+    return (int32_t)(sizeof(g_japanese_eras) / sizeof(g_japanese_eras[0])) - 1;
 }
 
 int32_t GlobalizationNative_GetJapaneseEraStartDate(int32_t era, int32_t* year, int32_t* month, int32_t* day)
 {
-    (void)era;
-    (void)year;
-    (void)month;
-    (void)day;
-    return 0;
+    size_t era_count = sizeof(g_japanese_eras) / sizeof(g_japanese_eras[0]);
+    if (!year || !month || !day) return 0;
+    *year = -1;
+    *month = -1;
+    *day = -1;
+    if (era < 0 || (size_t)era >= era_count) return 0;
+    *year = g_japanese_eras[era].start_year;
+    *month = g_japanese_eras[era].start_month;
+    *day = g_japanese_eras[era].start_day;
+    return 1;
 }
 
 int32_t GlobalizationNative_LoadICU(void)
@@ -1064,28 +1113,507 @@ static int u16_ascii_equal(const UChar* value, size_t length, const char* ascii)
     return 1;
 }
 
+enum {
+    RIN_IDNA_MAX_NAME = 4096,
+    RIN_IDNA_MAX_LABEL = 63,
+    RIN_IDNA_BASE = 36,
+    RIN_IDNA_TMIN = 1,
+    RIN_IDNA_TMAX = 26,
+    RIN_IDNA_SKEW = 38,
+    RIN_IDNA_DAMP = 700,
+    RIN_IDNA_INITIAL_BIAS = 72,
+    RIN_IDNA_INITIAL_N = 128
+};
+
+static int idna_append(char* dest, size_t capacity, size_t* length,
+                       const char* source, size_t source_length)
+{
+    if (!dest || !length || !source || *length >= capacity ||
+        source_length >= capacity - *length) return 0;
+    memcpy(dest + *length, source, source_length);
+    *length += source_length;
+    dest[*length] = '\0';
+    return 1;
+}
+
+static int idna_ascii_digit(char value)
+{
+    if (value >= 'a' && value <= 'z') return value - 'a';
+    if (value >= 'A' && value <= 'Z') return value - 'A';
+    if (value >= '0' && value <= '9') return value - '0' + 26;
+    return -1;
+}
+
+static char idna_encode_digit(uint32_t value)
+{
+    return value < 26u ? (char)('a' + value) : (char)('0' + value - 26u);
+}
+
+static uint32_t idna_adapt(uint64_t delta, uint64_t points, int first)
+{
+    uint64_t k = 0u;
+    delta = first ? delta / RIN_IDNA_DAMP : delta / 2u;
+    delta += delta / points;
+    while (delta > ((RIN_IDNA_BASE - RIN_IDNA_TMIN) * RIN_IDNA_TMAX) / 2u) {
+        delta /= RIN_IDNA_BASE - RIN_IDNA_TMIN;
+        k += RIN_IDNA_BASE;
+    }
+    return (uint32_t)(k + ((RIN_IDNA_BASE - RIN_IDNA_TMIN + 1u) * delta) /
+                      (delta + RIN_IDNA_SKEW));
+}
+
+static int idna_codepoint_allowed(uint32_t codepoint)
+{
+    /* LibUnicode does not expose the complete IDNA derived-property table.
+     * Accept the product's scalar alphanumeric and combining set, and fail
+     * closed for join controls, bidi controls, punctuation, and unassigned
+     * values instead of claiming a broader UTS-46 profile. */
+    if (codepoint <= 0x7fu) {
+        return (codepoint >= 'a' && codepoint <= 'z') ||
+               (codepoint >= 'A' && codepoint <= 'Z') ||
+               (codepoint >= '0' && codepoint <= '9') || codepoint == '-';
+    }
+    return rin_unicode_isalnum(codepoint) ||
+           rin_unicode_is_combining(codepoint);
+}
+
+static int idna_ascii_label_valid(const char* label, size_t length)
+{
+    size_t index;
+    if (!label || length == 0u || length > RIN_IDNA_MAX_LABEL ||
+        label[0] == '-' || label[length - 1u] == '-') return 0;
+    for (index = 0u; index < length; ++index) {
+        char value = label[index];
+        if (!((value >= 'a' && value <= 'z') ||
+              (value >= 'A' && value <= 'Z') ||
+              (value >= '0' && value <= '9') || value == '-')) return 0;
+    }
+    return 1;
+}
+
+static int idna_punycode_encode(uint32_t const* input, size_t input_length,
+                                char* output, size_t output_capacity,
+                                size_t* output_length)
+{
+    size_t basic = 0u;
+    size_t handled;
+    size_t index;
+    uint32_t n = RIN_IDNA_INITIAL_N;
+    uint32_t bias = RIN_IDNA_INITIAL_BIAS;
+    uint64_t delta = 0u;
+    size_t length = 0u;
+    if (!input || !output || !output_length || input_length == 0u) return 0;
+    if (!idna_append(output, output_capacity, &length, "xn--", 4u)) return 0;
+    for (index = 0u; index < input_length; ++index) {
+        if (input[index] < 0x80u) {
+            char basic_char = (char)rin_unicode_tolower(input[index]);
+            if (!idna_append(output, output_capacity, &length, &basic_char, 1u)) return 0;
+            ++basic;
+        }
+    }
+    handled = basic;
+    if (basic != 0u && handled != input_length) {
+        if (!idna_append(output, output_capacity, &length, "-", 1u)) return 0;
+    }
+    while (handled < input_length) {
+        uint32_t minimum = UINT32_MAX;
+        for (index = 0u; index < input_length; ++index) {
+            if (input[index] >= n && input[index] < minimum) minimum = input[index];
+        }
+        if (minimum == UINT32_MAX || minimum < n ||
+            (uint64_t)(minimum - n) > (UINT64_MAX - delta) / (handled + 1u)) return 0;
+        delta += (uint64_t)(minimum - n) * (handled + 1u);
+        n = minimum;
+        for (index = 0u; index < input_length; ++index) {
+            uint32_t value = input[index];
+            if (value < n) {
+                if (delta == UINT64_MAX) return 0;
+                ++delta;
+            }
+            if (value == n) {
+                uint64_t q = delta;
+                uint32_t k = RIN_IDNA_BASE;
+                for (;;) {
+                    uint32_t threshold = k <= bias + RIN_IDNA_TMIN
+                        ? RIN_IDNA_TMIN
+                        : k >= bias + RIN_IDNA_TMAX
+                            ? RIN_IDNA_TMAX
+                            : k - bias;
+                    uint32_t digit;
+                    if (q < threshold) break;
+                    digit = threshold + (uint32_t)((q - threshold) % (RIN_IDNA_BASE - threshold));
+                    {
+                        char encoded = idna_encode_digit(digit);
+                        if (!idna_append(output, output_capacity, &length, &encoded, 1u)) return 0;
+                    }
+                    q = (q - threshold) / (RIN_IDNA_BASE - threshold);
+                    if (k > UINT32_MAX - RIN_IDNA_BASE) return 0;
+                    k += RIN_IDNA_BASE;
+                }
+                {
+                    char encoded = idna_encode_digit((uint32_t)q);
+                    if (!idna_append(output, output_capacity, &length, &encoded, 1u)) return 0;
+                }
+                bias = idna_adapt(delta, handled + 1u, handled == basic);
+                delta = 0u;
+                ++handled;
+            }
+        }
+        if (delta == UINT64_MAX || n == UINT32_MAX) return 0;
+        ++delta;
+        ++n;
+    }
+    if (length == 4u || length > RIN_IDNA_MAX_LABEL) return 0;
+    *output_length = length;
+    return 1;
+}
+
+static int idna_punycode_decode(const char* input, size_t input_length,
+                                uint32_t* output, size_t output_capacity,
+                                size_t* output_length)
+{
+    size_t delimiter = SIZE_MAX;
+    size_t index;
+    size_t out = 0u;
+    uint32_t n = RIN_IDNA_INITIAL_N;
+    uint32_t bias = RIN_IDNA_INITIAL_BIAS;
+    uint64_t i = 0u;
+    if (!input || !output || !output_length || input_length == 0u) return 0;
+    for (index = 0u; index < input_length; ++index) {
+        if (input[index] == '-') delimiter = index;
+    }
+    if (delimiter == SIZE_MAX) delimiter = 0u;
+    for (index = 0u; index < delimiter; ++index) {
+        char value = input[index];
+        if ((unsigned char)value >= 0x80u ||
+            !((value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') ||
+              (value >= '0' && value <= '9') || value == '-')) return 0;
+        if (out >= output_capacity) return 0;
+        output[out++] = (uint32_t)(unsigned char)rin_unicode_tolower((uint32_t)(unsigned char)value);
+    }
+    index = delimiter == 0u ? 0u : delimiter + 1u;
+    while (index < input_length) {
+        uint64_t old_i = i;
+        uint64_t delta_i;
+        uint64_t weight = 1u;
+        uint32_t k = RIN_IDNA_BASE;
+        for (;;) {
+            uint32_t threshold;
+            int value;
+            if (index >= input_length) return 0;
+            value = idna_ascii_digit(input[index++]);
+            if (value < 0 || (uint64_t)value > (UINT64_MAX - i) / weight) return 0;
+            i += (uint64_t)value * weight;
+            threshold = k <= bias + RIN_IDNA_TMIN
+                ? RIN_IDNA_TMIN
+                : k >= bias + RIN_IDNA_TMAX
+                    ? RIN_IDNA_TMAX
+                    : k - bias;
+            if ((uint32_t)value < threshold) break;
+            if (weight > UINT64_MAX / (RIN_IDNA_BASE - threshold)) return 0;
+            weight *= RIN_IDNA_BASE - threshold;
+            if (k > UINT32_MAX - RIN_IDNA_BASE) return 0;
+            k += RIN_IDNA_BASE;
+        }
+        if (out >= output_capacity || i / (out + 1u) > UINT32_MAX - n) return 0;
+        delta_i = i - old_i;
+        n += (uint32_t)(i / (out + 1u));
+        i %= out + 1u;
+        memmove(output + i + 1u, output + i, (out - (size_t)i) * sizeof(output[0]));
+        output[i] = n;
+        ++out;
+        bias = idna_adapt(delta_i, out, old_i == 0u);
+        i++;
+        if (!idna_codepoint_allowed(n)) return 0;
+    }
+    *output_length = out;
+    return out != 0u;
+}
+
+static int idna_label_is_ace(const char* label, size_t length)
+{
+    size_t index;
+    if (length < 4u) return 0;
+    if (!(label[0] == 'x' || label[0] == 'X') ||
+        !(label[1] == 'n' || label[1] == 'N') || label[2] != '-' || label[3] != '-') return 0;
+    for (index = 4u; index < length; ++index) {
+        char value = label[index];
+        if (idna_ascii_digit(value) < 0 && value != '-') return 0;
+    }
+    return 1;
+}
+
+static char* idna_normalize_casefold(const char* source, size_t source_length)
+{
+    char* input;
+    char* normalized;
+    char* folded;
+    size_t normalized_length;
+    size_t folded_capacity;
+    size_t folded_length = 0u;
+    size_t offset = 0u;
+    if (!source || source_length > RIN_IDNA_MAX_NAME - 1u) return NULL;
+    input = (char*)malloc(source_length + 1u);
+    if (!input) return NULL;
+    memcpy(input, source, source_length);
+    input[source_length] = '\0';
+    normalized_length = rin_unicode_normalize_utf8(NULL, 0u, input, RIN_UNICODE_NORMALIZE_NFKC);
+    if (normalized_length == SIZE_MAX || normalized_length > RIN_IDNA_MAX_NAME - 1u) {
+        free(input);
+        return NULL;
+    }
+    normalized = (char*)malloc(normalized_length + 1u);
+    if (!normalized || rin_unicode_normalize_utf8(normalized, normalized_length + 1u,
+                                                   input, RIN_UNICODE_NORMALIZE_NFKC) == SIZE_MAX) {
+        free(normalized);
+        free(input);
+        return NULL;
+    }
+    if (normalized_length > (RIN_IDNA_MAX_NAME - 1u) / 2u) {
+        free(normalized);
+        free(input);
+        return NULL;
+    }
+    folded_capacity = normalized_length * 2u + 1u;
+    folded = (char*)malloc(folded_capacity);
+    if (!folded) {
+        free(normalized);
+        free(input);
+        return NULL;
+    }
+    while (offset < normalized_length) {
+        uint32_t codepoint;
+        size_t consumed = 0u;
+        uint32_t mapped[3];
+        size_t mapped_length;
+        size_t mapped_index;
+        if (rin_unicode_decode_utf8(normalized + offset, normalized_length - offset,
+                                    &codepoint, &consumed) != RIN_UNICODE_OK || consumed == 0u) {
+            free(folded);
+            free(normalized);
+            free(input);
+            return NULL;
+        }
+        mapped_length = rin_unicode_casefold_full(codepoint, mapped);
+        for (mapped_index = 0u; mapped_index < mapped_length; ++mapped_index) {
+            if (!append_utf8(folded, folded_capacity, &folded_length, mapped[mapped_index])) {
+                free(folded);
+                free(normalized);
+                free(input);
+                return NULL;
+            }
+        }
+        offset += consumed;
+    }
+    free(normalized);
+    free(input);
+    return folded;
+}
+
+static int idna_to_ascii_utf8(const char* source, size_t source_length,
+                              char* output, size_t output_capacity,
+                              size_t* output_length)
+{
+    char* normalized = idna_normalize_casefold(source, source_length);
+    size_t source_offset = 0u;
+    size_t output_offset = 0u;
+    int trailing_dot = 0;
+    if (!normalized || !output || !output_length) {
+        free(normalized);
+        return 0;
+    }
+    while (source_offset <= strlen(normalized)) {
+        size_t label_start = source_offset;
+        size_t label_end = label_start;
+        uint32_t* codepoints;
+        size_t codepoint_count = 0u;
+        size_t offset = label_start;
+        int all_ascii = 1;
+        char ascii_label[RIN_IDNA_MAX_LABEL + 1u];
+        char punycode[RIN_IDNA_MAX_LABEL + 1u];
+        size_t encoded_length = 0u;
+        while (normalized[label_end] != '\0' && normalized[label_end] != '.') ++label_end;
+        if (label_end == label_start) {
+            trailing_dot = normalized[label_end] == '.' && normalized[label_end + 1u] == '\0';
+            if (!trailing_dot) {
+                free(normalized);
+                return 0;
+            }
+            if (output_offset + 1u >= output_capacity) {
+                free(normalized);
+                return 0;
+            }
+            output[output_offset++] = '.';
+            output[output_offset] = '\0';
+            break;
+        }
+        codepoints = (uint32_t*)malloc((label_end - label_start + 1u) * sizeof(uint32_t));
+        if (!codepoints) {
+            free(normalized);
+            return 0;
+        }
+        while (offset < label_end) {
+            uint32_t codepoint;
+            size_t consumed = 0u;
+            if (rin_unicode_decode_utf8(normalized + offset, label_end - offset,
+                                        &codepoint, &consumed) != RIN_UNICODE_OK || consumed == 0u ||
+                codepoint_count >= label_end - label_start + 1u) {
+                free(codepoints);
+                free(normalized);
+                return 0;
+            }
+            codepoints[codepoint_count++] = codepoint;
+            if (codepoint >= 0x80u) all_ascii = 0;
+            offset += consumed;
+        }
+        if (all_ascii) {
+            size_t i;
+            if (codepoint_count > RIN_IDNA_MAX_LABEL) {
+                free(codepoints);
+                free(normalized);
+                return 0;
+            }
+            for (i = 0u; i < codepoint_count; ++i) ascii_label[i] = (char)codepoints[i];
+            ascii_label[codepoint_count] = '\0';
+            if (!idna_ascii_label_valid(ascii_label, codepoint_count)) {
+                free(codepoints);
+                free(normalized);
+                return 0;
+            }
+            if (!idna_append(output, output_capacity, &output_offset, ascii_label, codepoint_count)) {
+                free(codepoints);
+                free(normalized);
+                return 0;
+            }
+        } else {
+            size_t i;
+            for (i = 0u; i < codepoint_count; ++i) {
+                if (!idna_codepoint_allowed(codepoints[i])) {
+                    free(codepoints);
+                    free(normalized);
+                    return 0;
+                }
+            }
+            if (!idna_punycode_encode(codepoints, codepoint_count, punycode,
+                                      sizeof(punycode), &encoded_length) ||
+                !idna_append(output, output_capacity, &output_offset, punycode, encoded_length)) {
+                free(codepoints);
+                free(normalized);
+                return 0;
+            }
+        }
+        free(codepoints);
+        if (normalized[label_end] == '\0') break;
+        source_offset = label_end + 1u;
+        if (normalized[source_offset] == '\0') {
+            if (output_offset + 1u >= output_capacity) {
+                free(normalized);
+                return 0;
+            }
+            output[output_offset++] = '.';
+            output[output_offset] = '\0';
+            break;
+        }
+        if (!idna_append(output, output_capacity, &output_offset, ".", 1u)) {
+            free(normalized);
+            return 0;
+        }
+    }
+    free(normalized);
+    if (trailing_dot) {
+        /* The branch above already emitted the root label separator. */
+    }
+    if (output_offset == 0u || output_offset > 255u) return 0;
+    *output_length = output_offset;
+    return 1;
+}
+
+static int idna_to_unicode_utf8(const char* source, size_t source_length,
+                                char* output, size_t output_capacity,
+                                size_t* output_length)
+{
+    size_t source_offset = 0u;
+    size_t output_offset = 0u;
+    if (!source || !output || !output_length || source_length > RIN_IDNA_MAX_NAME - 1u) return 0;
+    while (source_offset <= source_length) {
+        size_t label_start = source_offset;
+        size_t label_end = label_start;
+        if (label_start == source_length) {
+            if (label_start == 0u || source[label_start - 1u] != '.') return 0;
+            break;
+        }
+        while (label_end < source_length && source[label_end] != '.') ++label_end;
+        if (label_end == label_start) return 0;
+        if (idna_label_is_ace(source + label_start, label_end - label_start)) {
+            uint32_t decoded[RIN_IDNA_MAX_LABEL + 1u];
+            size_t decoded_length = 0u;
+            size_t i;
+            if (!idna_punycode_decode(source + label_start + 4u,
+                                      label_end - label_start - 4u,
+                                      decoded, sizeof(decoded) / sizeof(decoded[0]),
+                                      &decoded_length)) return 0;
+            for (i = 0u; i < decoded_length; ++i) {
+                if (!idna_codepoint_allowed(decoded[i]) ||
+                    !append_utf8(output, output_capacity, &output_offset, decoded[i])) return 0;
+            }
+        } else {
+            size_t i;
+            if (!idna_ascii_label_valid(source + label_start, label_end - label_start)) return 0;
+            for (i = label_start; i < label_end; ++i) {
+                char lower = (char)rin_unicode_tolower((uint32_t)(unsigned char)source[i]);
+                if (!idna_append(output, output_capacity, &output_offset, &lower, 1u)) return 0;
+            }
+        }
+        if (label_end == source_length) break;
+        if (!idna_append(output, output_capacity, &output_offset, ".", 1u)) return 0;
+        source_offset = label_end + 1u;
+        if (source_offset == source_length) break;
+    }
+    if (output_offset == 0u) return 0;
+    *output_length = output_offset;
+    return 1;
+}
+
+static int32_t idna_copy_result(const char* value, size_t length,
+                                UChar* dest, int32_t dest_length)
+{
+    int32_t required = 0;
+    if (!value || !utf8_to_utf16(value, length, NULL, 0, &required)) return 0;
+    if (!dest || dest_length < required) return required;
+    if (!utf8_to_utf16(value, length, dest, dest_length, &required)) return 0;
+    return required;
+}
+
 int32_t GlobalizationNative_ToAscii(uint32_t flags, const UChar* source, int32_t source_length, UChar* dest, int32_t dest_length)
 {
+    char* input;
+    char output[RIN_IDNA_MAX_NAME];
+    size_t input_length;
+    size_t output_length = 0u;
     (void)flags;
-    (void)source;
-    (void)source_length;
-    (void)dest;
-    (void)dest_length;
-    /* No product IDNA ABI is available yet. Identity-copying a Unicode name
-       would report a false successful conversion. */
-    return 0;
+    input = utf16_to_utf8(source, source_length, &input_length);
+    if (!input || !idna_to_ascii_utf8(input, input_length, output, sizeof(output), &output_length)) {
+        free(input);
+        return 0;
+    }
+    free(input);
+    return idna_copy_result(output, output_length, dest, dest_length);
 }
 
 int32_t GlobalizationNative_ToUnicode(uint32_t flags, const UChar* source, int32_t source_length, UChar* dest, int32_t dest_length)
 {
+    char* input;
+    char output[RIN_IDNA_MAX_NAME];
+    size_t input_length;
+    size_t output_length = 0u;
     (void)flags;
-    (void)source;
-    (void)source_length;
-    (void)dest;
-    (void)dest_length;
-    /* Keep the unsupported product boundary explicit until rinicud exposes
-       UTS-46/IDNA conversion. */
-    return 0;
+    input = utf16_to_utf8(source, source_length, &input_length);
+    if (!input || !idna_to_unicode_utf8(input, input_length, output, sizeof(output), &output_length)) {
+        free(input);
+        return 0;
+    }
+    free(input);
+    return idna_copy_result(output, output_length, dest, dest_length);
 }
 
 static int timezone_text_call(const UChar* source, UChar* dest, int32_t dest_length, int (*call)(rin_icu_client_t*, const char*, char*, size_t, size_t*))

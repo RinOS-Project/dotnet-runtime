@@ -170,6 +170,16 @@ extern "C" void QCALLTYPE NativeRuntimeEventSource_LogThreadPoolIOPack(_In_z_ vo
     END_QCALL;
 }
 
+extern "C" void QCALLTYPE NativeRuntimeEventSource_LogExceptionThrown(_In_z_ LPCWSTR exceptionTypeName, _In_z_ LPCWSTR exceptionMessage, _In_z_ void* faultingIP, _In_z_ HRESULT hresult, _In_z_ ushort flags, _In_z_ short clrInstanceID)
+{
+    QCALL_CONTRACT;
+    BEGIN_QCALL;
+
+    FireEtwExceptionThrown_V1(exceptionTypeName, exceptionMessage, faultingIP, hresult, flags, clrInstanceID);
+
+    END_QCALL;
+}
+
 extern "C" void QCALLTYPE NativeRuntimeEventSource_LogContentionLockCreated(void* LockID, void* AssociatedObjectID, uint16_t ClrInstanceID)
 {
     QCALL_CONTRACT;

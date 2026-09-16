@@ -469,6 +469,7 @@ static const Entry s_QCall[] =
     DllImportEntry(NativeRuntimeEventSource_LogThreadPoolIODequeue)
     DllImportEntry(NativeRuntimeEventSource_LogThreadPoolIOPack)
     DllImportEntry(NativeRuntimeEventSource_LogThreadPoolWorkingThreadCount)
+    DllImportEntry(NativeRuntimeEventSource_LogExceptionThrown)
     DllImportEntry(NativeRuntimeEventSource_LogContentionLockCreated)
     DllImportEntry(NativeRuntimeEventSource_LogContentionStart)
     DllImportEntry(NativeRuntimeEventSource_LogContentionStop)

@@ -391,10 +391,12 @@ static rin_icu_client_t* product_client(void)
 static size_t u16_length(const UChar* value, int32_t length)
 {
     size_t result = 0u;
+    size_t limit = RIN_ICU_MAX_CSTRING_BYTES / sizeof(UChar);
     if (!value) return 0u;
     if (length >= 0) return (size_t)length;
-    while (value[result] != 0u) ++result;
-    return result;
+    if (length != -1) return SIZE_MAX;
+    while (result < limit && value[result] != 0u) ++result;
+    return result < limit ? result : SIZE_MAX;
 }
 
 static int append_utf8(char* dest, size_t capacity, size_t* length, uint32_t cp)
@@ -432,8 +434,9 @@ static char* utf16_to_utf8(const UChar* value, int32_t value_length, size_t* out
     size_t at = 0u;
     char* result;
     size_t i;
-    if (!value) return NULL;
+    if (!value || value_length < -1) return NULL;
     length = u16_length(value, value_length);
+    if (length == SIZE_MAX) return NULL;
     if (length > (SIZE_MAX - 1u) / 4u) return NULL;
     capacity = length * 4u + 1u;
     result = (char*)malloc(capacity);
@@ -992,8 +995,11 @@ int32_t GlobalizationNative_IsNormalized(NormalizationForm form, const UChar* so
     int32_t length = normalize_utf16(form, source, source_length, NULL, 0);
     UChar* normalized;
     int32_t normalized_length;
-    int32_t source_units = (int32_t)u16_length(source, source_length);
+    size_t source_units_size = u16_length(source, source_length);
+    int32_t source_units;
     if (length < 0) return 0;
+    if (source_units_size == SIZE_MAX || source_units_size > (size_t)INT32_MAX) return 0;
+    source_units = (int32_t)source_units_size;
     if (length >= INT32_MAX) return 0;
     normalized = (UChar*)malloc((size_t)(length + 1) * sizeof(UChar));
     if (!normalized) return 0;
@@ -2319,6 +2325,7 @@ int32_t GlobalizationNative_WindowsIdToIanaId(const UChar* windows_id, const cha
     size_t i;
     if (!windows_id) return 0;
     length = u16_length(windows_id, -1);
+    if (length == SIZE_MAX) return 0;
     for (i = 0u; i < sizeof(g_time_zone_id_mappings) / sizeof(g_time_zone_id_mappings[0]); ++i) {
         RinTimeZoneIdMapping const* candidate = &g_time_zone_id_mappings[i];
         if (u16_ascii_equal(windows_id, length, candidate->windows_id) &&
@@ -2339,6 +2346,7 @@ int32_t GlobalizationNative_IanaIdToWindowsId(const UChar* iana_id, UChar* windo
     size_t i;
     if (!iana_id) return 0;
     length = u16_length(iana_id, -1);
+    if (length == SIZE_MAX) return 0;
     for (i = 0u; i < sizeof(g_time_zone_id_mappings) / sizeof(g_time_zone_id_mappings[0]); ++i) {
         RinTimeZoneIdMapping const* candidate = &g_time_zone_id_mappings[i];
         if (u16_ascii_equal(iana_id, length, candidate->iana_id)) {

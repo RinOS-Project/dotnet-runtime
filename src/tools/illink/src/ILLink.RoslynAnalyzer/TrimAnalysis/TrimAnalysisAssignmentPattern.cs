@@ -66,7 +66,13 @@ namespace ILLink.RoslynAnalyzer.TrimAnalysis
                         // The target should always be an annotated value, but the visitor design currently prevents
                         // declaring this in the type system.
                         if (targetValue is not ValueWithDynamicallyAccessedMembers targetWithDynamicallyAccessedMembers)
-                            throw new NotImplementedException();
+                        {
+                            // The visitor can produce an unannotated target while it is
+                            // building the pattern. There is no DAM contract to validate
+                            // in that case, so keep analysis failure-atomic instead of
+                            // crashing the analyzer on a valid source shape.
+                            continue;
+                        }
 
                         var typeNameResolver = new TypeNameResolver(context.Compilation);
                         var reflectionAccessAnalyzer = new ReflectionAccessAnalyzer(reportDiagnostic, typeNameResolver, typeHierarchyType: null);

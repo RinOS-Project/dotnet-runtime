@@ -49,7 +49,12 @@ namespace Mono.Linker.Dataflow
                 foreach (var targetValue in Target.AsEnumerable())
                 {
                     if (targetValue is not ValueWithDynamicallyAccessedMembers targetWithDynamicallyAccessedMembers)
-                        throw new NotImplementedException();
+                    {
+                        // The dataflow visitor may retain an unannotated target while
+                        // constructing a pattern. Without a DAM contract there is no
+                        // diagnostic to report, so skip it instead of crashing linking.
+                        continue;
+                    }
 
                     var requireDynamicallyAccessedMembersAction = new RequireDynamicallyAccessedMembersAction(context, reflectionMarker, diagnosticContext);
                     requireDynamicallyAccessedMembersAction.Invoke(sourceValue, targetWithDynamicallyAccessedMembers);

@@ -1621,6 +1621,70 @@ static int timezone_text_call(const UChar* source, UChar* dest, int32_t dest_len
     return locale_call(source, dest, dest_length, call);
 }
 
+static uint32_t timezone_display_service_type(TimeZoneDisplayNameType type)
+{
+    switch (type) {
+        case TimeZoneDisplayName_Generic: return RIN_ICU_DISPLAY_NAME_TIME_ZONE;
+        case TimeZoneDisplayName_Standard: return 9u;
+        case TimeZoneDisplayName_DaylightSavings: return 10u;
+        case TimeZoneDisplayName_GenericLocation: return 11u;
+        case TimeZoneDisplayName_ExemplarCity: return 12u;
+        case TimeZoneDisplayName_TimeZoneName: return 13u;
+        default: return 0u;
+    }
+}
+
+static int timezone_display_name_call(const UChar* locale, const UChar* time_zone,
+                                      TimeZoneDisplayNameType type, UChar* dest,
+                                      int32_t dest_length)
+{
+    char* locale_name = locale_utf8(locale);
+    char* time_zone_name = utf16_to_utf8(time_zone, -1, NULL);
+    rin_icu_client_t* client = product_client();
+    char buffer[256];
+    char* dynamic = NULL;
+    size_t length = 0u;
+    uint32_t service_type = timezone_display_service_type(type);
+    uint32_t style = type == TimeZoneDisplayName_TimeZoneName ?
+        RIN_ICU_STYLE_SHORT : RIN_ICU_STYLE_LONG;
+    int status;
+    if (!locale_name || !time_zone_name || !client || service_type == 0u) {
+        free(locale_name);
+        free(time_zone_name);
+        return 0;
+    }
+    status = rin_icu_display_name(client, locale_name, time_zone_name,
+                                  service_type, style,
+                                  RIN_ICU_LANGUAGE_DISPLAY_STANDARD,
+                                  buffer, sizeof(buffer), &length);
+    if (status == RIN_ICU_STATUS_NO_SPACE) {
+        if (length == SIZE_MAX) {
+            free(locale_name);
+            free(time_zone_name);
+            return 0;
+        }
+        dynamic = (char*)malloc(length + 1u);
+        if (!dynamic) {
+            free(locale_name);
+            free(time_zone_name);
+            return 0;
+        }
+        status = rin_icu_display_name(client, locale_name, time_zone_name,
+                                      service_type, style,
+                                      RIN_ICU_LANGUAGE_DISPLAY_STANDARD,
+                                      dynamic, length + 1u, &length);
+    }
+    free(locale_name);
+    free(time_zone_name);
+    if (status != RIN_ICU_STATUS_OK || length == 0u) {
+        free(dynamic);
+        return 0;
+    }
+    status = copy_utf8(dynamic ? dynamic : buffer, length, dest, dest_length);
+    free(dynamic);
+    return status;
+}
+
 int32_t GlobalizationNative_WindowsIdToIanaId(const UChar* windows_id, const char* region, UChar* iana_id, int32_t iana_length)
 {
     static const UChar eastern_iana[] = { 'A','m','e','r','i','c','a','/','N','e','w','_','Y','o','r','k',0 };
@@ -1653,12 +1717,9 @@ int32_t GlobalizationNative_IanaIdToWindowsId(const UChar* iana_id, UChar* windo
 
 ResultCode GlobalizationNative_GetTimeZoneDisplayName(const UChar* locale, const UChar* time_zone, TimeZoneDisplayNameType type, UChar* result, int32_t result_length)
 {
-    (void)locale;
-    (void)time_zone;
-    (void)type;
-    (void)result;
-    (void)result_length;
-    /* rinicud has no localized timezone-name operation; returning the ID as a
-       display name is a false success. */
-    return UnknownError;
+    int32_t required = timezone_display_name_call(locale, time_zone, type, NULL, 0);
+    if (required <= 0) return UnknownError;
+    if (result && result_length < required) return InsufficientBuffer;
+    if (result && timezone_display_name_call(locale, time_zone, type, result, result_length) <= 0) return UnknownError;
+    return Success;
 }

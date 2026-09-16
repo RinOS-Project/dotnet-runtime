@@ -637,6 +637,41 @@ static const char* product_region_three_letter(const char* region)
     return NULL;
 }
 
+/* LocaleString_Digits follows the ICU/.NET contract rather than returning a
+ * display-ready number.  Each native digit is separated by U+FFFF so the
+ * managed caller can preserve digits which occupy more than one UTF-16 code
+ * unit.  The product catalog currently carries script, not a separate
+ * numbering-system field, so only scripts with an explicitly shipped digit
+ * set select non-ASCII digits; all other catalog records use ASCII digits. */
+static const char* product_native_digits(const RinIcuDataLocaleRecord* record)
+{
+    static const char ascii_digits[] =
+        "0" "\xEF\xBF\xBF" "1" "\xEF\xBF\xBF" "2" "\xEF\xBF\xBF"
+        "3" "\xEF\xBF\xBF" "4" "\xEF\xBF\xBF" "5" "\xEF\xBF\xBF"
+        "6" "\xEF\xBF\xBF" "7" "\xEF\xBF\xBF" "8" "\xEF\xBF\xBF"
+        "9";
+    static const char arabic_digits[] =
+        "٠" "\xEF\xBF\xBF" "١" "\xEF\xBF\xBF" "٢" "\xEF\xBF\xBF"
+        "٣" "\xEF\xBF\xBF" "٤" "\xEF\xBF\xBF" "٥" "\xEF\xBF\xBF"
+        "٦" "\xEF\xBF\xBF" "٧" "\xEF\xBF\xBF" "٨" "\xEF\xBF\xBF"
+        "٩";
+    static const char devanagari_digits[] =
+        "०" "\xEF\xBF\xBF" "१" "\xEF\xBF\xBF" "२" "\xEF\xBF\xBF"
+        "३" "\xEF\xBF\xBF" "४" "\xEF\xBF\xBF" "५" "\xEF\xBF\xBF"
+        "६" "\xEF\xBF\xBF" "७" "\xEF\xBF\xBF" "८" "\xEF\xBF\xBF"
+        "९";
+    static const char thai_digits[] =
+        "๐" "\xEF\xBF\xBF" "๑" "\xEF\xBF\xBF" "๒" "\xEF\xBF\xBF"
+        "๓" "\xEF\xBF\xBF" "๔" "\xEF\xBF\xBF" "๕" "\xEF\xBF\xBF"
+        "๖" "\xEF\xBF\xBF" "๗" "\xEF\xBF\xBF" "๘" "\xEF\xBF\xBF"
+        "๙";
+    if (!record) return NULL;
+    if (strcmp(record->script, "Arab") == 0) return arabic_digits;
+    if (strcmp(record->script, "Deva") == 0) return devanagari_digits;
+    if (strcmp(record->script, "Thai") == 0) return thai_digits;
+    return ascii_digits;
+}
+
 static int product_pattern_order(const char* pattern, const char* first_token,
                                  const char* second_token, int* first_is_left,
                                  int* separated)
@@ -1337,7 +1372,10 @@ int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStrin
                     field_capacity = sizeof(parent);
                 }
                 break;
-            case LocaleString_Digits: field = "0123456789"; field_capacity = 11u; break;
+            case LocaleString_Digits:
+                field = product_native_digits(&record);
+                field_capacity = field ? strlen(field) + 1u : 0u;
+                break;
             case LocaleString_NaNSymbol: field = "NaN"; field_capacity = sizeof("NaN"); break;
             case LocaleString_PositiveInfinitySymbol: field = "Infinity"; field_capacity = sizeof("Infinity"); break;
             case LocaleString_NegativeInfinitySymbol: field = "-Infinity"; field_capacity = sizeof("-Infinity"); break;

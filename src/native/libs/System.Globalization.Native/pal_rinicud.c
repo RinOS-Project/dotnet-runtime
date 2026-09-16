@@ -154,6 +154,212 @@ static const char* const g_japanese_era_abbreviations[] = {
     "M", "T", "S", "H", "R"
 };
 
+/* Calendar symbols are product data, not host ICU probes.  The locale record
+ * remains the authority for which locale is active; these bounded tables are
+ * the supplemental Gregorian/Japanese calendar data shipped with the
+ * product.  A language without a table fails closed instead of borrowing the
+ * host's current locale. */
+static const char* const g_gregorian_era_names[] = { "AD" };
+static const char* const g_gregorian_era_abbreviations[] = { "AD" };
+static const char* const g_japanese_era_names_en[] = {
+    "Meiji", "Taisho", "Showa", "Heisei", "Reiwa"
+};
+static const char* const g_japanese_era_names_zh[] = {
+    "明治", "大正", "昭和", "平成", "令和"
+};
+static const char* const g_japanese_era_names_ko[] = {
+    "메이지", "다이쇼", "쇼와", "헤이세이", "레이와"
+};
+
+static const char* const g_en_month_names[] = {
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December", ""
+};
+static const char* const g_en_abbreviated_month_names[] = {
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", ""
+};
+static const char* const g_en_day_names[] = {
+    "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
+};
+static const char* const g_en_abbreviated_day_names[] = {
+    "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
+};
+
+static const char* const g_ja_month_names[] = {
+    "1月", "2月", "3月", "4月", "5月", "6月",
+    "7月", "8月", "9月", "10月", "11月", "12月", ""
+};
+static const char* const g_ja_day_names[] = {
+    "日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"
+};
+static const char* const g_ja_abbreviated_day_names[] = {
+    "日", "月", "火", "水", "木", "金", "土"
+};
+
+static const char* const g_zh_month_names[] = {
+    "一月", "二月", "三月", "四月", "五月", "六月",
+    "七月", "八月", "九月", "十月", "十一月", "十二月", ""
+};
+static const char* const g_zh_abbreviated_month_names[] = {
+    "1月", "2月", "3月", "4月", "5月", "6月",
+    "7月", "8月", "9月", "10月", "11月", "12月", ""
+};
+static const char* const g_zh_day_names[] = {
+    "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"
+};
+static const char* const g_zh_abbreviated_day_names[] = {
+    "周日", "周一", "周二", "周三", "周四", "周五", "周六"
+};
+
+static const char* const g_ko_month_names[] = {
+    "1월", "2월", "3월", "4월", "5월", "6월",
+    "7월", "8월", "9월", "10월", "11월", "12월", ""
+};
+static const char* const g_ko_day_names[] = {
+    "일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"
+};
+static const char* const g_ko_abbreviated_day_names[] = {
+    "일", "월", "화", "수", "목", "금", "토"
+};
+
+static const char* const g_fr_month_names[] = {
+    "janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre", ""
+};
+static const char* const g_fr_abbreviated_month_names[] = {
+    "janv.", "févr.", "mars", "avr.", "mai", "juin",
+    "juil.", "août", "sept.", "oct.", "nov.", "déc.", ""
+};
+static const char* const g_fr_day_names[] = {
+    "dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"
+};
+static const char* const g_fr_abbreviated_day_names[] = {
+    "dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."
+};
+
+static const char* const g_de_month_names[] = {
+    "Januar", "Februar", "März", "April", "Mai", "Juni",
+    "Juli", "August", "September", "Oktober", "November", "Dezember", ""
+};
+static const char* const g_de_abbreviated_month_names[] = {
+    "Jan.", "Feb.", "März", "Apr.", "Mai", "Juni",
+    "Juli", "Aug.", "Sept.", "Okt.", "Nov.", "Dez.", ""
+};
+static const char* const g_de_day_names[] = {
+    "Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"
+};
+static const char* const g_de_abbreviated_day_names[] = {
+    "So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"
+};
+
+static const char* const g_es_month_names[] = {
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre", ""
+};
+static const char* const g_es_abbreviated_month_names[] = {
+    "ene", "feb", "mar", "abr", "may", "jun",
+    "jul", "ago", "sep", "oct", "nov", "dic", ""
+};
+static const char* const g_es_day_names[] = {
+    "domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"
+};
+static const char* const g_es_abbreviated_day_names[] = {
+    "dom", "lun", "mar", "mié", "jue", "vie", "sáb"
+};
+
+typedef struct RinCalendarSymbols
+{
+    const char* language;
+    const char* const* month_names;
+    const char* const* abbreviated_month_names;
+    const char* const* day_names;
+    const char* const* abbreviated_day_names;
+    const char* native_gregorian_name;
+    const char* native_japanese_name;
+    const char* const* japanese_era_names;
+    const char* const* japanese_era_abbreviations;
+} RinCalendarSymbols;
+
+static const RinCalendarSymbols g_calendar_symbols[] = {
+    { "en", g_en_month_names, g_en_abbreviated_month_names, g_en_day_names,
+      g_en_abbreviated_day_names, "Gregorian Calendar", "Japanese Calendar",
+      g_japanese_era_names_en, g_japanese_era_abbreviations },
+    { "ja", g_ja_month_names, g_ja_month_names, g_ja_day_names,
+      g_ja_abbreviated_day_names, "西暦", "和暦",
+      g_japanese_era_names, g_japanese_era_abbreviations },
+    { "zh", g_zh_month_names, g_zh_abbreviated_month_names, g_zh_day_names,
+      g_zh_abbreviated_day_names, "公历", "日本历",
+      g_japanese_era_names_zh, g_japanese_era_abbreviations },
+    { "ko", g_ko_month_names, g_ko_month_names, g_ko_day_names,
+      g_ko_abbreviated_day_names, "그레고리력", "일본력",
+      g_japanese_era_names_ko, g_japanese_era_abbreviations },
+    { "fr", g_fr_month_names, g_fr_abbreviated_month_names, g_fr_day_names,
+      g_fr_abbreviated_day_names, "calendrier grégorien", "calendrier japonais",
+      g_japanese_era_names_en, g_japanese_era_abbreviations },
+    { "de", g_de_month_names, g_de_abbreviated_month_names, g_de_day_names,
+      g_de_abbreviated_day_names, "Gregorianischer Kalender", "Japanischer Kalender",
+      g_japanese_era_names_en, g_japanese_era_abbreviations },
+    { "es", g_es_month_names, g_es_abbreviated_month_names, g_es_day_names,
+      g_es_abbreviated_day_names, "calendario gregoriano", "calendario japonés",
+      g_japanese_era_names_en, g_japanese_era_abbreviations },
+};
+
+static const RinCalendarSymbols* calendar_symbols_for_language(const char* language)
+{
+    size_t index;
+    if (!language || language[0] == '\0') language = "en";
+    for (index = 0u; index < sizeof(g_calendar_symbols) / sizeof(g_calendar_symbols[0]); ++index) {
+        if (strcmp(g_calendar_symbols[index].language, language) == 0) return &g_calendar_symbols[index];
+    }
+    return NULL;
+}
+
+static const char* calendar_symbol(const RinIcuDataLocaleRecord* record,
+                                   CalendarId calendar, CalendarDataType kind,
+                                   size_t index)
+{
+    const RinCalendarSymbols* symbols;
+    if (!record || (calendar != 1 && calendar != 3)) return NULL;
+    symbols = calendar_symbols_for_language(record->language);
+    if (!symbols) return NULL;
+    if (kind == CalendarData_NativeName) {
+        return index == 0u ? (calendar == 3 ? symbols->native_japanese_name : symbols->native_gregorian_name) : NULL;
+    }
+    if (kind == CalendarData_EraNames || kind == CalendarData_AbbrevEraNames) {
+        const char* const* eras = calendar == 3
+            ? (kind == CalendarData_EraNames ? symbols->japanese_era_names : symbols->japanese_era_abbreviations)
+            : (kind == CalendarData_EraNames ? g_gregorian_era_names : g_gregorian_era_abbreviations);
+        size_t count = calendar == 3 ? sizeof(g_japanese_eras) / sizeof(g_japanese_eras[0]) : 1u;
+        return index < count ? eras[index] : NULL;
+    }
+    if (kind == CalendarData_MonthNames || kind == CalendarData_MonthGenitiveNames) {
+        return index < 13u ? symbols->month_names[index] : NULL;
+    }
+    if (kind == CalendarData_AbbrevMonthNames || kind == CalendarData_AbbrevMonthGenitiveNames) {
+        return index < 13u ? symbols->abbreviated_month_names[index] : NULL;
+    }
+    if (kind == CalendarData_DayNames || kind == CalendarData_SuperShortDayNames) {
+        return index < 7u ? symbols->day_names[index] : NULL;
+    }
+    if (kind == CalendarData_AbbrevDayNames) {
+        return index < 7u ? symbols->abbreviated_day_names[index] : NULL;
+    }
+    return NULL;
+}
+
+static size_t calendar_symbol_count(CalendarId calendar, CalendarDataType kind)
+{
+    if (kind == CalendarData_EraNames || kind == CalendarData_AbbrevEraNames) {
+        return calendar == 3 ? sizeof(g_japanese_eras) / sizeof(g_japanese_eras[0]) : 1u;
+    }
+    if (kind == CalendarData_MonthNames || kind == CalendarData_AbbrevMonthNames ||
+        kind == CalendarData_MonthGenitiveNames || kind == CalendarData_AbbrevMonthGenitiveNames) return 13u;
+    if (kind == CalendarData_DayNames || kind == CalendarData_AbbrevDayNames ||
+        kind == CalendarData_SuperShortDayNames) return 7u;
+    return kind == CalendarData_NativeName ? 1u : 0u;
+}
+
 static rin_icu_client_t g_client = {};
 
 static rin_icu_client_t* product_client(void)
@@ -316,6 +522,21 @@ static int copy_utf8(const char* value, size_t length, UChar* dest, int32_t capa
     int32_t written = 0;
     if (!utf8_to_utf16(value, length, dest, capacity, &written)) return 0;
     return written;
+}
+
+static ResultCode copy_calendar_text(const char* text,
+                                     UChar* value,
+                                     int32_t capacity,
+                                     int32_t* out_length)
+{
+    int32_t required = 0;
+    if (!text || capacity < 0 ||
+        !utf8_to_utf16(text, strlen(text), NULL, 0, &required)) return UnknownError;
+    if (out_length) *out_length = required;
+    if (!value || required > capacity) return InsufficientBuffer;
+    return utf8_to_utf16(text, strlen(text), value, capacity, NULL)
+        ? Success
+        : UnknownError;
 }
 
 static char* locale_utf8(const UChar* locale)
@@ -1016,48 +1237,47 @@ ResultCode GlobalizationNative_GetCalendarInfo(const UChar* locale, CalendarId c
 {
     RinIcuDataLocaleRecord record;
     char pattern[128];
-    const char* text = calendar == 3 ? "japanese" : "gregorian";
     if ((calendar != 1 && calendar != 3) || capacity < 0 || !get_locale_record(locale, &record)) return UnknownError;
     switch (kind) {
         case CalendarData_NativeName:
-            break;
+            return copy_calendar_text(calendar_symbol(&record, calendar, kind, 0u), value, capacity, NULL);
         case CalendarData_MonthDay:
         case CalendarData_ShortDates:
         case CalendarData_LongDates:
             if (!product_pattern(record.date_pattern, sizeof(record.date_pattern), 0, kind == CalendarData_MonthDay, pattern, sizeof(pattern))) return UnknownError;
-            text = pattern;
-            break;
+            return copy_calendar_text(pattern, value, capacity, NULL);
         default:
             return UnknownError;
     }
-    return copy_utf8(text, strlen(text), value, capacity) > 0 ? Success : InsufficientBuffer;
 }
 
 int32_t GlobalizationNative_EnumCalendarInfo(EnumCalendarInfoCallback callback, const UChar* locale, CalendarId calendar, CalendarDataType kind, const void* context)
 {
-    static const UChar gregorian[] = { 'g','r','e','g','o','r','i','a','n',0 };
-    static const UChar japanese[] = { 'j','a','p','a','n','e','s','e',0 };
     RinIcuDataLocaleRecord record;
     UChar pattern[128];
     int32_t pattern_length;
     if (!callback || (calendar != 1 && calendar != 3) || !get_locale_record(locale, &record)) return 0;
     if (kind == CalendarData_NativeName) {
-        callback(calendar == 3 ? japanese : gregorian, context);
+        UChar name[64];
+        int32_t length = 0;
+        if (copy_calendar_text(calendar_symbol(&record, calendar, kind, 0u), name,
+                               (int32_t)(sizeof(name) / sizeof(name[0])) - 1, &length) != Success) return 0;
+        name[length] = 0;
+        callback(name, context);
         return 1;
     }
-    if (calendar == 3 && (kind == CalendarData_EraNames || kind == CalendarData_AbbrevEraNames)) {
+    if (calendar_symbol_count(calendar, kind) != 0u) {
         size_t index;
-        for (index = 0u; index < sizeof(g_japanese_era_names) / sizeof(g_japanese_era_names[0]); ++index) {
-            UChar era_name[32];
-            const char* name = kind == CalendarData_EraNames
-                ? g_japanese_era_names[index]
-                : g_japanese_era_abbreviations[index];
-            int32_t length = copy_utf8(name, strlen(name), era_name, (int32_t)(sizeof(era_name) / sizeof(era_name[0])));
-            if (length <= 0) return 0;
-            era_name[length] = 0;
-            callback(era_name, context);
+        size_t count = calendar_symbol_count(calendar, kind);
+        for (index = 0u; index < count; ++index) {
+            UChar symbol[64];
+            int32_t length = 0;
+            if (copy_calendar_text(calendar_symbol(&record, calendar, kind, index), symbol,
+                                   (int32_t)(sizeof(symbol) / sizeof(symbol[0])) - 1, &length) != Success) return 0;
+            symbol[length] = 0;
+            callback(symbol, context);
         }
-        return (int32_t)(sizeof(g_japanese_era_names) / sizeof(g_japanese_era_names[0]));
+        return (int32_t)count;
     }
     if (kind != CalendarData_ShortDates && kind != CalendarData_LongDates) return 0;
     {

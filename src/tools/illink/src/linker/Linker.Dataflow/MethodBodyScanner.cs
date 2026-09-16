@@ -1128,9 +1128,13 @@ namespace Mono.Linker.Dataflow
                         else
                             dereferencedValue = MultiValue.Union(dereferencedValue, UnknownValue.Instance);
                         break;
-                    case ReferenceValue referenceValue:
-                        throw new NotImplementedException($"Unhandled dereference of ReferenceValue of type {referenceValue.GetType().FullName}");
-                    // Incomplete handling for ref values
+                    case ReferenceValue:
+                        // A ref value without a field, parameter, or local identity is
+                        // still a valid dataflow result. Its contents are unknown to
+                        // the scanner, so keep the analysis conservative instead of
+                        // crashing the linker on an otherwise valid method body.
+                        dereferencedValue = MultiValue.Union(dereferencedValue, UnknownValue.Instance);
+                        break;
                     case FieldValue fieldValue:
                         dereferencedValue = MultiValue.Union(dereferencedValue, fieldValue);
                         break;

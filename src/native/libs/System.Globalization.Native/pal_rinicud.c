@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "../../../../../../public-base/libs/rinicu/include/rinicu/rinicu.h"
+#include "../../../../../../public-base/libs/rinicu/include/rinicu/data_policy.h"
 #include "../../../../../../public-base/libs/libunicode/rin_unicode.h"
 
 typedef uint16_t UChar;
@@ -206,12 +207,15 @@ static int append_utf8(char* dest, size_t capacity, size_t* length, uint32_t cp)
 
 static char* utf16_to_utf8(const UChar* value, int32_t value_length, size_t* out_length)
 {
-    size_t length = u16_length(value, value_length);
-    size_t capacity = length * 4u + 1u;
+    size_t length;
+    size_t capacity;
     size_t at = 0u;
     char* result;
     size_t i;
-    if (!value || length > (SIZE_MAX - 1u) / 4u) return NULL;
+    if (!value) return NULL;
+    length = u16_length(value, value_length);
+    if (length > (SIZE_MAX - 1u) / 4u) return NULL;
+    capacity = length * 4u + 1u;
     result = (char*)malloc(capacity);
     if (!result) return NULL;
     for (i = 0u; i < length; ++i) {
@@ -760,21 +764,68 @@ int32_t GlobalizationNative_IsPredefinedLocale(const UChar* locale)
     return result;
 }
 
+static int locale_list_name_valid(const char* name, size_t length)
+{
+    size_t i;
+    if (!name || length == 0u || length >= sizeof(((RinIcuDataLocaleRecord*)0)->locale_id)) return 0;
+    for (i = 0u; i < length; ++i) {
+        unsigned char ch = (unsigned char)name[i];
+        if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+              (ch >= '0' && ch <= '9') || ch == '-' || ch == '_')) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int locale_list_required(const char* list, size_t length, int32_t* required)
+{
+    size_t i = 0u;
+    size_t count = 0u;
+    int32_t total = 0;
+    if (!list || !required) return 0;
+    while (i < length) {
+        size_t start = i;
+        size_t name_length;
+        while (i < length && list[i] != '\n') ++i;
+        name_length = i - start;
+        if (!locale_list_name_valid(list + start, name_length) ||
+            count >= RIN_ICU_DATA_MAX_LOCALES ||
+            name_length + 1u > (size_t)INT32_MAX - (size_t)total) {
+            return 0;
+        }
+        total += (int32_t)(name_length + 1u);
+        ++count;
+        if (i < length) ++i;
+    }
+    *required = total;
+    return 1;
+}
+
 int32_t GlobalizationNative_GetLocales(UChar* value, int32_t value_length)
 {
     rin_icu_client_t* client = product_client();
     char* list;
     size_t length = 0u;
     size_t i = 0u;
+    int32_t written = 0;
     int32_t required = 0;
     int status;
-    if (!client) return -1;
+    if (!client || (value && value_length < 0)) return -1;
     status = rin_icu_locale_available(client, NULL, 0u, &length);
-    if (status != RIN_ICU_STATUS_OK) return -1;
+    if (status != RIN_ICU_STATUS_OK || length > RIN_ICU_MAX_INLINE_PAYLOAD || length == SIZE_MAX) return -1;
     list = (char*)malloc(length + 1u);
     if (!list || rin_icu_locale_available(client, list, length + 1u, &length) != RIN_ICU_STATUS_OK) {
         free(list);
         return -1;
+    }
+    if (!locale_list_required(list, length, &required)) {
+        free(list);
+        return -1;
+    }
+    if (value && required > value_length) {
+        free(list);
+        return -3;
     }
     while (i < length) {
         size_t start = i;
@@ -782,15 +833,11 @@ int32_t GlobalizationNative_GetLocales(UChar* value, int32_t value_length)
         while (i < length && list[i] != '\n') ++i;
         name_length = i - start;
         if (name_length > 0u) {
-            required += (int32_t)name_length + 1;
             if (value) {
-                int32_t at = required - (int32_t)name_length - 1;
-                if (required > value_length) {
-                    free(list);
-                    return -3;
-                }
+                int32_t at = written;
                 value[at++] = (UChar)name_length;
                 for (size_t j = 0u; j < name_length; ++j) value[at + (int32_t)j] = (UChar)list[start + j];
+                written += (int32_t)name_length + 1;
             }
         }
         if (i < length) ++i;

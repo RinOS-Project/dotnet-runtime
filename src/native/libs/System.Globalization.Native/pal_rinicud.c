@@ -644,6 +644,7 @@ static int product_first_day_of_week(const char* region)
     };
     size_t index;
     if (!region) return -1;
+    if (region[0] == '\0') return 0;
     for (index = 0u; index < sizeof(sunday_regions) / sizeof(sunday_regions[0]); ++index) {
         if (strcmp(region, sunday_regions[index]) == 0) return 0;
     }
@@ -658,6 +659,7 @@ static int product_first_week_rule(const char* region)
     };
     size_t index;
     if (!region) return -1;
+    if (region[0] == '\0') return 0;
     for (index = 0u; index < sizeof(first_four_day_regions) / sizeof(first_four_day_regions[0]); ++index) {
         if (strcmp(region, first_four_day_regions[index]) == 0) return 2;
     }

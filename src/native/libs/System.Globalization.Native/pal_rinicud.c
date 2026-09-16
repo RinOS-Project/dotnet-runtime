@@ -1113,6 +1113,57 @@ static int u16_ascii_equal(const UChar* value, size_t length, const char* ascii)
     return 1;
 }
 
+static int ascii_region_equal(const char* value, const char* expected)
+{
+    size_t i;
+    if (!value || !expected || strlen(value) != strlen(expected)) return 0;
+    for (i = 0u; value[i] != '\0'; ++i) {
+        char left = value[i];
+        char right = expected[i];
+        if (left >= 'a' && left <= 'z') left = (char)(left - 'a' + 'A');
+        if (right >= 'a' && right <= 'z') right = (char)(right - 'a' + 'A');
+        if (left != right) return 0;
+    }
+    return 1;
+}
+
+static int copy_ascii_text(const char* source, UChar* dest, int32_t dest_length)
+{
+    size_t length;
+    size_t i;
+    if (!source) return 0;
+    length = strlen(source);
+    if (length > (size_t)INT32_MAX ||
+        (dest && (dest_length < 0 || (size_t)dest_length < length + 1u))) return 0;
+    if (dest) {
+        for (i = 0u; i < length; ++i) dest[i] = (UChar)(unsigned char)source[i];
+        dest[length] = 0;
+    }
+    return (int)length;
+}
+
+typedef struct RinTimeZoneIdMapping
+{
+    const char* windows_id;
+    const char* iana_id;
+    const char* region;
+} RinTimeZoneIdMapping;
+
+static const RinTimeZoneIdMapping g_time_zone_id_mappings[] = {
+    { "Eastern Standard Time", "America/New_York", "US" },
+    { "Central Standard Time", "America/Chicago", "US" },
+    { "Mountain Standard Time", "America/Denver", "US" },
+    { "Pacific Standard Time", "America/Los_Angeles", "US" },
+    { "GMT Standard Time", "Europe/London", "GB" },
+    { "W. Europe Standard Time", "Europe/Berlin", "DE" },
+    { "Tokyo Standard Time", "Asia/Tokyo", "JP" },
+    { "Korea Standard Time", "Asia/Seoul", "KR" },
+    { "China Standard Time", "Asia/Shanghai", "CN" },
+    { "AUS Eastern Standard Time", "Australia/Sydney", "AU" },
+    { "New Zealand Standard Time", "Pacific/Auckland", "NZ" },
+    { "UTC", "Etc/UTC", "001" },
+};
+
 enum {
     RIN_IDNA_MAX_NAME = 4096,
     RIN_IDNA_MAX_LABEL = 63,
@@ -1687,32 +1738,39 @@ static int timezone_display_name_call(const UChar* locale, const UChar* time_zon
 
 int32_t GlobalizationNative_WindowsIdToIanaId(const UChar* windows_id, const char* region, UChar* iana_id, int32_t iana_length)
 {
-    static const UChar eastern_iana[] = { 'A','m','e','r','i','c','a','/','N','e','w','_','Y','o','r','k',0 };
-    static const UChar tokyo_iana[] = { 'A','s','i','a','/','T','o','k','y','o',0 };
-    static const UChar utc_iana[] = { 'E','t','c','/','U','T','C',0 };
-    const UChar* value = NULL;
+    const RinTimeZoneIdMapping* mapping = NULL;
     size_t length;
-    (void)region;
+    size_t i;
+    if (!windows_id) return 0;
     length = u16_length(windows_id, -1);
-    if (u16_ascii_equal(windows_id, length, "Eastern Standard Time")) value = eastern_iana;
-    else if (u16_ascii_equal(windows_id, length, "Tokyo Standard Time")) value = tokyo_iana;
-    else if (u16_ascii_equal(windows_id, length, "UTC")) value = utc_iana;
-    if (!value) return 0;
-    return copy_ascii_id(value, (int32_t)u16_length(value, -1), iana_id, iana_length);
+    for (i = 0u; i < sizeof(g_time_zone_id_mappings) / sizeof(g_time_zone_id_mappings[0]); ++i) {
+        RinTimeZoneIdMapping const* candidate = &g_time_zone_id_mappings[i];
+        if (u16_ascii_equal(windows_id, length, candidate->windows_id) &&
+            (!region || region[0] == '\0' ||
+             strcmp(candidate->region, "001") == 0 ||
+             ascii_region_equal(region, candidate->region))) {
+            mapping = candidate;
+            break;
+        }
+    }
+    return mapping ? copy_ascii_text(mapping->iana_id, iana_id, iana_length) : 0;
 }
 
 int32_t GlobalizationNative_IanaIdToWindowsId(const UChar* iana_id, UChar* windows_id, int32_t windows_length)
 {
-    static const UChar eastern[] = { 'E','a','s','t','e','r','n',' ','S','t','a','n','d','a','r','d',' ','T','i','m','e',0 };
-    static const UChar tokyo[] = { 'T','o','k','y','o',' ','S','t','a','n','d','a','r','d',' ','T','i','m','e',0 };
-    static const UChar utc[] = { 'U','T','C',0 };
-    size_t length = u16_length(iana_id, -1);
-    const UChar* value = NULL;
-    if (u16_ascii_equal(iana_id, length, "America/New_York")) value = eastern;
-    else if (u16_ascii_equal(iana_id, length, "Asia/Tokyo")) value = tokyo;
-    else if (u16_ascii_equal(iana_id, length, "Etc/UTC")) value = utc;
-    if (!value) return 0;
-    return copy_ascii_id(value, (int32_t)u16_length(value, -1), windows_id, windows_length);
+    const RinTimeZoneIdMapping* mapping = NULL;
+    size_t length;
+    size_t i;
+    if (!iana_id) return 0;
+    length = u16_length(iana_id, -1);
+    for (i = 0u; i < sizeof(g_time_zone_id_mappings) / sizeof(g_time_zone_id_mappings[0]); ++i) {
+        RinTimeZoneIdMapping const* candidate = &g_time_zone_id_mappings[i];
+        if (u16_ascii_equal(iana_id, length, candidate->iana_id)) {
+            mapping = candidate;
+            break;
+        }
+    }
+    return mapping ? copy_ascii_text(mapping->windows_id, windows_id, windows_length) : 0;
 }
 
 ResultCode GlobalizationNative_GetTimeZoneDisplayName(const UChar* locale, const UChar* time_zone, TimeZoneDisplayNameType type, UChar* result, int32_t result_length)

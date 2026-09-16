@@ -262,7 +262,11 @@ bool TwoWayPipe::WaitForConnection()
         close(inbound);
         return false;
     }
-    int outbound = accept(m_outboundPipe, nullptr, nullptr);
+    int outbound;
+    do
+    {
+        outbound = accept(m_outboundPipe, nullptr, nullptr);
+    } while (outbound == -1 && errno == EINTR);
     if (outbound == INVALID_PIPE)
     {
         close(inbound);

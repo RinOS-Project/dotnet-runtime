@@ -39,7 +39,11 @@ static int rinos_append_input(rinos_tls_adapter* adapter,
                               const u8* data, rin_size_t length)
 {
     if (!adapter || (!data && length != 0u)) return RINTLS_ERR_MEMORY;
-    if (length > RINOS_TLS_INPUT_CAP - adapter->input_length) {
+    if (adapter->input_offset > RINOS_TLS_INPUT_CAP ||
+        adapter->input_length > RINOS_TLS_INPUT_CAP - adapter->input_offset)
+        return RINTLS_ERR_MEMORY;
+    if (length > RINOS_TLS_INPUT_CAP - adapter->input_offset -
+                     adapter->input_length) {
         if (adapter->input_offset != 0u) {
             rinos_move(adapter->input,
                        adapter->input + adapter->input_offset,
@@ -60,12 +64,17 @@ static int rinos_append_output(rinos_tls_adapter* adapter,
                                const u8* data, rin_size_t length)
 {
     if (!adapter || (!data && length != 0u)) return RINTLS_ERR_MEMORY;
-    if (adapter->output_offset != 0u &&
-        length > RINOS_TLS_OUTPUT_CAP - adapter->output_length) {
-        rinos_move(adapter->output,
-                   adapter->output + adapter->output_offset,
-                   adapter->output_length);
-        adapter->output_offset = 0u;
+    if (adapter->output_offset > RINOS_TLS_OUTPUT_CAP ||
+        adapter->output_length > RINOS_TLS_OUTPUT_CAP - adapter->output_offset)
+        return RINTLS_ERR_MEMORY;
+    if (length > RINOS_TLS_OUTPUT_CAP - adapter->output_offset -
+                     adapter->output_length) {
+        if (adapter->output_offset != 0u) {
+            rinos_move(adapter->output,
+                       adapter->output + adapter->output_offset,
+                       adapter->output_length);
+            adapter->output_offset = 0u;
+        }
     }
     if (length > RINOS_TLS_OUTPUT_CAP - adapter->output_length)
         return RINTLS_ERR_WANT_WRITE;

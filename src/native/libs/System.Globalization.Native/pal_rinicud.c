@@ -1655,6 +1655,7 @@ static int32_t idna_copy_result(const char* value, size_t length,
 {
     int32_t required = 0;
     if (!value || !utf8_to_utf16(value, length, NULL, 0, &required)) return 0;
+    if (dest && dest_length < 0) return 0;
     if (!dest || dest_length < required) return required;
     if (!utf8_to_utf16(value, length, dest, dest_length, &required)) return 0;
     return required;

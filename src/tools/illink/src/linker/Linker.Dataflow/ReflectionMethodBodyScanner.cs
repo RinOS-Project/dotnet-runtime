@@ -238,7 +238,15 @@ namespace Mono.Linker.Dataflow
             var handleCallAction = new HandleCallAction(context, operation, markStep, reflectionMarker, diagnosticContext, callingMethodDefinition);
             var intrinsicId = Intrinsics.GetIntrinsicIdForMethod(calledMethodProxy.Value);
             if (!handleCallAction.Invoke(calledMethodProxy.Value, instanceValue, argumentValues, intrinsicId, out MultiValue methodReturnValue))
-                throw new NotImplementedException($"Unhandled intrinsic: {intrinsicId}");
+            {
+                // An intrinsic can be recognized by the shared classifier before this
+                // linker flavor has a precise model for it.  Keep the analysis
+                // conservative instead of crashing the linker: the unknown value
+                // prevents unsound assumptions about reflection data and is consistent
+                // with the unresolved-method and unknown-reference paths above.
+                Debug.Fail($"Unhandled intrinsic: {intrinsicId}");
+                return UnknownValue.Instance;
+            }
             return methodReturnValue;
         }
 

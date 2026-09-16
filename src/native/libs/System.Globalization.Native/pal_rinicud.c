@@ -287,8 +287,11 @@ static int utf8_to_utf16(const char* value, size_t value_length, UChar* dest, in
     int32_t capacity = dest_length < 0 ? 0 : dest_length;
     while (offset < value_length) {
         uint32_t cp;
+        size_t addition;
         if (!decode_utf8((const unsigned char*)value, value_length, &offset, &cp)) return 0;
-        required += cp <= 0xffffu ? 1u : 2u;
+        addition = cp <= 0xffffu ? 1u : 2u;
+        if (required > SIZE_MAX - addition) return 0;
+        required += addition;
     }
     if (required > (size_t)INT32_MAX) return 0;
     if (out_length) *out_length = (int32_t)required;
@@ -417,12 +420,12 @@ static int service_text_call(int (*call)(rin_icu_client_t*, const char*, char*, 
     if (!client) return 0;
     status = call(client, input ? input : "", buffer, sizeof(buffer), &length);
     if (status == RIN_ICU_STATUS_NO_SPACE) {
-        if (length == SIZE_MAX) return 0;
+        if (length == SIZE_MAX || length > RIN_ICU_MAX_INLINE_PAYLOAD) return 0;
         dynamic = (char*)malloc(length + 1u);
         if (!dynamic) return 0;
         status = call(client, input ? input : "", dynamic, length + 1u, &length);
     }
-    if (status != RIN_ICU_STATUS_OK) {
+    if (status != RIN_ICU_STATUS_OK || length > RIN_ICU_MAX_INLINE_PAYLOAD) {
         free(dynamic);
         return 0;
     }
@@ -568,6 +571,7 @@ int32_t GlobalizationNative_IsNormalized(NormalizationForm form, const UChar* so
     int32_t normalized_length;
     int32_t source_units = (int32_t)u16_length(source, source_length);
     if (length < 0) return 0;
+    if (length >= INT32_MAX) return 0;
     normalized = (UChar*)malloc((size_t)(length + 1) * sizeof(UChar));
     if (!normalized) return 0;
     normalized_length = normalize_utf16(form, source, source_length, normalized, length + 1);
@@ -649,16 +653,20 @@ int32_t GlobalizationNative_GetSortKey(SortHandle* handle, const UChar* source, 
     size_t output_length = 0u;
     int status;
     (void)options;
-    if (!handle || !input) {
+    if (!handle || !input || dest_length < 0) {
         free(input);
         return 0;
     }
     status = rin_icu_collator_sort_key(handle->client, handle->handle, input, buffer, sizeof(buffer), &output_length);
     if (status == RIN_ICU_STATUS_NO_SPACE) {
-        output = (uint8_t*)malloc(output_length + 1u);
-        if (output) status = rin_icu_collator_sort_key(handle->client, handle->handle, input, output, output_length + 1u, &output_length);
+        if (output_length == SIZE_MAX || output_length > RIN_ICU_MAX_INLINE_PAYLOAD) {
+            status = RIN_ICU_STATUS_DATA_ERROR;
+        } else {
+            output = (uint8_t*)malloc(output_length + 1u);
+            if (output) status = rin_icu_collator_sort_key(handle->client, handle->handle, input, output, output_length + 1u, &output_length);
+        }
     }
-    if (status != RIN_ICU_STATUS_OK) output_length = 0u;
+    if (status != RIN_ICU_STATUS_OK || output_length > (size_t)INT32_MAX) output_length = 0u;
     if (dest && dest_length > 0 && output_length > 0u) {
         size_t copy_length = output_length < (size_t)dest_length ? output_length : (size_t)dest_length;
         memcpy(dest, output, copy_length);
@@ -687,7 +695,8 @@ int32_t GlobalizationNative_IndexOf(SortHandle* handle, const UChar* target, int
     (void)options;
     if (matched_length) *matched_length = 0;
     if (!handle || !target || !source || target_length < 0 || source_length < 0) return -1;
-    for (i = 0; i + target_length <= source_length; ++i) {
+    if (target_length > source_length) return -1;
+    for (i = 0; i <= source_length - target_length; ++i) {
         if (compare_slice(handle, source, source_length, i, target, target_length)) {
             if (matched_length) *matched_length = target_length;
             return i;
@@ -1725,7 +1734,7 @@ static int timezone_display_name_call(const UChar* locale, const UChar* time_zon
                                   RIN_ICU_LANGUAGE_DISPLAY_STANDARD,
                                   buffer, sizeof(buffer), &length);
     if (status == RIN_ICU_STATUS_NO_SPACE) {
-        if (length == SIZE_MAX) {
+        if (length == SIZE_MAX || length > RIN_ICU_MAX_INLINE_PAYLOAD) {
             free(locale_name);
             free(time_zone_name);
             return 0;
@@ -1743,7 +1752,7 @@ static int timezone_display_name_call(const UChar* locale, const UChar* time_zon
     }
     free(locale_name);
     free(time_zone_name);
-    if (status != RIN_ICU_STATUS_OK || length == 0u) {
+    if (status != RIN_ICU_STATUS_OK || length == 0u || length > RIN_ICU_MAX_INLINE_PAYLOAD) {
         free(dynamic);
         return 0;
     }

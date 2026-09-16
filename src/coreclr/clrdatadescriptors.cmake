@@ -6,6 +6,11 @@ function(generate_data_descriptors)
   set(multiValueArgs "")
   cmake_parse_arguments(DATA_DESCRIPTORS "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGV})
 
+  if(CLR_CMAKE_TARGET_RINOS AND NOT CDAC_BUILD_TOOL_BINARY_PATH)
+    message(FATAL_ERROR
+      "RinOS target builds require cdac-build-tool; refusing to embed the empty cDAC stub descriptor")
+  endif()
+
   # INTERMEDIARY_LIBRARY is used as part of the build and not linked into the final product.
   set(INTERMEDIARY_LIBRARY ${DATA_DESCRIPTORS_LIBRARY_NAME}_temp)
   set(LIBRARY ${DATA_DESCRIPTORS_LIBRARY_NAME})

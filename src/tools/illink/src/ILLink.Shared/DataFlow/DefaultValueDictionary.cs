@@ -109,8 +109,28 @@ namespace ILLink.Shared.DataFlow
         }
 
         // Prevent warning CS0659 https://learn.microsoft.com/dotnet/csharp/misc/cs0659.
-        // This type should never be used as a dictionary key.
-        public override int GetHashCode() => throw new NotImplementedException();
+        // This type should not be used as a dictionary key while it is mutable, but
+        // returning a structural hash keeps equality/hash contracts intact for
+        // diagnostics, snapshots, and accidental read-only use.  Sum the entry
+        // hashes so insertion order does not affect equal dictionaries.
+        public override int GetHashCode()
+        {
+            int hash = EqualityComparer<TValue>.Default.GetHashCode(DefaultValue);
+            if (Dictionary == null)
+                return hash;
+
+            int entriesHash = 0;
+            foreach (var kvp in Dictionary)
+            {
+                int entryHash = EqualityComparer<TKey>.Default.GetHashCode(kvp.Key);
+                entryHash = unchecked(entryHash * 31 + EqualityComparer<TValue>.Default.GetHashCode(kvp.Value));
+                entriesHash = unchecked(entriesHash + entryHash);
+            }
+
+            // Keep the allocated-empty dictionary representation distinct from the
+            // null representation. Set(default) can leave the former behind.
+            return unchecked(hash * 397 + entriesHash + 1);
+        }
 
         public static bool operator ==(DefaultValueDictionary<TKey, TValue> left, DefaultValueDictionary<TKey, TValue> right) => left.Equals(right);
         public static bool operator !=(DefaultValueDictionary<TKey, TValue> left, DefaultValueDictionary<TKey, TValue> right) => !(left == right);

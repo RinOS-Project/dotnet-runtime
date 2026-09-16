@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using ILLink.Shared;
 using ILLink.Shared.DataFlow;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FlowAnalysis;
@@ -136,9 +137,13 @@ namespace ILLink.RoslynAnalyzer.DataFlow
 
         public TValue Get(LocalKey key) => Dictionary.Get(key);
 
-        // Local dataflow states are mutable and should never be used as dictionary keys.
+        // Local dataflow states are mutable and should not be used as dictionary
+        // keys.  Still provide a structural hash for diagnostics and immutable
+        // snapshots instead of exposing a runtime exception through Object APIs.
         public override int GetHashCode()
-            => throw new NotImplementedException();
+            => HashUtils.Combine(
+                Dictionary.GetHashCode(),
+                HashUtils.Combine(CapturedReferences.GetHashCode(), CapturedTargetValues.GetHashCode()));
 
         public void Set(LocalKey key, TValue value) => Dictionary.Set(key, value);
 

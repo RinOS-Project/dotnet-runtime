@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using ILLink.Shared;
 using ILLink.Shared.DataFlow;
 
 namespace ILLink.RoslynAnalyzer.DataFlow
@@ -43,7 +44,7 @@ namespace ILLink.RoslynAnalyzer.DataFlow
             => obj is InterproceduralState<TValue, TValueLattice> inst && Equals(inst);
 
         public override int GetHashCode()
-            => throw new NotImplementedException();
+            => HashUtils.Combine(Methods.GetHashCode(), HoistedLocals.GetHashCode());
 
         public InterproceduralState<TValue, TValueLattice> Clone()
             => new(Methods.DeepCopy(),

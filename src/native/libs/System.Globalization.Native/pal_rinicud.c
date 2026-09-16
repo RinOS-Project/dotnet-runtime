@@ -125,7 +125,21 @@ typedef struct SortHandle
 {
     rin_icu_client_t* client;
     rin_icu_handle_t handle;
+    char locale[128];
+    rin_icu_handle_t option_handles[64];
+    uint8_t option_initialized[64];
 } SortHandle;
+
+enum
+{
+    CompareOptionsIgnoreCase = 0x1,
+    CompareOptionsIgnoreNonSpace = 0x2,
+    CompareOptionsIgnoreSymbols = 0x4,
+    CompareOptionsIgnoreKanaType = 0x8,
+    CompareOptionsIgnoreWidth = 0x10,
+    CompareOptionsNumericOrdering = 0x20,
+    CompareOptionsMask = 0x3f
+};
 
 typedef struct RinJapaneseEra
 {
@@ -1002,22 +1016,63 @@ int32_t GlobalizationNative_NormalizeString(NormalizationForm form, const UChar*
     return normalize_utf16(form, source, source_length, dest, dest_length);
 }
 
+static void collator_options_from_compare(int32_t compare_options,
+                                          rin_icu_collator_options_t* options)
+{
+    uint32_t normalized = (uint32_t)compare_options & CompareOptionsMask;
+    memset(options, 0, sizeof(*options));
+    options->strength = (normalized & CompareOptionsIgnoreNonSpace) != 0u
+        ? RIN_ICU_COLLATION_STRENGTH_PRIMARY
+        : (normalized & CompareOptionsIgnoreCase) != 0u
+            ? RIN_ICU_COLLATION_STRENGTH_SECONDARY
+            : RIN_ICU_COLLATION_STRENGTH_TERTIARY;
+    options->numeric = (normalized & CompareOptionsNumericOrdering) != 0u;
+    options->ignore_punctuation = (normalized & CompareOptionsIgnoreSymbols) != 0u;
+    if ((normalized & CompareOptionsIgnoreKanaType) != 0u) {
+        options->case_first |= RIN_ICU_COLLATOR_FLAG_IGNORE_KANA_TYPE;
+    }
+    if ((normalized & CompareOptionsIgnoreWidth) != 0u) {
+        options->case_first |= RIN_ICU_COLLATOR_FLAG_IGNORE_WIDTH;
+    }
+}
+
 static int create_sort_handle(const char* locale, SortHandle** out_handle)
 {
     rin_icu_client_t* client = product_client();
     rin_icu_collator_options_t options = { 0 };
     SortHandle* result;
+    const char* locale_name = locale ? locale : "root";
     if (!client || !out_handle) return 0;
+    if (strlen(locale_name) >= sizeof(result->locale)) return 0;
     options.strength = RIN_ICU_COLLATION_STRENGTH_TERTIARY;
     result = (SortHandle*)calloc(1u, sizeof(SortHandle));
     if (!result) return 0;
     result->client = client;
-    if (rin_icu_collator_create(result->client, locale ? locale : "root", &options, &result->handle) != RIN_ICU_STATUS_OK) {
+    memcpy(result->locale, locale_name, strlen(locale_name) + 1u);
+    if (rin_icu_collator_create(result->client, result->locale, &options, &result->handle) != RIN_ICU_STATUS_OK) {
         free(result);
         return 0;
     }
+    result->option_handles[0] = result->handle;
+    result->option_initialized[0] = 1u;
     *out_handle = result;
     return 1;
+}
+
+static rin_icu_handle_t collator_handle_for_options(SortHandle* handle, int32_t compare_options)
+{
+    uint32_t normalized = (uint32_t)compare_options & CompareOptionsMask;
+    rin_icu_collator_options_t options;
+    rin_icu_handle_t service_handle = 0u;
+    if (!handle) return 0u;
+    if (handle->option_initialized[normalized]) return handle->option_handles[normalized];
+    collator_options_from_compare(compare_options, &options);
+    if (rin_icu_collator_create(handle->client, handle->locale, &options, &service_handle) != RIN_ICU_STATUS_OK) {
+        return 0u;
+    }
+    handle->option_handles[normalized] = service_handle;
+    handle->option_initialized[normalized] = 1u;
+    return service_handle;
 }
 
 int32_t GlobalizationNative_GetSortHandle(const char* locale, SortHandle** out_handle)
@@ -1027,8 +1082,13 @@ int32_t GlobalizationNative_GetSortHandle(const char* locale, SortHandle** out_h
 
 void GlobalizationNative_CloseSortHandle(SortHandle* handle)
 {
+    uint32_t option;
     if (!handle) return;
-    (void)rin_icu_collator_destroy(handle->client, handle->handle);
+    for (option = 0u; option < CompareOptionsMask + 1u; ++option) {
+        if (handle->option_initialized[option]) {
+            (void)rin_icu_collator_destroy(handle->client, handle->option_handles[option]);
+        }
+    }
     free(handle);
 }
 
@@ -1047,8 +1107,9 @@ int32_t GlobalizationNative_CompareString(SortHandle* handle, const UChar* lhs, 
     char* left = sort_text(lhs, lhs_length, NULL);
     char* right = sort_text(rhs, rhs_length, NULL);
     int result = 0;
-    (void)options;
-    if (!handle || !left || !right || rin_icu_collator_compare(handle->client, handle->handle, left, right, &result) != RIN_ICU_STATUS_OK) result = 0;
+    rin_icu_handle_t service_handle = collator_handle_for_options(handle, options);
+    if (!handle || !left || !right || service_handle == 0u ||
+        rin_icu_collator_compare(handle->client, service_handle, left, right, &result) != RIN_ICU_STATUS_OK) result = 0;
     free(left);
     free(right);
     return result;
@@ -1061,18 +1122,22 @@ int32_t GlobalizationNative_GetSortKey(SortHandle* handle, const UChar* source, 
     uint8_t* output = buffer;
     size_t output_length = 0u;
     int status;
-    (void)options;
+    rin_icu_handle_t service_handle = collator_handle_for_options(handle, options);
     if (!handle || !input || dest_length < 0) {
         free(input);
         return 0;
     }
-    status = rin_icu_collator_sort_key(handle->client, handle->handle, input, buffer, sizeof(buffer), &output_length);
+    if (service_handle == 0u) {
+        free(input);
+        return 0;
+    }
+    status = rin_icu_collator_sort_key(handle->client, service_handle, input, buffer, sizeof(buffer), &output_length);
     if (status == RIN_ICU_STATUS_NO_SPACE) {
         if (output_length == SIZE_MAX || output_length > RIN_ICU_MAX_INLINE_PAYLOAD) {
             status = RIN_ICU_STATUS_DATA_ERROR;
         } else {
             output = (uint8_t*)malloc(output_length + 1u);
-            if (output) status = rin_icu_collator_sort_key(handle->client, handle->handle, input, output, output_length + 1u, &output_length);
+            if (output) status = rin_icu_collator_sort_key(handle->client, service_handle, input, output, output_length + 1u, &output_length);
         }
     }
     if (status != RIN_ICU_STATUS_OK || output_length > (size_t)INT32_MAX) output_length = 0u;
@@ -1085,14 +1150,16 @@ int32_t GlobalizationNative_GetSortKey(SortHandle* handle, const UChar* source, 
     return (int32_t)output_length;
 }
 
-static int compare_slice(SortHandle* handle, const UChar* source, int32_t source_length, int32_t offset, const UChar* target, int32_t target_length)
+static int compare_slice(SortHandle* handle, const UChar* source, int32_t source_length, int32_t offset, const UChar* target, int32_t target_length, int32_t options)
 {
     char* left;
     char* right;
     int result = 0;
     left = sort_text(source + offset, target_length, NULL);
     right = sort_text(target, target_length, NULL);
-    if (!left || !right || rin_icu_collator_compare(handle->client, handle->handle, left, right, &result) != RIN_ICU_STATUS_OK) result = 1;
+    rin_icu_handle_t service_handle = collator_handle_for_options(handle, options);
+    if (!left || !right || service_handle == 0u ||
+        rin_icu_collator_compare(handle->client, service_handle, left, right, &result) != RIN_ICU_STATUS_OK) result = 1;
     free(left);
     free(right);
     return result == 0;
@@ -1101,12 +1168,11 @@ static int compare_slice(SortHandle* handle, const UChar* source, int32_t source
 int32_t GlobalizationNative_IndexOf(SortHandle* handle, const UChar* target, int32_t target_length, const UChar* source, int32_t source_length, int32_t options, int32_t* matched_length)
 {
     int32_t i;
-    (void)options;
     if (matched_length) *matched_length = 0;
     if (!handle || !target || !source || target_length < 0 || source_length < 0) return -1;
     if (target_length > source_length) return -1;
     for (i = 0; i <= source_length - target_length; ++i) {
-        if (compare_slice(handle, source, source_length, i, target, target_length)) {
+        if (compare_slice(handle, source, source_length, i, target, target_length, options)) {
             if (matched_length) *matched_length = target_length;
             return i;
         }
@@ -1117,11 +1183,10 @@ int32_t GlobalizationNative_IndexOf(SortHandle* handle, const UChar* target, int
 int32_t GlobalizationNative_LastIndexOf(SortHandle* handle, const UChar* target, int32_t target_length, const UChar* source, int32_t source_length, int32_t options, int32_t* matched_length)
 {
     int32_t i;
-    (void)options;
     if (matched_length) *matched_length = 0;
     if (!handle || !target || !source || target_length < 0 || source_length < 0) return -1;
     for (i = source_length - target_length; i >= 0; --i) {
-        if (compare_slice(handle, source, source_length, i, target, target_length)) {
+        if (compare_slice(handle, source, source_length, i, target, target_length, options)) {
             if (matched_length) *matched_length = target_length;
             return i;
         }
@@ -1131,20 +1196,18 @@ int32_t GlobalizationNative_LastIndexOf(SortHandle* handle, const UChar* target,
 
 int32_t GlobalizationNative_StartsWith(SortHandle* handle, const UChar* target, int32_t target_length, const UChar* source, int32_t source_length, int32_t options, int32_t* matched_length)
 {
-    (void)options;
     if (matched_length) *matched_length = 0;
     if (!handle || target_length < 0 || source_length < target_length) return 0;
-    if (!compare_slice(handle, source, source_length, 0, target, target_length)) return 0;
+    if (!compare_slice(handle, source, source_length, 0, target, target_length, options)) return 0;
     if (matched_length) *matched_length = target_length;
     return 1;
 }
 
 int32_t GlobalizationNative_EndsWith(SortHandle* handle, const UChar* target, int32_t target_length, const UChar* source, int32_t source_length, int32_t options, int32_t* matched_length)
 {
-    (void)options;
     if (matched_length) *matched_length = 0;
     if (!handle || target_length < 0 || source_length < target_length) return 0;
-    if (!compare_slice(handle, source, source_length, source_length - target_length, target, target_length)) return 0;
+    if (!compare_slice(handle, source, source_length, source_length - target_length, target, target_length, options)) return 0;
     if (matched_length) *matched_length = target_length;
     return 1;
 }

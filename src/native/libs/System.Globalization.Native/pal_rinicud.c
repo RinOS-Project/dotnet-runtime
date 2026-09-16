@@ -816,14 +816,6 @@ int32_t GlobalizationNative_GetLocaleTimeFormat(const UChar* locale, int short_f
     return result > 0;
 }
 
-static int locale_is_english(const UChar* locale)
-{
-    char* value = locale_utf8(locale);
-    int result = value && (strncmp(value, "en", 2u) == 0 || strcmp(value, "root") == 0);
-    free(value);
-    return result;
-}
-
 static int locale_parent_name(rin_icu_client_t* client, const char* locale_name, char* parent, size_t capacity)
 {
     char canonical[128];
@@ -914,29 +906,6 @@ int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStrin
             length = record_field_length(field, field_capacity);
             if (length < sizeof(buffer)) memcpy(buffer, field, length);
             status = length < sizeof(buffer) ? RIN_ICU_STATUS_OK : RIN_ICU_STATUS_NO_SPACE;
-        }
-    }
-    if (status != RIN_ICU_STATUS_OK) {
-        const char* fallback = NULL;
-        if (kind == LocaleString_ThousandSeparator || kind == LocaleString_MonetaryThousandSeparator) fallback = ",";
-        else if (kind == LocaleString_MonetarySymbol) fallback = locale_is_english(locale) ? "$" : "¤";
-        else if (kind == LocaleString_Iso4217MonetarySymbol) fallback = locale_is_english(locale) ? "USD" : "XXX";
-        else if (kind == LocaleString_NegativeSign) fallback = "-";
-        else if (kind == LocaleString_PositiveSign) fallback = "+";
-        else if (kind == LocaleString_PercentSymbol) fallback = "%";
-        else if (kind == LocaleString_AMDesignator) fallback = "AM";
-        else if (kind == LocaleString_PMDesignator) fallback = "PM";
-        else if (kind == LocaleString_Iso639LanguageTwoLetterName) fallback = locale_is_english(locale) ? "en" : "und";
-        else if (kind == LocaleString_DecimalSeparator || kind == LocaleString_MonetaryDecimalSeparator) fallback = ".";
-        else if (kind == LocaleString_NaNSymbol) fallback = "NaN";
-        else if (kind == LocaleString_PositiveInfinitySymbol) fallback = "Infinity";
-        else if (kind == LocaleString_NegativeInfinitySymbol) fallback = "-Infinity";
-        else if (kind == LocaleString_Digits) fallback = "0\uffff1\uffff2\uffff3\uffff4\uffff5\uffff6\uffff7\uffff8\uffff9";
-        if (fallback) {
-            length = strlen(fallback);
-            if (length >= sizeof(buffer)) length = sizeof(buffer) - 1u;
-            memcpy(buffer, fallback, length);
-            status = RIN_ICU_STATUS_OK;
         }
     }
     free(locale_name);

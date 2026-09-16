@@ -199,6 +199,9 @@ static const char* const g_en_day_names[] = {
 static const char* const g_en_abbreviated_day_names[] = {
     "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
 };
+static const char* const g_en_super_short_day_names[] = {
+    "S", "M", "T", "W", "T", "F", "S"
+};
 
 static const char* const g_ja_month_names[] = {
     "1月", "2月", "3月", "4月", "5月", "6月",
@@ -224,6 +227,9 @@ static const char* const g_zh_day_names[] = {
 };
 static const char* const g_zh_abbreviated_day_names[] = {
     "周日", "周一", "周二", "周三", "周四", "周五", "周六"
+};
+static const char* const g_zh_super_short_day_names[] = {
+    "日", "一", "二", "三", "四", "五", "六"
 };
 
 static const char* const g_ko_month_names[] = {
@@ -251,6 +257,9 @@ static const char* const g_fr_day_names[] = {
 static const char* const g_fr_abbreviated_day_names[] = {
     "dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."
 };
+static const char* const g_fr_super_short_day_names[] = {
+    "D", "L", "M", "M", "J", "V", "S"
+};
 
 static const char* const g_de_month_names[] = {
     "Januar", "Februar", "März", "April", "Mai", "Juni",
@@ -265,6 +274,9 @@ static const char* const g_de_day_names[] = {
 };
 static const char* const g_de_abbreviated_day_names[] = {
     "So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"
+};
+static const char* const g_de_super_short_day_names[] = {
+    "S", "M", "D", "M", "D", "F", "S"
 };
 
 static const char* const g_es_month_names[] = {
@@ -281,6 +293,9 @@ static const char* const g_es_day_names[] = {
 static const char* const g_es_abbreviated_day_names[] = {
     "dom", "lun", "mar", "mié", "jue", "vie", "sáb"
 };
+static const char* const g_es_super_short_day_names[] = {
+    "D", "L", "M", "X", "J", "V", "S"
+};
 
 typedef struct RinCalendarSymbols
 {
@@ -289,6 +304,7 @@ typedef struct RinCalendarSymbols
     const char* const* abbreviated_month_names;
     const char* const* day_names;
     const char* const* abbreviated_day_names;
+    const char* const* super_short_day_names;
     const char* native_gregorian_name;
     const char* native_japanese_name;
     const char* const* japanese_era_names;
@@ -297,25 +313,25 @@ typedef struct RinCalendarSymbols
 
 static const RinCalendarSymbols g_calendar_symbols[] = {
     { "en", g_en_month_names, g_en_abbreviated_month_names, g_en_day_names,
-      g_en_abbreviated_day_names, "Gregorian Calendar", "Japanese Calendar",
+      g_en_abbreviated_day_names, g_en_super_short_day_names, "Gregorian Calendar", "Japanese Calendar",
       g_japanese_era_names_en, g_japanese_era_abbreviations },
     { "ja", g_ja_month_names, g_ja_month_names, g_ja_day_names,
-      g_ja_abbreviated_day_names, "西暦", "和暦",
+      g_ja_abbreviated_day_names, g_ja_abbreviated_day_names, "西暦", "和暦",
       g_japanese_era_names, g_japanese_era_abbreviations },
     { "zh", g_zh_month_names, g_zh_abbreviated_month_names, g_zh_day_names,
-      g_zh_abbreviated_day_names, "公历", "日本历",
+      g_zh_abbreviated_day_names, g_zh_super_short_day_names, "公历", "日本历",
       g_japanese_era_names_zh, g_japanese_era_abbreviations },
     { "ko", g_ko_month_names, g_ko_month_names, g_ko_day_names,
-      g_ko_abbreviated_day_names, "그레고리력", "일본력",
+      g_ko_abbreviated_day_names, g_ko_abbreviated_day_names, "그레고리력", "일본력",
       g_japanese_era_names_ko, g_japanese_era_abbreviations },
     { "fr", g_fr_month_names, g_fr_abbreviated_month_names, g_fr_day_names,
-      g_fr_abbreviated_day_names, "calendrier grégorien", "calendrier japonais",
+      g_fr_abbreviated_day_names, g_fr_super_short_day_names, "calendrier grégorien", "calendrier japonais",
       g_japanese_era_names_en, g_japanese_era_abbreviations },
     { "de", g_de_month_names, g_de_abbreviated_month_names, g_de_day_names,
-      g_de_abbreviated_day_names, "Gregorianischer Kalender", "Japanischer Kalender",
+      g_de_abbreviated_day_names, g_de_super_short_day_names, "Gregorianischer Kalender", "Japanischer Kalender",
       g_japanese_era_names_en, g_japanese_era_abbreviations },
     { "es", g_es_month_names, g_es_abbreviated_month_names, g_es_day_names,
-      g_es_abbreviated_day_names, "calendario gregoriano", "calendario japonés",
+      g_es_abbreviated_day_names, g_es_super_short_day_names, "calendario gregoriano", "calendario japonés",
       g_japanese_era_names_en, g_japanese_era_abbreviations },
 };
 
@@ -353,8 +369,11 @@ static const char* calendar_symbol(const RinIcuDataLocaleRecord* record,
     if (kind == CalendarData_AbbrevMonthNames || kind == CalendarData_AbbrevMonthGenitiveNames) {
         return index < 13u ? symbols->abbreviated_month_names[index] : NULL;
     }
-    if (kind == CalendarData_DayNames || kind == CalendarData_SuperShortDayNames) {
+    if (kind == CalendarData_DayNames) {
         return index < 7u ? symbols->day_names[index] : NULL;
+    }
+    if (kind == CalendarData_SuperShortDayNames) {
+        return index < 7u ? symbols->super_short_day_names[index] : NULL;
     }
     if (kind == CalendarData_AbbrevDayNames) {
         return index < 7u ? symbols->abbreviated_day_names[index] : NULL;

@@ -562,6 +562,108 @@ static int get_locale_record(const UChar* locale, RinIcuDataLocaleRecord* record
     return status == RIN_ICU_STATUS_OK;
 }
 
+static int product_locale_language_id(const char* locale_id)
+{
+    struct LocaleIdEntry {
+        const char* name;
+        int value;
+    };
+    static const struct LocaleIdEntry entries[] = {
+        {"en-US", 0x0409}, {"en-GB", 0x0809}, {"ja-JP", 0x0411},
+        {"zh-CN", 0x0804}, {"zh-TW", 0x0404}, {"ko-KR", 0x0412},
+        {"fr-FR", 0x040c}, {"de-DE", 0x0407}, {"es-ES", 0x0c0a},
+        {"es-MX", 0x080a}, {"it-IT", 0x0410}, {"pt-BR", 0x0416},
+        {"pt-PT", 0x0816}, {"ru-RU", 0x0419}, {"uk-UA", 0x0422},
+        {"tr-TR", 0x041f}, {"pl-PL", 0x0415}, {"nl-NL", 0x0413},
+        {"sv-SE", 0x041d}, {"fi-FI", 0x040b}, {"da-DK", 0x0406},
+        {"cs-CZ", 0x0405}, {"hu-HU", 0x040e}, {"ro-RO", 0x0418},
+        {"ar-SA", 0x0401}, {"hi-IN", 0x0439}, {"th-TH", 0x041e},
+        {"id-ID", 0x0421}, {"vi-VN", 0x042a}
+    };
+    size_t index;
+    if (!locale_id || locale_id[0] == '\0') return 0;
+    for (index = 0u; index < sizeof(entries) / sizeof(entries[0]); ++index) {
+        if (strcmp(entries[index].name, locale_id) == 0) return entries[index].value;
+    }
+    return 0;
+}
+
+static int product_pattern_order(const char* pattern, const char* first_token,
+                                 const char* second_token, int* first_is_left,
+                                 int* separated)
+{
+    const char* first;
+    const char* second;
+    const char* left;
+    const char* left_token;
+    const char* cursor;
+    if (!pattern || !first_token || !second_token || !first_is_left || !separated) return 0;
+    first = strstr(pattern, first_token);
+    second = strstr(pattern, second_token);
+    if (!first || !second || first == second) return 0;
+    *first_is_left = first < second;
+    left = *first_is_left ? first : second;
+    left_token = *first_is_left ? first_token : second_token;
+    cursor = left + strlen(left_token);
+    second = *first_is_left ? second : first;
+    *separated = 0;
+    while (cursor < second) {
+        if (*cursor == ' ') {
+            *separated = 1;
+            break;
+        }
+        ++cursor;
+    }
+    return 1;
+}
+
+static int product_currency_positive_pattern(const RinIcuDataLocaleRecord* record)
+{
+    int symbol_first;
+    int separated;
+    if (!record || !product_pattern_order(record->currency_pattern, "{symbol}",
+                                          "{value}", &symbol_first, &separated)) return -1;
+    if (symbol_first) return separated ? 2 : 0;
+    return separated ? 3 : 1;
+}
+
+static int product_percent_positive_pattern(const RinIcuDataLocaleRecord* record)
+{
+    int percent_first;
+    int separated;
+    if (!record || !product_pattern_order(record->percent_pattern, "{percent}",
+                                          "{value}", &percent_first, &separated)) return -1;
+    if (percent_first) return separated ? 3 : 2;
+    return separated ? 0 : 1;
+}
+
+static int product_first_day_of_week(const char* region)
+{
+    static const char* sunday_regions[] = {
+        "BR", "CA", "CN", "ID", "IN", "JP", "KR", "MX", "SA", "TH", "TW", "US"
+    };
+    size_t index;
+    if (!region) return -1;
+    for (index = 0u; index < sizeof(sunday_regions) / sizeof(sunday_regions[0]); ++index) {
+        if (strcmp(region, sunday_regions[index]) == 0) return 0;
+    }
+    return 1;
+}
+
+static int product_first_week_rule(const char* region)
+{
+    static const char* first_four_day_regions[] = {
+        "BE", "BG", "CH", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GB",
+        "GR", "IE", "IS", "IT", "LT", "LU", "NL", "PL", "RU", "SE", "SK"
+    };
+    size_t index;
+    if (!region) return -1;
+    for (index = 0u; index < sizeof(first_four_day_regions) / sizeof(first_four_day_regions[0]); ++index) {
+        if (strcmp(region, first_four_day_regions[index]) == 0) return 2;
+    }
+    return 0;
+}
+
 static size_t record_field_length(const char* field, size_t capacity)
 {
     size_t length = 0u;
@@ -1194,16 +1296,72 @@ int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStrin
 int32_t GlobalizationNative_GetLocaleInfoInt(const UChar* locale, LocaleNumberData kind, int32_t* value)
 {
     RinIcuDataLocaleRecord record;
+    int pattern;
     int have_record = get_locale_record(locale, &record);
     if (!value) return 0;
     if (!have_record) return 0;
     switch (kind) {
+        case LocaleNumber_LanguageId:
+            *value = product_locale_language_id(record.locale_id);
+            return *value != 0 || strcmp(record.locale_id, "root") == 0;
         case LocaleNumber_MeasurementSystem:
             *value = (strcmp(record.region, "US") == 0 || strcmp(record.region, "LR") == 0 || strcmp(record.region, "MM") == 0) ? 1 : 0;
             break;
-        case LocaleNumber_FirstDayofWeek: *value = (strcmp(record.region, "US") == 0 || strcmp(record.region, "CA") == 0) ? 0 : 1; break;
+        case LocaleNumber_FirstDayofWeek:
+            *value = product_first_day_of_week(record.region);
+            if (*value < 0) return 0;
+            break;
         case LocaleNumber_FractionalDigitsCount:
-        case LocaleNumber_MonetaryFractionalDigitsCount: *value = (int32_t)record.currency_digits; break;
+            *value = strcmp(record.locale_id, "root") == 0 ? 2 : 3;
+            break;
+        case LocaleNumber_MonetaryFractionalDigitsCount:
+            *value = (int32_t)record.currency_digits;
+            break;
+        case LocaleNumber_NegativeNumberFormat:
+            *value = 1;
+            break;
+        case LocaleNumber_PositiveMonetaryNumberFormat:
+            pattern = product_currency_positive_pattern(&record);
+            if (pattern < 0 && strcmp(record.locale_id, "root") == 0) pattern = 0;
+            if (pattern < 0) return 0;
+            *value = pattern;
+            break;
+        case LocaleNumber_NegativeMonetaryNumberFormat:
+            pattern = product_currency_positive_pattern(&record);
+            if (pattern < 0 && strcmp(record.locale_id, "root") == 0) pattern = 0;
+            if (pattern < 0) return 0;
+            if (pattern == 0) {
+                *value = strcmp(record.region, "US") == 0 ? 0 : 1;
+            } else if (pattern == 1) {
+                *value = 5;
+            } else if (pattern == 2) {
+                *value = 9;
+            } else {
+                *value = 8;
+            }
+            break;
+        case LocaleNumber_FirstWeekOfYear:
+            *value = product_first_week_rule(record.region);
+            if (*value < 0) return 0;
+            break;
+        case LocaleNumber_ReadingLayout:
+            *value = strcmp(record.script, "Arab") == 0 ||
+                strcmp(record.language, "fa") == 0 ||
+                strcmp(record.language, "he") == 0 ||
+                strcmp(record.language, "ur") == 0;
+            break;
+        case LocaleNumber_NegativePercentFormat:
+            pattern = product_percent_positive_pattern(&record);
+            if (pattern < 0) return 0;
+            *value = pattern == 0 ? 0 : pattern == 1 ? 1 : pattern == 2 ? 2 : 7;
+            break;
+        case LocaleNumber_PositivePercentFormat:
+            pattern = product_percent_positive_pattern(&record);
+            if (pattern < 0) return 0;
+            *value = pattern;
+            break;
+        case LocaleNumber_Digit:
+            return 0;
         case LocaleNumber_Monetary: *value = record.currency_code[0] != '\0'; break;
         default: return 0;
     }
@@ -1217,7 +1375,7 @@ int32_t GlobalizationNative_GetLocaleInfoGroupingSizes(const UChar* locale, Loca
     if (kind != LocaleNumber_Digit && kind != LocaleNumber_Monetary) return 0;
     if (!get_locale_record(locale, &record)) return 0;
     *primary = record.group_sep[0] == '\0' ? 0 : 3;
-    *secondary = *primary;
+    *secondary = strcmp(record.region, "IN") == 0 && *primary != 0 ? 2 : *primary;
     return 1;
 }
 

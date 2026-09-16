@@ -9,6 +9,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #if defined(TARGET_RINOS)
+#include <rin/abi.h>
+#include <rin_account_compat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #endif
@@ -45,6 +47,19 @@ void (*g_pfnAbortTransportCallback)(void) = nullptr;
 // abstraction, but back each half-duplex channel with a private pathname UDS.
 // The path is owner-private and the process instance cookie is already part of
 // PAL_GetTransportPipeName(), so a recycled PID cannot attach to an old target.
+static bool RinOSDebugTransportAuthorized()
+{
+    __rin_credentials_v1 credentials = {};
+    if (__rin_credentials_get(&credentials) != 0)
+        return false;
+
+    // The capability is checked in both the debuggee and debugger process.
+    // Socket mode and the process-instance cookie prevent accidental cross-user
+    // and stale-PID connections, while this product capability is the explicit
+    // authorization boundary for managed runtime control.
+    return (credentials.capabilities & RIN_CAP_DEBUGGING) != 0u;
+}
+
 static int CreateRinOSUnixServer(const char* path)
 {
     if (path == nullptr || path[0] == '\0' ||
@@ -57,6 +72,11 @@ static int CreateRinOSUnixServer(const char* path)
     int descriptor = socket(AF_UNIX, SOCK_STREAM, 0);
     if (descriptor < 0)
         return -1;
+    if (fcntl(descriptor, F_SETFD, FD_CLOEXEC) != 0)
+    {
+        close(descriptor);
+        return -1;
+    }
 
     struct sockaddr_un address = {};
     address.sun_family = AF_UNIX;
@@ -85,6 +105,11 @@ static int ConnectRinOSUnix(const char* path)
     int descriptor = socket(AF_UNIX, SOCK_STREAM, 0);
     if (descriptor < 0)
         return -1;
+    if (fcntl(descriptor, F_SETFD, FD_CLOEXEC) != 0)
+    {
+        close(descriptor);
+        return -1;
+    }
 
     struct sockaddr_un address = {};
     address.sun_family = AF_UNIX;
@@ -123,6 +148,12 @@ bool TwoWayPipe::CreateServer(const ProcessDescriptor& pd)
     }
 
 #if defined(TARGET_RINOS)
+    if (!RinOSDebugTransportAuthorized())
+    {
+        errno = EACCES;
+        return false;
+    }
+
     m_inboundPipe = CreateRinOSUnixServer(m_inPipeName);
     if (m_inboundPipe == INVALID_PIPE)
         return false;
@@ -165,6 +196,12 @@ bool TwoWayPipe::Connect(const ProcessDescriptor& pd)
     PAL_GetTransportPipeName(m_outPipeName, pd.m_Pid, pd.m_ApplicationGroupId, "in");
 
 #if defined(TARGET_RINOS)
+    if (!RinOSDebugTransportAuthorized())
+    {
+        errno = EACCES;
+        return false;
+    }
+
     // Connect the server's inbound channel first, matching the server's
     // accept order and avoiding a two-channel startup deadlock.
     m_outboundPipe = ConnectRinOSUnix(m_outPipeName);
@@ -211,10 +248,21 @@ bool TwoWayPipe::WaitForConnection()
     int inbound = accept(m_inboundPipe, nullptr, nullptr);
     if (inbound == INVALID_PIPE)
         return false;
+    if (fcntl(inbound, F_SETFD, FD_CLOEXEC) != 0)
+    {
+        close(inbound);
+        return false;
+    }
     int outbound = accept(m_outboundPipe, nullptr, nullptr);
     if (outbound == INVALID_PIPE)
     {
         close(inbound);
+        return false;
+    }
+    if (fcntl(outbound, F_SETFD, FD_CLOEXEC) != 0)
+    {
+        close(inbound);
+        close(outbound);
         return false;
     }
     close(m_inboundPipe);

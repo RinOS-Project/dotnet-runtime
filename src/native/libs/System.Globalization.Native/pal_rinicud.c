@@ -562,6 +562,27 @@ static const char* const g_ar_super_short_day_names[] = {
     "ح", "ن", "ث", "ر", "خ", "ج", "س"
 };
 
+static const char* const g_fa_month_names[] = {
+    "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
+    "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند", ""
+};
+static const char* const g_fa_abbreviated_month_names[] = {
+    "فرو", "ارد", "خرد", "تیر", "مرد", "شهر",
+    "مهر", "آبا", "آذر", "دی", "بهم", "اسف", ""
+};
+static const char* const g_fa_day_names[] = {
+    "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه", "شنبه"
+};
+static const char* const g_fa_abbreviated_day_names[] = {
+    "یکش", "دوش", "سه‌ش", "چها", "پنج", "جمع", "شنبه"
+};
+static const char* const g_fa_super_short_day_names[] = {
+    "ی", "د", "س", "چ", "پ", "ج", "ش"
+};
+
+static const char* const g_persian_era_names[] = { "ه.ش" };
+static const char* const g_persian_era_abbreviations[] = { "ه.ش" };
+
 static const char* const g_hi_month_names[] = {
     "जनवरी", "फ़रवरी", "मार्च", "अप्रैल", "मई", "जून",
     "जुलाई", "अगस्त", "सितंबर", "अक्तूबर", "नवंबर", "दिसंबर", ""
@@ -715,6 +736,9 @@ static const RinCalendarSymbols g_calendar_symbols[] = {
     { "ar", g_ar_month_names, g_ar_abbreviated_month_names, g_ar_day_names,
       g_ar_abbreviated_day_names, g_ar_super_short_day_names, "التقويم الميلادي", "التقويم الياباني",
       g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
+    { "fa", g_fa_month_names, g_fa_abbreviated_month_names, g_fa_day_names,
+      g_fa_abbreviated_day_names, g_fa_super_short_day_names, "تقویم میلادی", "تقویم ژاپنی",
+      g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
     { "hi", g_hi_month_names, g_hi_abbreviated_month_names, g_hi_day_names,
       g_hi_abbreviated_day_names, g_hi_super_short_day_names, "ग्रेगोरियन कैलेंडर", "जापानी कैलेंडर",
       g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
@@ -777,6 +801,10 @@ static int is_product_calendar_for_locale(const RinIcuDataLocaleRecord* record,
         return strcmp(record->language, "th") == 0 &&
             strcmp(record->region, "TH") == 0;
     }
+    if (calendar == 22) {
+        return strcmp(record->language, "fa") == 0 &&
+            strcmp(record->region, "IR") == 0;
+    }
     return 0;
 }
 
@@ -791,6 +819,7 @@ static const char* calendar_native_name(const RinIcuDataLocaleRecord* record,
         case 4: return "中華民國曆";
         case 5: return "단기력";
         case 7: return "ปฏิทินพุทธ";
+        case 22: return "تقویم هجری شمسی";
         default: return symbols->native_gregorian_name;
     }
 }
@@ -822,6 +851,10 @@ static const char* calendar_symbol(const RinIcuDataLocaleRecord* record,
             count = 1u;
         } else if (calendar == 7) {
             eras = g_thai_era_names;
+            count = 1u;
+        } else if (calendar == 22) {
+            eras = kind == CalendarData_EraNames
+                ? g_persian_era_names : g_persian_era_abbreviations;
             count = 1u;
         } else {
             eras = kind == CalendarData_EraNames
@@ -1101,7 +1134,7 @@ static int product_locale_language_id(const char* locale_id)
         {"tr-TR", 0x041f}, {"pl-PL", 0x0415}, {"nl-NL", 0x0413},
         {"sv-SE", 0x041d}, {"fi-FI", 0x040b}, {"da-DK", 0x0406},
         {"cs-CZ", 0x0405}, {"hu-HU", 0x040e}, {"ro-RO", 0x0418},
-        {"ar-SA", 0x0401}, {"hi-IN", 0x0439}, {"th-TH", 0x041e},
+        {"ar-SA", 0x0401}, {"fa-IR", 0x0429}, {"hi-IN", 0x0439}, {"th-TH", 0x041e},
         {"id-ID", 0x0421}, {"vi-VN", 0x042a}
     };
     size_t index;
@@ -1123,6 +1156,7 @@ static const char* product_language_three_letter(const char* language)
     static const RinLocaleCode codes[] = {
         { "ar", "ara" }, { "cs", "ces" }, { "da", "dan" },
         { "de", "deu" }, { "en", "eng" }, { "es", "spa" },
+        { "fa", "fas" },
         { "fi", "fin" }, { "fr", "fra" }, { "hi", "hin" },
         { "hu", "hun" }, { "id", "ind" }, { "it", "ita" },
         { "ja", "jpn" }, { "ko", "kor" }, { "nl", "nld" },
@@ -1149,6 +1183,7 @@ static const char* product_region_three_letter(const char* region)
         { "IT", "ITA" }, { "JP", "JPN" }, { "KR", "KOR" },
         { "MX", "MEX" }, { "NL", "NLD" }, { "PL", "POL" },
         { "PT", "PRT" }, { "RO", "ROU" }, { "RU", "RUS" },
+        { "IR", "IRN" },
         { "SA", "SAU" }, { "SE", "SWE" }, { "TH", "THA" },
         { "TR", "TUR" }, { "TW", "TWN" }, { "UA", "UKR" },
         { "US", "USA" }, { "VN", "VNM" }
@@ -1165,8 +1200,9 @@ static const char* product_region_three_letter(const char* region)
  * display-ready number.  Each native digit is separated by U+FFFF so the
  * managed caller can preserve digits which occupy more than one UTF-16 code
  * unit.  The product catalog currently carries script, not a separate
- * numbering-system field, so only scripts with an explicitly shipped digit
- * set select non-ASCII digits; all other catalog records use ASCII digits. */
+ * numbering-system field, so scripts with an explicitly shipped digit set
+ * select non-ASCII digits; fa-IR is additionally selected by language because
+ * Persian digits differ from the Arabic script's default digits. */
 static const char* product_native_digits(const RinIcuDataLocaleRecord* record)
 {
     static const char ascii_digits[] =
@@ -1184,12 +1220,18 @@ static const char* product_native_digits(const RinIcuDataLocaleRecord* record)
         "३" "\xEF\xBF\xBF" "४" "\xEF\xBF\xBF" "५" "\xEF\xBF\xBF"
         "६" "\xEF\xBF\xBF" "७" "\xEF\xBF\xBF" "८" "\xEF\xBF\xBF"
         "९";
+    static const char persian_digits[] =
+        "۰" "\xEF\xBF\xBF" "۱" "\xEF\xBF\xBF" "۲" "\xEF\xBF\xBF"
+        "۳" "\xEF\xBF\xBF" "۴" "\xEF\xBF\xBF" "۵" "\xEF\xBF\xBF"
+        "۶" "\xEF\xBF\xBF" "۷" "\xEF\xBF\xBF" "۸" "\xEF\xBF\xBF"
+        "۹";
     static const char thai_digits[] =
         "๐" "\xEF\xBF\xBF" "๑" "\xEF\xBF\xBF" "๒" "\xEF\xBF\xBF"
         "๓" "\xEF\xBF\xBF" "๔" "\xEF\xBF\xBF" "๕" "\xEF\xBF\xBF"
         "๖" "\xEF\xBF\xBF" "๗" "\xEF\xBF\xBF" "๘" "\xEF\xBF\xBF"
         "๙";
     if (!record) return NULL;
+    if (strcmp(record->language, "fa") == 0) return persian_digits;
     if (strcmp(record->script, "Arab") == 0) return arabic_digits;
     if (strcmp(record->script, "Deva") == 0) return devanagari_digits;
     if (strcmp(record->script, "Thai") == 0) return thai_digits;
@@ -2186,6 +2228,14 @@ int32_t GlobalizationNative_GetCalendars(const UChar* locale, CalendarId* calend
 {
     RinIcuDataLocaleRecord record;
     if (!calendars || capacity <= 0 || !get_locale_record(locale, &record)) return 0;
+    if (strcmp(record.language, "fa") == 0 && strcmp(record.region, "IR") == 0) {
+        calendars[0] = 22;
+        if (capacity > 1) {
+            calendars[1] = 1;
+            return 2;
+        }
+        return 1;
+    }
     calendars[0] = 1;
     if (capacity > 1) {
         if (strcmp(record.language, "ja") == 0) {

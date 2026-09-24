@@ -35,16 +35,22 @@ namespace System.Security.Cryptography
                 Span<byte> mac = stackalloc byte[16];
                 Span<byte> s0 = stackalloc byte[16];
 
-                ComputeMac(aes, nonce, plaintext, associatedData, tag.Length, mac);
-                EncryptCounterBlock(aes, nonce, nonce.Length, 0, s0);
-                for (int i = 0; i < tag.Length; i++)
+                try
                 {
-                    tag[i] = (byte)(mac[i] ^ s0[i]);
-                }
+                    ComputeMac(aes, nonce, plaintext, associatedData, tag.Length, mac);
+                    EncryptCounterBlock(aes, nonce, nonce.Length, 0, s0);
+                    for (int i = 0; i < tag.Length; i++)
+                    {
+                        tag[i] = (byte)(mac[i] ^ s0[i]);
+                    }
 
-                CtrCrypt(aes, nonce, plaintext, ciphertext, 1);
-                CryptographicOperations.ZeroMemory(mac);
-                CryptographicOperations.ZeroMemory(s0);
+                    CtrCrypt(aes, nonce, plaintext, ciphertext, 1);
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(mac);
+                    CryptographicOperations.ZeroMemory(s0);
+                }
             }
             finally
             {
@@ -75,23 +81,27 @@ namespace System.Security.Cryptography
                 Span<byte> expectedTag = stackalloc byte[16];
                 Span<byte> s0 = stackalloc byte[16];
 
-                CtrCrypt(aes, nonce, ciphertext, plaintext, 1);
-                ComputeMac(aes, nonce, plaintext, associatedData, tag.Length, mac);
-                EncryptCounterBlock(aes, nonce, nonce.Length, 0, s0);
-                for (int i = 0; i < tag.Length; i++)
+                try
                 {
-                    expectedTag[i] = (byte)(mac[i] ^ s0[i]);
-                }
+                    CtrCrypt(aes, nonce, ciphertext, plaintext, 1);
+                    ComputeMac(aes, nonce, plaintext, associatedData, tag.Length, mac);
+                    EncryptCounterBlock(aes, nonce, nonce.Length, 0, s0);
+                    for (int i = 0; i < tag.Length; i++)
+                    {
+                        expectedTag[i] = (byte)(mac[i] ^ s0[i]);
+                    }
 
-                if (!CryptographicOperations.FixedTimeEquals(tag, expectedTag.Slice(0, tag.Length)))
+                    if (!CryptographicOperations.FixedTimeEquals(tag, expectedTag.Slice(0, tag.Length)))
+                    {
+                        throw new AuthenticationTagMismatchException();
+                    }
+                }
+                finally
                 {
-                    CryptographicOperations.ZeroMemory(plaintext);
-                    throw new AuthenticationTagMismatchException();
+                    CryptographicOperations.ZeroMemory(mac);
+                    CryptographicOperations.ZeroMemory(expectedTag);
+                    CryptographicOperations.ZeroMemory(s0);
                 }
-
-                CryptographicOperations.ZeroMemory(mac);
-                CryptographicOperations.ZeroMemory(expectedTag);
-                CryptographicOperations.ZeroMemory(s0);
             }
             catch
             {
@@ -140,28 +150,33 @@ namespace System.Security.Cryptography
             int blockLength = 0;
             mac.Clear();
 
-            block[0] = (byte)((associatedData.Length == 0 ? 0 : 0x40) |
-                              (((tagLength - 2) / 2) << 3) |
-                              (lengthBytes - 1));
-            nonce.CopyTo(block.Slice(1));
-            WriteBigEndianLength(block.Slice(16 - lengthBytes), plaintext.Length, lengthBytes);
-            ProcessMacBlock(aes, block, mac, encrypted);
-
-            block.Clear();
-            if (associatedData.Length != 0)
+            try
             {
-                Span<byte> encodedLength = stackalloc byte[10];
-                int encodedLengthBytes = EncodeAssociatedDataLength(associatedData.Length, encodedLength);
-                AppendMacBytes(aes, encodedLength.Slice(0, encodedLengthBytes), block, ref blockLength, mac, encrypted);
-                AppendMacBytes(aes, associatedData, block, ref blockLength, mac, encrypted);
+                block[0] = (byte)((associatedData.Length == 0 ? 0 : 0x40) |
+                                  (((tagLength - 2) / 2) << 3) |
+                                  (lengthBytes - 1));
+                nonce.CopyTo(block.Slice(1));
+                WriteBigEndianLength(block.Slice(16 - lengthBytes), plaintext.Length, lengthBytes);
+                ProcessMacBlock(aes, block, mac, encrypted);
+
+                block.Clear();
+                if (associatedData.Length != 0)
+                {
+                    Span<byte> encodedLength = stackalloc byte[10];
+                    int encodedLengthBytes = EncodeAssociatedDataLength(associatedData.Length, encodedLength);
+                    AppendMacBytes(aes, encodedLength.Slice(0, encodedLengthBytes), block, ref blockLength, mac, encrypted);
+                    AppendMacBytes(aes, associatedData, block, ref blockLength, mac, encrypted);
+                    FinishMacBlock(aes, block, ref blockLength, mac, encrypted);
+                }
+
+                AppendMacBytes(aes, plaintext, block, ref blockLength, mac, encrypted);
                 FinishMacBlock(aes, block, ref blockLength, mac, encrypted);
             }
-
-            AppendMacBytes(aes, plaintext, block, ref blockLength, mac, encrypted);
-            FinishMacBlock(aes, block, ref blockLength, mac, encrypted);
-
-            CryptographicOperations.ZeroMemory(block);
-            CryptographicOperations.ZeroMemory(encrypted);
+            finally
+            {
+                CryptographicOperations.ZeroMemory(block);
+                CryptographicOperations.ZeroMemory(encrypted);
+            }
         }
 
         private static void AppendMacBytes(
@@ -232,20 +247,25 @@ namespace System.Security.Cryptography
             int counter = initialCounter;
             int offset = 0;
 
-            while (offset < source.Length)
+            try
             {
-                EncryptCounterBlock(aes, nonce, nonce.Length, counter, stream);
-                int count = Math.Min(16, source.Length - offset);
-                for (int i = 0; i < count; i++)
+                while (offset < source.Length)
                 {
-                    destination[offset + i] = (byte)(source[offset + i] ^ stream[i]);
+                    EncryptCounterBlock(aes, nonce, nonce.Length, counter, stream);
+                    int count = Math.Min(16, source.Length - offset);
+                    for (int i = 0; i < count; i++)
+                    {
+                        destination[offset + i] = (byte)(source[offset + i] ^ stream[i]);
+                    }
+
+                    offset += count;
+                    counter++;
                 }
-
-                offset += count;
-                counter++;
             }
-
-            CryptographicOperations.ZeroMemory(stream);
+            finally
+            {
+                CryptographicOperations.ZeroMemory(stream);
+            }
         }
 
         private static void ValidateMessageLength(int length, int nonceLength, string parameterName)
@@ -268,11 +288,17 @@ namespace System.Security.Cryptography
         {
             int lengthBytes = 15 - nonceLength;
             Span<byte> input = stackalloc byte[16];
-            input[0] = (byte)(lengthBytes - 1);
-            nonce.CopyTo(input.Slice(1));
-            WriteBigEndianLength(input.Slice(16 - lengthBytes), counter, lengthBytes);
-            aes.EncryptEcb(input, destination, PaddingMode.None);
-            CryptographicOperations.ZeroMemory(input);
+            try
+            {
+                input[0] = (byte)(lengthBytes - 1);
+                nonce.CopyTo(input.Slice(1));
+                WriteBigEndianLength(input.Slice(16 - lengthBytes), counter, lengthBytes);
+                aes.EncryptEcb(input, destination, PaddingMode.None);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(input);
+            }
         }
 
         private static int EncodeAssociatedDataLength(int length, Span<byte> destination)

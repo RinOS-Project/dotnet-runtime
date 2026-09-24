@@ -39,30 +39,39 @@ namespace System.Security.Cryptography
             Span<byte> tag,
             ReadOnlySpan<byte> associatedData)
         {
-            unsafe
+            try
             {
-                fixed (byte* pNonce = nonce)
-                fixed (byte* pAssociatedData = associatedData)
-                fixed (byte* pPlaintext = plaintext)
-                fixed (byte* pCiphertext = ciphertext)
-                fixed (byte* pTag = tag)
+                unsafe
                 {
-                    if (Interop.Crypto.RinOSAesGcmEncrypt(
-                        _context,
-                        pNonce,
-                        nonce.Length,
-                        pAssociatedData,
-                        associatedData.Length,
-                        pPlaintext,
-                        plaintext.Length,
-                        pCiphertext,
-                        ciphertext.Length,
-                        pTag,
-                        tag.Length) == 0)
+                    fixed (byte* pNonce = nonce)
+                    fixed (byte* pAssociatedData = associatedData)
+                    fixed (byte* pPlaintext = plaintext)
+                    fixed (byte* pCiphertext = ciphertext)
+                    fixed (byte* pTag = tag)
                     {
-                        throw new CryptographicException("RinOS AES-GCM encryption failed.");
+                        if (Interop.Crypto.RinOSAesGcmEncrypt(
+                            _context,
+                            pNonce,
+                            nonce.Length,
+                            pAssociatedData,
+                            associatedData.Length,
+                            pPlaintext,
+                            plaintext.Length,
+                            pCiphertext,
+                            ciphertext.Length,
+                            pTag,
+                            tag.Length) == 0)
+                        {
+                            throw new CryptographicException("RinOS AES-GCM encryption failed.");
+                        }
                     }
                 }
+            }
+            catch
+            {
+                CryptographicOperations.ZeroMemory(ciphertext);
+                CryptographicOperations.ZeroMemory(tag);
+                throw;
             }
         }
 
@@ -73,31 +82,38 @@ namespace System.Security.Cryptography
             Span<byte> plaintext,
             ReadOnlySpan<byte> associatedData)
         {
-            unsafe
+            try
             {
-                fixed (byte* pNonce = nonce)
-                fixed (byte* pAssociatedData = associatedData)
-                fixed (byte* pCiphertext = ciphertext)
-                fixed (byte* pTag = tag)
-                fixed (byte* pPlaintext = plaintext)
+                unsafe
                 {
-                    if (Interop.Crypto.RinOSAesGcmDecrypt(
-                        _context,
-                        pNonce,
-                        nonce.Length,
-                        pAssociatedData,
-                        associatedData.Length,
-                        pCiphertext,
-                        ciphertext.Length,
-                        pTag,
-                        tag.Length,
-                        pPlaintext,
-                        plaintext.Length) == 0)
+                    fixed (byte* pNonce = nonce)
+                    fixed (byte* pAssociatedData = associatedData)
+                    fixed (byte* pCiphertext = ciphertext)
+                    fixed (byte* pTag = tag)
+                    fixed (byte* pPlaintext = plaintext)
                     {
-                        CryptographicOperations.ZeroMemory(plaintext);
-                        throw new AuthenticationTagMismatchException();
+                        if (Interop.Crypto.RinOSAesGcmDecrypt(
+                            _context,
+                            pNonce,
+                            nonce.Length,
+                            pAssociatedData,
+                            associatedData.Length,
+                            pCiphertext,
+                            ciphertext.Length,
+                            pTag,
+                            tag.Length,
+                            pPlaintext,
+                            plaintext.Length) == 0)
+                        {
+                            throw new AuthenticationTagMismatchException();
+                        }
                     }
                 }
+            }
+            catch
+            {
+                CryptographicOperations.ZeroMemory(plaintext);
+                throw;
             }
         }
 

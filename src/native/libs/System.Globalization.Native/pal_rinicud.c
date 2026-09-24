@@ -1371,7 +1371,9 @@ int32_t GlobalizationNative_GetLocaleTimeFormat(const UChar* locale, int short_f
     if (!product_pattern(record.time_pattern, source_length + 1u, 1, 0, format, sizeof(format))) return 0;
     if (short_format) {
         char* seconds = strstr(format, ":ss");
+        char* zone = strstr(format, " Z");
         if (seconds) memmove(seconds, seconds + 3u, strlen(seconds + 3u) + 1u);
+        if (zone) memmove(zone, zone + 2u, strlen(zone + 2u) + 1u);
     }
     result = copy_utf8(format, strlen(format), value, value_length);
     return result > 0;

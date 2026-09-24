@@ -91,8 +91,15 @@ namespace System.Text.Json
         public override long UnflushedBytes => _buffer.ActiveLength;
 
         // This type is used internally in JsonSerializer to help buffer and flush bytes to the underlying Stream.
-        // It's only pretending to be a PipeWriter and doesn't need Complete or CancelPendingFlush for the internal usage.
-        public override void CancelPendingFlush() => throw new NotImplementedException();
-        public override void Complete(Exception? exception = null) => throw new NotImplementedException();
+        // It does not own a PipeReader and has no pending flush operation to cancel.  Keep the PipeWriter
+        // lifecycle methods harmless so generic PipeWriter cleanup cannot turn successful serialization into
+        // a NotImplementedException; the owning serializer still returns/disposes the pooled buffer explicitly.
+        public override void CancelPendingFlush()
+        {
+        }
+
+        public override void Complete(Exception? exception = null)
+        {
+        }
     }
 }

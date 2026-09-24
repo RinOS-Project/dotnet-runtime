@@ -360,6 +360,276 @@ static const char* const g_ru_super_short_day_names[] = {
     "В", "П", "В", "С", "Ч", "П", "С"
 };
 
+static const char* const g_uk_month_names[] = {
+    "січень", "лютий", "березень", "квітень", "травень", "червень",
+    "липень", "серпень", "вересень", "жовтень", "листопад", "грудень", ""
+};
+static const char* const g_uk_abbreviated_month_names[] = {
+    "січ", "лют", "бер", "квіт", "трав", "черв",
+    "лип", "серп", "вер", "жовт", "лист", "груд", ""
+};
+static const char* const g_uk_day_names[] = {
+    "неділя", "понеділок", "вівторок", "середа", "четвер", "п’ятниця", "субота"
+};
+static const char* const g_uk_abbreviated_day_names[] = {
+    "нд", "пн", "вт", "ср", "чт", "пт", "сб"
+};
+static const char* const g_uk_super_short_day_names[] = {
+    "Н", "П", "В", "С", "Ч", "П", "С"
+};
+
+static const char* const g_tr_month_names[] = {
+    "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+    "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık", ""
+};
+static const char* const g_tr_abbreviated_month_names[] = {
+    "Oca", "Şub", "Mar", "Nis", "May", "Haz",
+    "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara", ""
+};
+static const char* const g_tr_day_names[] = {
+    "Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"
+};
+static const char* const g_tr_abbreviated_day_names[] = {
+    "Paz", "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt"
+};
+static const char* const g_tr_super_short_day_names[] = {
+    "P", "P", "S", "Ç", "P", "C", "C"
+};
+
+static const char* const g_pl_month_names[] = {
+    "styczeń", "luty", "marzec", "kwiecień", "maj", "czerwiec",
+    "lipiec", "sierpień", "wrzesień", "październik", "listopad", "grudzień", ""
+};
+static const char* const g_pl_abbreviated_month_names[] = {
+    "sty", "lut", "mar", "kwi", "maj", "cze",
+    "lip", "sie", "wrz", "paź", "lis", "gru", ""
+};
+static const char* const g_pl_day_names[] = {
+    "niedziela", "poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota"
+};
+static const char* const g_pl_abbreviated_day_names[] = {
+    "ndz", "pon", "wt", "śr", "czw", "pt", "sob"
+};
+static const char* const g_pl_super_short_day_names[] = {
+    "N", "P", "W", "Ś", "C", "P", "S"
+};
+
+static const char* const g_nl_month_names[] = {
+    "januari", "februari", "maart", "april", "mei", "juni",
+    "juli", "augustus", "september", "oktober", "november", "december", ""
+};
+static const char* const g_nl_abbreviated_month_names[] = {
+    "jan", "feb", "mrt", "apr", "mei", "jun",
+    "jul", "aug", "sep", "okt", "nov", "dec", ""
+};
+static const char* const g_nl_day_names[] = {
+    "zondag", "maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag"
+};
+static const char* const g_nl_abbreviated_day_names[] = {
+    "zo", "ma", "di", "wo", "do", "vr", "za"
+};
+static const char* const g_nl_super_short_day_names[] = {
+    "Z", "M", "D", "W", "D", "V", "Z"
+};
+
+static const char* const g_sv_month_names[] = {
+    "januari", "februari", "mars", "april", "maj", "juni",
+    "juli", "augusti", "september", "oktober", "november", "december", ""
+};
+static const char* const g_sv_abbreviated_month_names[] = {
+    "jan", "feb", "mar", "apr", "maj", "jun",
+    "jul", "aug", "sep", "okt", "nov", "dec", ""
+};
+static const char* const g_sv_day_names[] = {
+    "söndag", "måndag", "tisdag", "onsdag", "torsdag", "fredag", "lördag"
+};
+static const char* const g_sv_abbreviated_day_names[] = {
+    "sön", "mån", "tis", "ons", "tor", "fre", "lör"
+};
+static const char* const g_sv_super_short_day_names[] = {
+    "S", "M", "T", "O", "T", "F", "L"
+};
+
+static const char* const g_fi_month_names[] = {
+    "tammikuu", "helmikuu", "maaliskuu", "huhtikuu", "toukokuu", "kesäkuu",
+    "heinäkuu", "elokuu", "syyskuu", "lokakuu", "marraskuu", "joulukuu", ""
+};
+static const char* const g_fi_abbreviated_month_names[] = {
+    "tammi", "helmi", "maalis", "huhti", "touko", "kesä",
+    "heinä", "elo", "syys", "loka", "marras", "joulu", ""
+};
+static const char* const g_fi_day_names[] = {
+    "sunnuntai", "maanantai", "tiistai", "keskiviikko", "torstai", "perjantai", "lauantai"
+};
+static const char* const g_fi_abbreviated_day_names[] = {
+    "su", "ma", "ti", "ke", "to", "pe", "la"
+};
+static const char* const g_fi_super_short_day_names[] = {
+    "S", "M", "T", "K", "T", "P", "L"
+};
+
+static const char* const g_da_month_names[] = {
+    "januar", "februar", "marts", "april", "maj", "juni",
+    "juli", "august", "september", "oktober", "november", "december", ""
+};
+static const char* const g_da_abbreviated_month_names[] = {
+    "jan", "feb", "mar", "apr", "maj", "jun",
+    "jul", "aug", "sep", "okt", "nov", "dec", ""
+};
+static const char* const g_da_day_names[] = {
+    "søndag", "mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag"
+};
+static const char* const g_da_abbreviated_day_names[] = {
+    "søn", "man", "tir", "ons", "tor", "fre", "lør"
+};
+static const char* const g_da_super_short_day_names[] = {
+    "S", "M", "T", "O", "T", "F", "L"
+};
+
+static const char* const g_cs_month_names[] = {
+    "leden", "únor", "březen", "duben", "květen", "červen",
+    "červenec", "srpen", "září", "říjen", "listopad", "prosinec", ""
+};
+static const char* const g_cs_abbreviated_month_names[] = {
+    "led", "úno", "bře", "dub", "kvě", "čvn",
+    "čvc", "srp", "zář", "říj", "lis", "pro", ""
+};
+static const char* const g_cs_day_names[] = {
+    "neděle", "pondělí", "úterý", "středa", "čtvrtek", "pátek", "sobota"
+};
+static const char* const g_cs_abbreviated_day_names[] = {
+    "ne", "po", "út", "st", "čt", "pá", "so"
+};
+static const char* const g_cs_super_short_day_names[] = {
+    "N", "P", "Ú", "S", "Č", "P", "S"
+};
+
+static const char* const g_hu_month_names[] = {
+    "január", "február", "március", "április", "május", "június",
+    "július", "augusztus", "szeptember", "október", "november", "december", ""
+};
+static const char* const g_hu_abbreviated_month_names[] = {
+    "jan.", "febr.", "márc.", "ápr.", "máj.", "jún.",
+    "júl.", "aug.", "szept.", "okt.", "nov.", "dec.", ""
+};
+static const char* const g_hu_day_names[] = {
+    "vasárnap", "hétfő", "kedd", "szerda", "csütörtök", "péntek", "szombat"
+};
+static const char* const g_hu_abbreviated_day_names[] = {
+    "V", "H", "K", "Sze", "Cs", "P", "Szo"
+};
+static const char* const g_hu_super_short_day_names[] = {
+    "V", "H", "K", "S", "C", "P", "S"
+};
+
+static const char* const g_ro_month_names[] = {
+    "ianuarie", "februarie", "martie", "aprilie", "mai", "iunie",
+    "iulie", "august", "septembrie", "octombrie", "noiembrie", "decembrie", ""
+};
+static const char* const g_ro_abbreviated_month_names[] = {
+    "ian.", "feb.", "mar.", "apr.", "mai", "iun.",
+    "iul.", "aug.", "sept.", "oct.", "nov.", "dec.", ""
+};
+static const char* const g_ro_day_names[] = {
+    "duminică", "luni", "marți", "miercuri", "joi", "vineri", "sâmbătă"
+};
+static const char* const g_ro_abbreviated_day_names[] = {
+    "dum", "lun", "mar", "mie", "joi", "vin", "sâm"
+};
+static const char* const g_ro_super_short_day_names[] = {
+    "D", "L", "M", "M", "J", "V", "S"
+};
+
+static const char* const g_ar_month_names[] = {
+    "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+    "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر", ""
+};
+static const char* const g_ar_abbreviated_month_names[] = {
+    "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+    "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر", ""
+};
+static const char* const g_ar_day_names[] = {
+    "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"
+};
+static const char* const g_ar_abbreviated_day_names[] = {
+    "أحد", "اثن", "ثلا", "أرب", "خمي", "جمع", "سبت"
+};
+static const char* const g_ar_super_short_day_names[] = {
+    "ح", "ن", "ث", "ر", "خ", "ج", "س"
+};
+
+static const char* const g_hi_month_names[] = {
+    "जनवरी", "फ़रवरी", "मार्च", "अप्रैल", "मई", "जून",
+    "जुलाई", "अगस्त", "सितंबर", "अक्तूबर", "नवंबर", "दिसंबर", ""
+};
+static const char* const g_hi_abbreviated_month_names[] = {
+    "जन॰", "फ़र॰", "मार्च", "अप्रैल", "मई", "जून",
+    "जुलाई", "अग॰", "सित॰", "अक्तू॰", "नव॰", "दिस॰", ""
+};
+static const char* const g_hi_day_names[] = {
+    "रविवार", "सोमवार", "मंगलवार", "बुधवार", "गुरुवार", "शुक्रवार", "शनिवार"
+};
+static const char* const g_hi_abbreviated_day_names[] = {
+    "रवि", "सोम", "मंगल", "बुध", "गुरु", "शुक्र", "शनि"
+};
+static const char* const g_hi_super_short_day_names[] = {
+    "र", "सो", "मं", "बु", "गु", "शु", "श"
+};
+
+static const char* const g_th_month_names[] = {
+    "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+    "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม", ""
+};
+static const char* const g_th_abbreviated_month_names[] = {
+    "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.",
+    "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค.", ""
+};
+static const char* const g_th_day_names[] = {
+    "อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"
+};
+static const char* const g_th_abbreviated_day_names[] = {
+    "อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."
+};
+static const char* const g_th_super_short_day_names[] = {
+    "อ", "จ", "อ", "พ", "พ", "ศ", "ส"
+};
+
+static const char* const g_id_month_names[] = {
+    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+    "Juli", "Agustus", "September", "Oktober", "November", "Desember", ""
+};
+static const char* const g_id_abbreviated_month_names[] = {
+    "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+    "Jul", "Agu", "Sep", "Okt", "Nov", "Des", ""
+};
+static const char* const g_id_day_names[] = {
+    "Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"
+};
+static const char* const g_id_abbreviated_day_names[] = {
+    "Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"
+};
+static const char* const g_id_super_short_day_names[] = {
+    "M", "S", "S", "R", "K", "J", "S"
+};
+
+static const char* const g_vi_month_names[] = {
+    "tháng 1", "tháng 2", "tháng 3", "tháng 4", "tháng 5", "tháng 6",
+    "tháng 7", "tháng 8", "tháng 9", "tháng 10", "tháng 11", "tháng 12", ""
+};
+static const char* const g_vi_abbreviated_month_names[] = {
+    "T1", "T2", "T3", "T4", "T5", "T6",
+    "T7", "T8", "T9", "T10", "T11", "T12", ""
+};
+static const char* const g_vi_day_names[] = {
+    "Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"
+};
+static const char* const g_vi_abbreviated_day_names[] = {
+    "CN", "T2", "T3", "T4", "T5", "T6", "T7"
+};
+static const char* const g_vi_super_short_day_names[] = {
+    "C", "H", "B", "T", "N", "S", "B"
+};
+
 typedef struct RinCalendarSymbols
 {
     const char* language;
@@ -408,6 +678,51 @@ static const RinCalendarSymbols g_calendar_symbols[] = {
       g_ru_abbreviated_day_names, g_ru_super_short_day_names, "григорианский календарь", "японский календарь",
       g_japanese_era_names_en, g_japanese_era_abbreviations, g_ru_month_genitive_names,
       g_ru_abbreviated_month_genitive_names },
+    { "uk", g_uk_month_names, g_uk_abbreviated_month_names, g_uk_day_names,
+      g_uk_abbreviated_day_names, g_uk_super_short_day_names, "григоріанський календар", "японський календар",
+      g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
+    { "tr", g_tr_month_names, g_tr_abbreviated_month_names, g_tr_day_names,
+      g_tr_abbreviated_day_names, g_tr_super_short_day_names, "Miladi Takvim", "Japon Takvimi",
+      g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
+    { "pl", g_pl_month_names, g_pl_abbreviated_month_names, g_pl_day_names,
+      g_pl_abbreviated_day_names, g_pl_super_short_day_names, "Kalendarz gregoriański", "Kalendarz japoński",
+      g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
+    { "nl", g_nl_month_names, g_nl_abbreviated_month_names, g_nl_day_names,
+      g_nl_abbreviated_day_names, g_nl_super_short_day_names, "Gregoriaanse kalender", "Japanse kalender",
+      g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
+    { "sv", g_sv_month_names, g_sv_abbreviated_month_names, g_sv_day_names,
+      g_sv_abbreviated_day_names, g_sv_super_short_day_names, "Gregoriansk kalender", "Japansk kalender",
+      g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
+    { "fi", g_fi_month_names, g_fi_abbreviated_month_names, g_fi_day_names,
+      g_fi_abbreviated_day_names, g_fi_super_short_day_names, "Gregorinen kalenteri", "Japanilainen kalenteri",
+      g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
+    { "da", g_da_month_names, g_da_abbreviated_month_names, g_da_day_names,
+      g_da_abbreviated_day_names, g_da_super_short_day_names, "gregoriansk kalender", "japansk kalender",
+      g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
+    { "cs", g_cs_month_names, g_cs_abbreviated_month_names, g_cs_day_names,
+      g_cs_abbreviated_day_names, g_cs_super_short_day_names, "gregoriánský kalendář", "japonský kalendář",
+      g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
+    { "hu", g_hu_month_names, g_hu_abbreviated_month_names, g_hu_day_names,
+      g_hu_abbreviated_day_names, g_hu_super_short_day_names, "Gergely-naptár", "Japán naptár",
+      g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
+    { "ro", g_ro_month_names, g_ro_abbreviated_month_names, g_ro_day_names,
+      g_ro_abbreviated_day_names, g_ro_super_short_day_names, "calendarul gregorian", "calendarul japonez",
+      g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
+    { "ar", g_ar_month_names, g_ar_abbreviated_month_names, g_ar_day_names,
+      g_ar_abbreviated_day_names, g_ar_super_short_day_names, "التقويم الميلادي", "التقويم الياباني",
+      g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
+    { "hi", g_hi_month_names, g_hi_abbreviated_month_names, g_hi_day_names,
+      g_hi_abbreviated_day_names, g_hi_super_short_day_names, "ग्रेगोरियन कैलेंडर", "जापानी कैलेंडर",
+      g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
+    { "th", g_th_month_names, g_th_abbreviated_month_names, g_th_day_names,
+      g_th_abbreviated_day_names, g_th_super_short_day_names, "ปฏิทินเกรกอเรียน", "ปฏิทินญี่ปุ่น",
+      g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
+    { "id", g_id_month_names, g_id_abbreviated_month_names, g_id_day_names,
+      g_id_abbreviated_day_names, g_id_super_short_day_names, "Kalender Gregorian", "Kalender Jepang",
+      g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
+    { "vi", g_vi_month_names, g_vi_abbreviated_month_names, g_vi_day_names,
+      g_vi_abbreviated_day_names, g_vi_super_short_day_names, "Lịch Gregory", "Lịch Nhật Bản",
+      g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
 };
 
 static const RinCalendarSymbols* calendar_symbols_for_language(const char* language)

@@ -9,6 +9,7 @@
 #include "pal_networking.h"
 
 #include <stdlib.h>
+#include <limits.h>
 #include <sys/types.h>
 #include <assert.h>
 #if HAVE_GETIFADDRS
@@ -185,13 +186,14 @@ static void EmitRinOSLinkLayerAddress(
 static inline uint8_t mask2prefix(uint8_t* mask, int length)
 {
     uint8_t len = 0;
-    uint8_t* end = mask + length;
 
     if (mask == NULL)
     {
         // If we did not get valid mask, assume host address.
         return (uint8_t)length * 8;
     }
+
+    uint8_t* end = mask + length;
 
     // Get whole bytes
     while ((mask < end) && (*mask == 0xff))
@@ -203,10 +205,11 @@ static inline uint8_t mask2prefix(uint8_t* mask, int length)
     // Get last incomplete byte
     if (mask < end)
     {
-        while (*mask)
+        uint8_t maskByte = *mask;
+        while (maskByte)
         {
             len++;
-            *mask <<= 1;
+            maskByte <<= 1;
         }
     }
 
@@ -257,7 +260,7 @@ int32_t SystemNative_EnumerateInterfaceAddresses(void* context,
     }
 
 #if defined(TARGET_RINOS)
-    RinNetPrimaryInfo rinosPrimary = {};
+    RinNetPrimaryInfo rinosPrimary = {0};
     if (rin_net_get_primary_info(&rinosPrimary) == 0)
     {
         EmitRinOSLinkLayerAddress(context, onLinkLayerFound, &rinosPrimary);
@@ -439,6 +442,17 @@ c_static_assert(sizeof(NetworkInterfaceInfo) >= sizeof(IpAddressInfo));
 
 int32_t SystemNative_GetNetworkInterfaces(int32_t * interfaceCount, NetworkInterfaceInfo **interfaceList, int32_t * addressCount, IpAddressInfo **addressList )
 {
+    if (interfaceCount == NULL || interfaceList == NULL || addressCount == NULL || addressList == NULL)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    *interfaceCount = 0;
+    *addressCount = 0;
+    *interfaceList = NULL;
+    *addressList = NULL;
+
 #if HAVE_GETIFADDRS
     struct ifaddrs* head;   // Pointer to block allocated by getifaddrs().
     struct ifaddrs* ifaddrsEntry;
@@ -452,7 +466,7 @@ int32_t SystemNative_GetNetworkInterfaces(int32_t * interfaceCount, NetworkInter
 
     NetworkInterfaceInfo *nii;
 #if defined(TARGET_RINOS)
-    RinNetPrimaryInfo rinosPrimary = {};
+    RinNetPrimaryInfo rinosPrimary = {0};
     int haveRinOSPrimary =
         rin_net_get_primary_info(&rinosPrimary) == 0 &&
         rinosPrimary.ifname[0] != '\0' &&
@@ -491,7 +505,21 @@ int32_t SystemNative_GetNetworkInterfaces(int32_t * interfaceCount, NetworkInter
     // This does assume sizeof(NetworkInterfaceInfo) >= sizeof(IpAddressInfo)
     // which is checked in an assert above this function.
 
-    int entriesCount = count + ip4count + ip6count;
+    int entriesCount;
+    if (count > INT_MAX - ip4count || count + ip4count > INT_MAX - ip6count)
+    {
+        freeifaddrs(head);
+        errno = EOVERFLOW;
+        return -1;
+    }
+
+    entriesCount = count + ip4count + ip6count;
+    if (entriesCount == 0)
+    {
+        freeifaddrs(head);
+        return 0;
+    }
+
     void * memoryBlock = calloc((size_t)entriesCount, sizeof(NetworkInterfaceInfo));
     if (memoryBlock == NULL)
     {
@@ -552,7 +580,13 @@ int32_t SystemNative_GetNetworkInterfaces(int32_t * interfaceCount, NetworkInter
             // We git new interface.
             nii = &((NetworkInterfaceInfo*)memoryBlock)[ifcount++];
 
-            memcpy(nii->Name, ifa_name, sizeof(nii->Name));
+            size_t nameLength = strlen(ifa_name);
+            if (nameLength >= sizeof(nii->Name))
+            {
+                nameLength = sizeof(nii->Name) - 1u;
+            }
+            memcpy(nii->Name, ifa_name, nameLength);
+            nii->Name[nameLength] = '\0';
             nii->InterfaceIndex = ifindex;
             nii->Speed = -1;
             nii->HardwareType = ((ifaddrsEntry->ifa_flags & IFF_LOOPBACK) == IFF_LOOPBACK) ? NetworkInterfaceType_Loopback : NetworkInterfaceType_Unknown;
@@ -584,7 +618,9 @@ int32_t SystemNative_GetNetworkInterfaces(int32_t * interfaceCount, NetworkInter
             ai->InterfaceIndex = ifindex;
             ai->NumAddressBytes = NUM_BYTES_IN_IPV4_ADDRESS;
             memcpy(ai->AddressBytes, &((struct sockaddr_in*)ifaddrsEntry->ifa_addr)->sin_addr, NUM_BYTES_IN_IPV4_ADDRESS);
-            ai->PrefixLength = mask2prefix((uint8_t*)&((struct sockaddr_in*)ifaddrsEntry->ifa_netmask)->sin_addr, NUM_BYTES_IN_IPV4_ADDRESS);
+            ai->PrefixLength = ifaddrsEntry->ifa_netmask != NULL
+                ? mask2prefix((uint8_t*)&((struct sockaddr_in*)ifaddrsEntry->ifa_netmask)->sin_addr, NUM_BYTES_IN_IPV4_ADDRESS)
+                : NUM_BYTES_IN_IPV4_ADDRESS * 8;
             ai++;
         }
         else if (ifaddrsEntry->ifa_addr->sa_family == AF_INET6)
@@ -592,7 +628,9 @@ int32_t SystemNative_GetNetworkInterfaces(int32_t * interfaceCount, NetworkInter
             ai->InterfaceIndex = ifindex;
             ai->NumAddressBytes = NUM_BYTES_IN_IPV6_ADDRESS;
             memcpy(ai->AddressBytes, &((struct sockaddr_in6*)ifaddrsEntry->ifa_addr)->sin6_addr, NUM_BYTES_IN_IPV6_ADDRESS);
-            ai->PrefixLength = mask2prefix((uint8_t*)&(((struct sockaddr_in6*)ifaddrsEntry->ifa_netmask)->sin6_addr), NUM_BYTES_IN_IPV6_ADDRESS);
+            ai->PrefixLength = ifaddrsEntry->ifa_netmask != NULL
+                ? mask2prefix((uint8_t*)&(((struct sockaddr_in6*)ifaddrsEntry->ifa_netmask)->sin6_addr), NUM_BYTES_IN_IPV6_ADDRESS)
+                : NUM_BYTES_IN_IPV6_ADDRESS * 8;
             ai++;
         }
 #if defined(AF_LINK)

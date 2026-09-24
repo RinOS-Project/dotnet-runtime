@@ -28,31 +28,72 @@ internal sealed class CodeDirectoryBlob : IBlob
 
     public CodeDirectoryBlob(SimpleBlob blob)
     {
-        var data = blob.Data;
-        var cdHeader = MemoryMarshal.Read<CodeDirectoryHeader>(data);
+        if (blob.Magic != BlobMagic.CodeDirectory)
+        {
+            throw new InvalidDataException($"Invalid magic for CodeDirectoryBlob: {blob.Magic}");
+        }
 
-        int identifierDataOffset = GetDataOffset(cdHeader.IdentifierOffset);
+        var data = blob.Data;
+        if (data.Length < CodeDirectoryHeader.Size)
+        {
+            throw new InvalidDataException("Code directory is smaller than its header.");
+        }
+
+        var cdHeader = MemoryMarshal.Read<CodeDirectoryHeader>(data);
+        uint identifierOffset = cdHeader.IdentifierOffset;
+        uint hashesOffset = cdHeader.HashesOffset;
+        uint specialSlotCount = cdHeader.SpecialSlotCount;
+        uint codeSlotCount = cdHeader.CodeSlotCount;
+        byte hashSize = cdHeader.HashSize;
+        ulong dataEnd = (ulong)sizeof(uint) * 2 + (ulong)data.Length;
+
+        if (hashSize == 0 ||
+            specialSlotCount > int.MaxValue ||
+            codeSlotCount > int.MaxValue ||
+            identifierOffset < sizeof(uint) * 2 ||
+            identifierOffset > hashesOffset ||
+            (ulong)hashesOffset > dataEnd)
+        {
+            throw new InvalidDataException("Code directory header contains invalid offsets or counts.");
+        }
+
+        ulong specialHashBytes = (ulong)specialSlotCount * hashSize;
+        ulong codeHashBytes = (ulong)codeSlotCount * hashSize;
+        ulong hashesDataEnd = (ulong)hashesOffset + codeHashBytes;
+        ulong specialHashesStart = (ulong)hashesOffset - specialHashBytes;
+        if (specialHashesStart < sizeof(uint) * 2 ||
+            specialHashesStart < (ulong)identifierOffset ||
+            hashesDataEnd > dataEnd)
+        {
+            throw new InvalidDataException("Code directory hash storage exceeds the blob data.");
+        }
+
+        int identifierDataOffset = GetDataOffset(identifierOffset);
         int nullTerminatorIndex = data.AsSpan().Slice(identifierDataOffset).IndexOf((byte)0x00);
+        if (nullTerminatorIndex < 0 ||
+            (ulong)identifierDataOffset + (ulong)nullTerminatorIndex >= specialHashesStart - sizeof(uint) * 2)
+        {
+            throw new InvalidDataException("Code directory identifier is not terminated before the hash storage.");
+        }
         string identifier = Encoding.UTF8.GetString(data, identifierDataOffset, nullTerminatorIndex);
 
-        var specialSlotCount = cdHeader.SpecialSlotCount;
-        var codeSlotCount = cdHeader.CodeSlotCount;
-        var hashSize = cdHeader.HashSize;
-        var hashesDataOffset = GetDataOffset(cdHeader.HashesOffset);
+        int specialSlotCountInt = (int)specialSlotCount;
+        int codeSlotCountInt = (int)codeSlotCount;
+        int hashesDataOffset = GetDataOffset(hashesOffset);
 
-        var specialSlotHashes = new byte[specialSlotCount][];
-        var codeHashes = new byte[codeSlotCount][];
+        var specialSlotHashes = new byte[specialSlotCountInt][];
+        var codeHashes = new byte[codeSlotCountInt][];
 
         // Special slot hashes are stored negatively indexed from HashesOffset
-        int specialSlotHashesOffset = (int)(hashesDataOffset - specialSlotCount * hashSize);
-        for (int i = 0; i < specialSlotCount; i++)
+        int specialSlotHashesOffset = checked((int)(specialHashesStart - sizeof(uint) * 2));
+        for (int i = 0; i < specialSlotCountInt; i++)
         {
             byte[] bytes = data.AsSpan(specialSlotHashesOffset + i * hashSize, hashSize).ToArray();
             specialSlotHashes[i] = bytes;
         }
 
         // Code slot hashes are stored positively indexed from HashesOffset
-        for (int codeSlotNumber = 0; codeSlotNumber < codeSlotCount; codeSlotNumber++)
+        for (int codeSlotNumber = 0; codeSlotNumber < codeSlotCountInt; codeSlotNumber++)
         {
             codeHashes[codeSlotNumber] = data.AsSpan(hashesDataOffset + codeSlotNumber * hashSize, hashSize).ToArray();
         }
@@ -60,7 +101,14 @@ internal sealed class CodeDirectoryBlob : IBlob
         (_cdHeader, _identifier, _specialSlotHashes, _codeHashes) = (cdHeader, identifier, specialSlotHashes, codeHashes);
 
         // Convert the offset in the header to the offset into the data array of the SimpleBlob.
-        static int GetDataOffset(uint original) => (int)(original - sizeof(uint) - sizeof(uint));
+        static int GetDataOffset(uint original)
+        {
+            if (original < sizeof(uint) * 2 || original - sizeof(uint) * 2 > int.MaxValue)
+            {
+                throw new InvalidDataException("Code directory offset cannot be represented as a managed index.");
+            }
+            return (int)(original - sizeof(uint) * 2);
+        }
     }
 
     private CodeDirectoryBlob(

@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Diagnostics;
+using System.IO;
 
 namespace Microsoft.NET.HostModel.MachO;
 
@@ -58,8 +59,18 @@ internal class SimpleBlob : IBlob
         var blobMagic = (BlobMagic)reader.ReadUInt32BigEndian(offset);
         var size = reader.ReadUInt32BigEndian(offset + sizeof(uint));
 
+        if (size < sizeof(uint) * 2)
+        {
+            throw new InvalidDataException($"Blob size {size} is smaller than its header.");
+        }
+
         uint dataSize = size - sizeof(uint) - sizeof(uint);
-        byte[] data = new byte[dataSize];
+        if (dataSize > int.MaxValue)
+        {
+            throw new InvalidDataException($"Blob data size {dataSize} exceeds the managed array limit.");
+        }
+
+        byte[] data = new byte[(int)dataSize];
         if (dataSize > 0)
             reader.ReadExactly(offset + sizeof(uint) * 2, data);
 

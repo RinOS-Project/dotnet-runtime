@@ -73,7 +73,20 @@ namespace System.Text.Json.Serialization
             return bufferState;
         }
 
-        public void Read(PipeReader utf8Json) => throw new NotImplementedException();
+        public void Read(PipeReader utf8Json)
+        {
+            int minBufferSize = _unsuccessfulReadBytes > 0 ? _unsuccessfulReadBytes : 0;
+            ReadResult readResult = _utf8Json.ReadAtLeastAsync(minBufferSize).GetAwaiter().GetResult();
+
+            _sequence = readResult.Buffer;
+            _isFinalBlock = readResult.IsCompleted;
+            ProcessReadBytes();
+
+            if (readResult.IsCanceled)
+            {
+                ThrowHelper.ThrowOperationCanceledException_PipeReadCanceled();
+            }
+        }
 
         public void GetReader(JsonReaderState jsonReaderState, out Utf8JsonReader reader)
         {

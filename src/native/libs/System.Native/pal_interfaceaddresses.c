@@ -23,6 +23,9 @@
 #if HAVE_SYS_SYSCTL_H
 #include <sys/sysctl.h>
 #endif
+#if defined(TARGET_RINOS)
+#include <rin/net/netif_abi.h>
+#endif
 #if HAVE_SYS_IOCTL_H
 #include <sys/ioctl.h>
 #endif
@@ -75,6 +78,64 @@
 #else
 #include <net/route.h>
 #endif
+#endif
+
+#if defined(TARGET_RINOS)
+static uint16_t MapRinOSHardwareType(uint32_t linkType, const char* interfaceName)
+{
+    if (interfaceName != NULL && strcmp(interfaceName, "lo") == 0)
+        return NetworkInterfaceType_Loopback;
+
+    switch (linkType)
+    {
+        case RIN_NET_LINK_TYPE_ETHERNET:
+            return NetworkInterfaceType_Ethernet;
+        case RIN_NET_LINK_TYPE_WIFI:
+            return NetworkInterfaceType_Wireless80211;
+        case RIN_NET_LINK_TYPE_VIRTUAL:
+            return NetworkInterfaceType_Tunnel;
+        default:
+            /* Cellular and Bluetooth PAN have no lossless NetworkInterfaceType
+             * equivalent in the managed enum. Keep them Unknown instead of
+             * misreporting a transport-specific type. */
+            return NetworkInterfaceType_Unknown;
+    }
+}
+
+static void PopulateRinOSInterfaceMetadata(
+    NetworkInterfaceInfo* interfaceInfo,
+    const RinNetPrimaryInfo* primary)
+{
+    if (interfaceInfo == NULL || primary == NULL ||
+        primary->ifname[0] == '\0' || primary->device_generation == 0u ||
+        strcmp(interfaceInfo->Name, primary->ifname) != 0)
+        return;
+
+    interfaceInfo->HardwareType =
+        MapRinOSHardwareType(primary->link_type, primary->ifname);
+    interfaceInfo->OperationalState =
+        (primary->flags & RIN_NETINFO_FLAG_LINK_UP) != 0u
+            ? OperationalStatus_Up
+            : OperationalStatus_Down;
+    interfaceInfo->SupportsMulticast =
+        (primary->flags & RIN_NETINFO_FLAG_DEVICE_READY) != 0u ? 1u : 0u;
+
+    int hasMac = 0;
+    for (size_t index = 0u; index < sizeof(primary->mac); ++index)
+    {
+        if (primary->mac[index] != 0u)
+        {
+            hasMac = 1;
+            break;
+        }
+    }
+    if (hasMac)
+    {
+        interfaceInfo->NumAddressBytes = (uint8_t)sizeof(primary->mac);
+        memcpy(interfaceInfo->AddressBytes, primary->mac,
+               sizeof(primary->mac));
+    }
+}
 #endif
 
 // Convert mask to prefix length e.g. 255.255.255.0 -> 24
@@ -343,6 +404,14 @@ int32_t SystemNative_GetNetworkInterfaces(int32_t * interfaceCount, NetworkInter
     int socketfd = -1;
 
     NetworkInterfaceInfo *nii;
+#if defined(TARGET_RINOS)
+    RinNetPrimaryInfo rinosPrimary = {};
+    int haveRinOSPrimary =
+        rin_net_get_primary_info(&rinosPrimary) == 0 &&
+        rinosPrimary.ifname[0] != '\0' &&
+        rinosPrimary.device_generation != 0u &&
+        rinosPrimary.link_type <= RIN_NET_LINK_TYPE_MAX;
+#endif
 
     if (getifaddrs(&head) == -1)
     {
@@ -440,6 +509,11 @@ int32_t SystemNative_GetNetworkInterfaces(int32_t * interfaceCount, NetworkInter
             nii->InterfaceIndex = ifindex;
             nii->Speed = -1;
             nii->HardwareType = ((ifaddrsEntry->ifa_flags & IFF_LOOPBACK) == IFF_LOOPBACK) ? NetworkInterfaceType_Loopback : NetworkInterfaceType_Unknown;
+
+#if defined(TARGET_RINOS)
+            if (haveRinOSPrimary)
+                PopulateRinOSInterfaceMetadata(nii, &rinosPrimary);
+#endif
 
             // Get operational state and multicast support.
             if ((ifaddrsEntry->ifa_flags & (IFF_MULTICAST|IFF_ALLMULTI)) != 0)

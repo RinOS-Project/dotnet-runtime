@@ -2056,7 +2056,10 @@ int32_t GlobalizationNative_GetLocaleInfoInt(const UChar* locale, LocaleNumberDa
             if (*value < 0) return 0;
             break;
         case LocaleNumber_FractionalDigitsCount:
-            *value = strcmp(record.locale_id, "root") == 0 ? 2 : 3;
+            /* The product catalog uses the .NET/CLDR default of two decimal
+             * digits for ordinary numbers.  Currency precision is carried
+             * separately in currency_digits below. */
+            *value = 2;
             break;
         case LocaleNumber_MonetaryFractionalDigitsCount:
             *value = (int32_t)record.currency_digits;

@@ -2315,9 +2315,14 @@ static const RinTimeZoneIdMapping g_time_zone_id_mappings[] = {
     { "India Standard Time", "Asia/Kolkata", "IN" },
     { "Arabian Standard Time", "Asia/Dubai", "AE" },
     { "AUS Eastern Standard Time", "Australia/Sydney", "AU" },
+    { "AUS Eastern Standard Time", "Australia/Melbourne", "AU" },
     { "W. Australia Standard Time", "Australia/Perth", "AU" },
     { "New Zealand Standard Time", "Pacific/Auckland", "NZ" },
+    { "Hong Kong Standard Time", "Asia/Hong_Kong", "HK" },
     { "UTC", "Etc/UTC", "001" },
+    { "UTC", "UTC", "001" },
+    { "UTC", "Etc/GMT", "001" },
+    { "UTC", "GMT", "001" },
 };
 
 enum {

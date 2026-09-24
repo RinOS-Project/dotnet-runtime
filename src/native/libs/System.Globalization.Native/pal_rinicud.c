@@ -297,6 +297,61 @@ static const char* const g_es_super_short_day_names[] = {
     "D", "L", "M", "X", "J", "V", "S"
 };
 
+static const char* const g_it_month_names[] = {
+    "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+    "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre", ""
+};
+static const char* const g_it_abbreviated_month_names[] = {
+    "gen", "feb", "mar", "apr", "mag", "giu",
+    "lug", "ago", "set", "ott", "nov", "dic", ""
+};
+static const char* const g_it_day_names[] = {
+    "domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"
+};
+static const char* const g_it_abbreviated_day_names[] = {
+    "dom", "lun", "mar", "mer", "gio", "ven", "sab"
+};
+static const char* const g_it_super_short_day_names[] = {
+    "D", "L", "M", "M", "G", "V", "S"
+};
+
+static const char* const g_pt_month_names[] = {
+    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro", ""
+};
+static const char* const g_pt_abbreviated_month_names[] = {
+    "jan", "fev", "mar", "abr", "mai", "jun",
+    "jul", "ago", "set", "out", "nov", "dez", ""
+};
+static const char* const g_pt_day_names[] = {
+    "domingo", "segunda-feira", "terça-feira", "quarta-feira",
+    "quinta-feira", "sexta-feira", "sábado"
+};
+static const char* const g_pt_abbreviated_day_names[] = {
+    "dom.", "seg.", "ter.", "qua.", "qui.", "sex.", "sáb."
+};
+static const char* const g_pt_super_short_day_names[] = {
+    "D", "S", "T", "Q", "Q", "S", "S"
+};
+
+static const char* const g_ru_month_names[] = {
+    "январь", "февраль", "март", "апрель", "май", "июнь",
+    "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь", ""
+};
+static const char* const g_ru_abbreviated_month_names[] = {
+    "янв.", "февр.", "март", "апр.", "май", "июнь",
+    "июль", "авг.", "сент.", "окт.", "нояб.", "дек.", ""
+};
+static const char* const g_ru_day_names[] = {
+    "воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"
+};
+static const char* const g_ru_abbreviated_day_names[] = {
+    "вс", "пн", "вт", "ср", "чт", "пт", "сб"
+};
+static const char* const g_ru_super_short_day_names[] = {
+    "В", "П", "В", "С", "Ч", "П", "С"
+};
+
 typedef struct RinCalendarSymbols
 {
     const char* language;
@@ -332,6 +387,15 @@ static const RinCalendarSymbols g_calendar_symbols[] = {
       g_japanese_era_names_en, g_japanese_era_abbreviations },
     { "es", g_es_month_names, g_es_abbreviated_month_names, g_es_day_names,
       g_es_abbreviated_day_names, g_es_super_short_day_names, "calendario gregoriano", "calendario japonés",
+      g_japanese_era_names_en, g_japanese_era_abbreviations },
+    { "it", g_it_month_names, g_it_abbreviated_month_names, g_it_day_names,
+      g_it_abbreviated_day_names, g_it_super_short_day_names, "calendario gregoriano", "calendario giapponese",
+      g_japanese_era_names_en, g_japanese_era_abbreviations },
+    { "pt", g_pt_month_names, g_pt_abbreviated_month_names, g_pt_day_names,
+      g_pt_abbreviated_day_names, g_pt_super_short_day_names, "calendário gregoriano", "calendário japonês",
+      g_japanese_era_names_en, g_japanese_era_abbreviations },
+    { "ru", g_ru_month_names, g_ru_abbreviated_month_names, g_ru_day_names,
+      g_ru_abbreviated_day_names, g_ru_super_short_day_names, "григорианский календарь", "японский календарь",
       g_japanese_era_names_en, g_japanese_era_abbreviations },
 };
 

@@ -1250,6 +1250,41 @@ static int product_pattern(const char* source, size_t source_capacity,
     return (int)length;
 }
 
+static int product_year_month_pattern(const char* source, size_t source_capacity,
+                                      char* dest, size_t capacity)
+{
+    size_t length;
+    size_t index;
+    if (!source || !dest || capacity == 0u ||
+        product_pattern(source, source_capacity, 0, 0, dest, capacity) <= 0) {
+        return 0;
+    }
+    length = strlen(dest);
+    for (index = 0u; index + 1u < length; ++index) {
+        if (dest[index] != 'd' || dest[index + 1u] != 'd') continue;
+        if (index > 0u && (dest[index - 1u] == '/' || dest[index - 1u] == '-' ||
+                           dest[index - 1u] == '.')) {
+            memmove(dest + index - 1u, dest + index + 2u,
+                    length - (index + 1u));
+            length -= 3u;
+        } else if (index + 2u < length &&
+                   (dest[index + 2u] == '/' || dest[index + 2u] == '-' ||
+                    dest[index + 2u] == '.')) {
+            memmove(dest + index, dest + index + 3u,
+                    length - (index + 2u));
+            length -= 3u;
+        } else {
+            memmove(dest + index, dest + index + 2u,
+                    length - index - 1u);
+            length -= 2u;
+        }
+        dest[length] = '\0';
+        return length > 0u && strstr(dest, "yyyy") != NULL &&
+               strstr(dest, "MM") != NULL ? (int)length : 0;
+    }
+    return 0;
+}
+
 static int service_text_call(int (*call)(rin_icu_client_t*, const char*, char*, size_t, size_t*),
                              const char* input, UChar* dest, int32_t capacity)
 {
@@ -1999,6 +2034,9 @@ ResultCode GlobalizationNative_GetCalendarInfo(const UChar* locale, CalendarId c
         case CalendarData_LongDates:
             if (!product_pattern(record.date_pattern, sizeof(record.date_pattern), 0, kind == CalendarData_MonthDay, pattern, sizeof(pattern))) return UnknownError;
             return copy_calendar_text(pattern, value, capacity, NULL);
+        case CalendarData_YearMonths:
+            if (!product_year_month_pattern(record.date_pattern, sizeof(record.date_pattern), pattern, sizeof(pattern))) return UnknownError;
+            return copy_calendar_text(pattern, value, capacity, NULL);
         default:
             return UnknownError;
     }
@@ -2032,10 +2070,14 @@ int32_t GlobalizationNative_EnumCalendarInfo(EnumCalendarInfoCallback callback, 
         }
         return (int32_t)count;
     }
-    if (kind != CalendarData_ShortDates && kind != CalendarData_LongDates) return 0;
+    if (kind != CalendarData_ShortDates && kind != CalendarData_LongDates &&
+        kind != CalendarData_YearMonths) return 0;
     {
         char product_format[128];
-        if (!product_pattern(record.date_pattern, sizeof(record.date_pattern), 0, 0, product_format, sizeof(product_format))) return 0;
+        int format_length = kind == CalendarData_YearMonths
+            ? product_year_month_pattern(record.date_pattern, sizeof(record.date_pattern), product_format, sizeof(product_format))
+            : product_pattern(record.date_pattern, sizeof(record.date_pattern), 0, 0, product_format, sizeof(product_format));
+        if (format_length <= 0) return 0;
         pattern_length = copy_utf8(product_format, strlen(product_format), pattern, (int32_t)(sizeof(pattern) / sizeof(pattern[0])));
     }
     if (pattern_length <= 0) return 0;

@@ -175,6 +175,10 @@ static const char* const g_japanese_era_abbreviations[] = {
  * host's current locale. */
 static const char* const g_gregorian_era_names[] = { "AD" };
 static const char* const g_gregorian_era_abbreviations[] = { "AD" };
+static const char* const g_taiwan_era_names[] = { "中華民國" };
+static const char* const g_taiwan_era_abbreviations[] = { "民國" };
+static const char* const g_korean_era_names[] = { "단기" };
+static const char* const g_thai_era_names[] = { "พ.ศ." };
 static const char* const g_japanese_era_names_en[] = {
     "Meiji", "Taisho", "Showa", "Heisei", "Reiwa"
 };
@@ -756,22 +760,74 @@ static int is_product_calendar(CalendarId calendar)
     return is_product_gregorian_calendar(calendar) || calendar == 3;
 }
 
+static int is_product_calendar_for_locale(const RinIcuDataLocaleRecord* record,
+                                          CalendarId calendar)
+{
+    if (!record) return 0;
+    if (is_product_calendar(calendar)) return 1;
+    if (calendar == 4) {
+        return strcmp(record->language, "zh") == 0 &&
+            strcmp(record->region, "TW") == 0;
+    }
+    if (calendar == 5) {
+        return strcmp(record->language, "ko") == 0 &&
+            strcmp(record->region, "KR") == 0;
+    }
+    if (calendar == 7) {
+        return strcmp(record->language, "th") == 0 &&
+            strcmp(record->region, "TH") == 0;
+    }
+    return 0;
+}
+
+static const char* calendar_native_name(const RinIcuDataLocaleRecord* record,
+                                        CalendarId calendar)
+{
+    const RinCalendarSymbols* symbols =
+        record ? calendar_symbols_for_language(record->language) : NULL;
+    if (!symbols) return NULL;
+    switch (calendar) {
+        case 3: return symbols->native_japanese_name;
+        case 4: return "中華民國曆";
+        case 5: return "단기력";
+        case 7: return "ปฏิทินพุทธ";
+        default: return symbols->native_gregorian_name;
+    }
+}
+
 static const char* calendar_symbol(const RinIcuDataLocaleRecord* record,
                                    CalendarId calendar, CalendarDataType kind,
                                    size_t index)
 {
     const RinCalendarSymbols* symbols;
-    if (!record || !is_product_calendar(calendar)) return NULL;
+    if (!record || !is_product_calendar_for_locale(record, calendar)) return NULL;
     symbols = calendar_symbols_for_language(record->language);
     if (!symbols) return NULL;
     if (kind == CalendarData_NativeName) {
-        return index == 0u ? (calendar == 3 ? symbols->native_japanese_name : symbols->native_gregorian_name) : NULL;
+        return index == 0u ? calendar_native_name(record, calendar) : NULL;
     }
     if (kind == CalendarData_EraNames || kind == CalendarData_AbbrevEraNames) {
-        const char* const* eras = calendar == 3
-            ? (kind == CalendarData_EraNames ? symbols->japanese_era_names : symbols->japanese_era_abbreviations)
-            : (kind == CalendarData_EraNames ? g_gregorian_era_names : g_gregorian_era_abbreviations);
-        size_t count = calendar == 3 ? sizeof(g_japanese_eras) / sizeof(g_japanese_eras[0]) : 1u;
+        const char* const* eras;
+        size_t count;
+        if (calendar == 3) {
+            eras = kind == CalendarData_EraNames
+                ? symbols->japanese_era_names : symbols->japanese_era_abbreviations;
+            count = sizeof(g_japanese_eras) / sizeof(g_japanese_eras[0]);
+        } else if (calendar == 4) {
+            eras = kind == CalendarData_EraNames
+                ? g_taiwan_era_names : g_taiwan_era_abbreviations;
+            count = 1u;
+        } else if (calendar == 5) {
+            eras = g_korean_era_names;
+            count = 1u;
+        } else if (calendar == 7) {
+            eras = g_thai_era_names;
+            count = 1u;
+        } else {
+            eras = kind == CalendarData_EraNames
+                ? g_gregorian_era_names : g_gregorian_era_abbreviations;
+            count = 1u;
+        }
         return index < count ? eras[index] : NULL;
     }
     if (kind == CalendarData_MonthNames) {
@@ -2131,9 +2187,26 @@ int32_t GlobalizationNative_GetCalendars(const UChar* locale, CalendarId* calend
     RinIcuDataLocaleRecord record;
     if (!calendars || capacity <= 0 || !get_locale_record(locale, &record)) return 0;
     calendars[0] = 1;
-    if (strcmp(record.language, "ja") == 0 && capacity > 1) {
-        calendars[1] = 3;
-        return 2;
+    if (capacity > 1) {
+        if (strcmp(record.language, "ja") == 0) {
+            calendars[1] = 3;
+            return 2;
+        }
+        if (strcmp(record.language, "th") == 0 &&
+            strcmp(record.region, "TH") == 0) {
+            calendars[1] = 7;
+            return 2;
+        }
+        if (strcmp(record.language, "zh") == 0 &&
+            strcmp(record.region, "TW") == 0) {
+            calendars[1] = 4;
+            return 2;
+        }
+        if (strcmp(record.language, "ko") == 0 &&
+            strcmp(record.region, "KR") == 0) {
+            calendars[1] = 5;
+            return 2;
+        }
     }
     return 1;
 }
@@ -2142,7 +2215,8 @@ ResultCode GlobalizationNative_GetCalendarInfo(const UChar* locale, CalendarId c
 {
     RinIcuDataLocaleRecord record;
     char pattern[128];
-    if (!is_product_calendar(calendar) || capacity < 0 || !get_locale_record(locale, &record)) return UnknownError;
+    if (capacity < 0 || !get_locale_record(locale, &record) ||
+        !is_product_calendar_for_locale(&record, calendar)) return UnknownError;
     switch (kind) {
         case CalendarData_NativeName:
             return copy_calendar_text(calendar_symbol(&record, calendar, kind, 0u), value, capacity, NULL);
@@ -2164,7 +2238,8 @@ int32_t GlobalizationNative_EnumCalendarInfo(EnumCalendarInfoCallback callback, 
     RinIcuDataLocaleRecord record;
     UChar pattern[128];
     int32_t pattern_length;
-    if (!callback || !is_product_calendar(calendar) || !get_locale_record(locale, &record)) return 0;
+    if (!callback || !get_locale_record(locale, &record) ||
+        !is_product_calendar_for_locale(&record, calendar)) return 0;
     if (kind == CalendarData_NativeName) {
         UChar name[64];
         int32_t length = 0;

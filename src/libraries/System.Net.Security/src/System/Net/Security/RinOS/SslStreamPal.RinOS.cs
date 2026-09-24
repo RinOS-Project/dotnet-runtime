@@ -43,14 +43,42 @@ namespace System.Net.Security
             SslAuthenticationOptions sslAuthenticationOptions,
             ReadOnlySpan<byte> clientProtocols)
         {
-            if (clientProtocols.Length != 0 ||
-                (sslAuthenticationOptions.ApplicationProtocols?.Count ?? 0) != 0)
+            // A missing ALPN extension is valid when the peer did not select a
+            // protocol.  RinTLS itself advertises and validates HTTP/1.1 in
+            // the ClientHello/ServerHello path; this PAL hook only performs
+            // the managed SslStream protocol-list admission required by the
+            // shared handshake state machine.
+            if (clientProtocols.Length == 0 ||
+                sslAuthenticationOptions.ApplicationProtocols is not { Count: > 0 })
             {
-                throw new PlatformNotSupportedException(
-                    "RinTLS ALPN is not available in the current product API.");
+                return new SecurityStatusPal(SecurityStatusPalErrorCode.OK);
             }
 
-            return new SecurityStatusPal(SecurityStatusPalErrorCode.OK);
+            foreach (SslApplicationProtocol applicationProtocol in
+                     sslAuthenticationOptions.ApplicationProtocols)
+            {
+                ReadOnlySpan<byte> protocols = clientProtocols;
+                while (protocols.Length > 0)
+                {
+                    int protocolLength = protocols[0];
+                    if (protocolLength == 0 || protocols.Length < protocolLength + 1)
+                    {
+                        return new SecurityStatusPal(
+                            SecurityStatusPalErrorCode.IllegalMessage);
+                    }
+
+                    ReadOnlySpan<byte> protocol = protocols.Slice(1, protocolLength);
+                    if (protocol.SequenceEqual(applicationProtocol.Protocol.Span))
+                    {
+                        return new SecurityStatusPal(SecurityStatusPalErrorCode.OK);
+                    }
+
+                    protocols = protocols.Slice(protocolLength + 1);
+                }
+            }
+
+            return new SecurityStatusPal(
+                SecurityStatusPalErrorCode.ApplicationProtocolMismatch);
         }
 
 #pragma warning disable IDE0060

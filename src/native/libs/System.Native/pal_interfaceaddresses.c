@@ -136,6 +136,45 @@ static void PopulateRinOSInterfaceMetadata(
                sizeof(primary->mac));
     }
 }
+
+static void EmitRinOSLinkLayerAddress(
+    void* context,
+    LinkLayerAddressFound onLinkLayerFound,
+    const RinNetPrimaryInfo* primary)
+{
+    if (onLinkLayerFound == NULL || primary == NULL ||
+        primary->ifname[0] == '\0' || primary->device_generation == 0u ||
+        primary->link_type > RIN_NET_LINK_TYPE_MAX)
+        return;
+
+    uint32_t interfaceIndex = if_nametoindex(primary->ifname);
+    if (interfaceIndex == 0u)
+        return;
+
+    LinkLayerAddressInfo linkLayer;
+    memset(&linkLayer, 0, sizeof(linkLayer));
+    linkLayer.InterfaceIndex = interfaceIndex;
+    linkLayer.HardwareType =
+        MapRinOSHardwareType(primary->link_type, primary->ifname);
+
+    int hasMac = 0;
+    for (size_t index = 0u; index < sizeof(primary->mac); ++index)
+    {
+        if (primary->mac[index] != 0u)
+        {
+            hasMac = 1;
+            break;
+        }
+    }
+    if (hasMac)
+    {
+        linkLayer.NumAddressBytes = (uint8_t)sizeof(primary->mac);
+        memcpy(linkLayer.AddressBytes, primary->mac,
+               sizeof(primary->mac));
+    }
+
+    onLinkLayerFound(context, primary->ifname, &linkLayer);
+}
 #endif
 
 // Convert mask to prefix length e.g. 255.255.255.0 -> 24
@@ -216,6 +255,14 @@ int32_t SystemNative_EnumerateInterfaceAddresses(void* context,
     {
         return -1;
     }
+
+#if defined(TARGET_RINOS)
+    RinNetPrimaryInfo rinosPrimary = {};
+    if (rin_net_get_primary_info(&rinosPrimary) == 0)
+    {
+        EmitRinOSLinkLayerAddress(context, onLinkLayerFound, &rinosPrimary);
+    }
+#endif
 
     for (struct ifaddrs* current = headAddr; current != NULL; current = current->ifa_next)
     {

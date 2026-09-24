@@ -593,6 +593,35 @@ static const char* const g_fa_super_short_day_names[] = {
 static const char* const g_persian_era_names[] = { "ه.ش" };
 static const char* const g_persian_era_abbreviations[] = { "ه.ش" };
 
+static const char* const g_he_month_names[] = {
+    "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
+    "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר", ""
+};
+static const char* const g_he_abbreviated_month_names[] = {
+    "ינו׳", "פבר׳", "מרץ", "אפר׳", "מאי", "יוני",
+    "יולי", "אוג׳", "ספט׳", "אוק׳", "נוב׳", "דצמ׳", ""
+};
+static const char* const g_he_day_names[] = {
+    "יום ראשון", "יום שני", "יום שלישי", "יום רביעי",
+    "יום חמישי", "יום שישי", "שבת"
+};
+static const char* const g_he_abbreviated_day_names[] = {
+    "יום א׳", "יום ב׳", "יום ג׳", "יום ד׳", "יום ה׳", "יום ו׳", "שבת"
+};
+static const char* const g_he_super_short_day_names[] = {
+    "א", "ב", "ג", "ד", "ה", "ו", "ש"
+};
+static const char* const g_hebrew_month_names[] = {
+    "תשרי", "חשוון", "כסלו", "טבת", "שבט", "אדר א׳", "אדר",
+    "ניסן", "אייר", "סיוון", "תמוז", "אב", "אלול", "אדר ב׳"
+};
+static const char* const g_hebrew_abbreviated_month_names[] = {
+    "תשרי", "חשוון", "כסלו", "טבת", "שבט", "אדר א׳", "אדר",
+    "ניסן", "אייר", "סיוון", "תמוז", "אב", "אלול", "אדר ב׳"
+};
+static const char* const g_hebrew_era_names[] = { "AM" };
+static const char* const g_hebrew_era_abbreviations[] = { "AM" };
+
 static const char* const g_hi_month_names[] = {
     "जनवरी", "फ़रवरी", "मार्च", "अप्रैल", "मई", "जून",
     "जुलाई", "अगस्त", "सितंबर", "अक्तूबर", "नवंबर", "दिसंबर", ""
@@ -749,6 +778,9 @@ static const RinCalendarSymbols g_calendar_symbols[] = {
     { "fa", g_fa_month_names, g_fa_abbreviated_month_names, g_fa_day_names,
       g_fa_abbreviated_day_names, g_fa_super_short_day_names, "تقویم میلادی", "تقویم ژاپنی",
       g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
+    { "he", g_he_month_names, g_he_abbreviated_month_names, g_he_day_names,
+      g_he_abbreviated_day_names, g_he_super_short_day_names, "הלוח הגרגוריאני", "הלוח היפני",
+      g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
     { "hi", g_hi_month_names, g_hi_abbreviated_month_names, g_hi_day_names,
       g_hi_abbreviated_day_names, g_hi_super_short_day_names, "ग्रेगोरियन कैलेंडर", "जापानी कैलेंडर",
       g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
@@ -819,6 +851,10 @@ static int is_product_calendar_for_locale(const RinIcuDataLocaleRecord* record,
         return strcmp(record->language, "fa") == 0 &&
             strcmp(record->region, "IR") == 0;
     }
+    if (calendar == 8) {
+        return strcmp(record->language, "he") == 0 &&
+            strcmp(record->region, "IL") == 0;
+    }
     return 0;
 }
 
@@ -836,6 +872,7 @@ static const char* calendar_native_name(const RinIcuDataLocaleRecord* record,
         case 22: return "تقویم هجری شمسی";
         case 6: return "التقويم الهجري";
         case 23: return "تقويم أم القرى";
+        case 8: return "הלוח העברי";
         default: return symbols->native_gregorian_name;
     }
 }
@@ -876,6 +913,10 @@ static const char* calendar_symbol(const RinIcuDataLocaleRecord* record,
             eras = kind == CalendarData_EraNames
                 ? g_hijri_era_names : g_hijri_era_abbreviations;
             count = 1u;
+        } else if (calendar == 8) {
+            eras = kind == CalendarData_EraNames
+                ? g_hebrew_era_names : g_hebrew_era_abbreviations;
+            count = 1u;
         } else {
             eras = kind == CalendarData_EraNames
                 ? g_gregorian_era_names : g_gregorian_era_abbreviations;
@@ -895,6 +936,14 @@ static const char* calendar_symbol(const RinIcuDataLocaleRecord* record,
         }
         if (kind == CalendarData_AbbrevMonthGenitiveNames) {
             return index < 13u ? g_ar_hijri_abbreviated_month_names[index] : NULL;
+        }
+    }
+    if (calendar == 8) {
+        if (kind == CalendarData_MonthNames || kind == CalendarData_MonthGenitiveNames) {
+            return index < 14u ? g_hebrew_month_names[index] : NULL;
+        }
+        if (kind == CalendarData_AbbrevMonthNames || kind == CalendarData_AbbrevMonthGenitiveNames) {
+            return index < 14u ? g_hebrew_abbreviated_month_names[index] : NULL;
         }
     }
     if (kind == CalendarData_MonthNames) {
@@ -927,7 +976,9 @@ static size_t calendar_symbol_count(CalendarId calendar, CalendarDataType kind)
         return calendar == 3 ? sizeof(g_japanese_eras) / sizeof(g_japanese_eras[0]) : 1u;
     }
     if (kind == CalendarData_MonthNames || kind == CalendarData_AbbrevMonthNames ||
-        kind == CalendarData_MonthGenitiveNames || kind == CalendarData_AbbrevMonthGenitiveNames) return 13u;
+        kind == CalendarData_MonthGenitiveNames || kind == CalendarData_AbbrevMonthGenitiveNames) {
+        return calendar == 8 ? 14u : 13u;
+    }
     if (kind == CalendarData_DayNames || kind == CalendarData_AbbrevDayNames ||
         kind == CalendarData_SuperShortDayNames) return 7u;
     return kind == CalendarData_NativeName ? 1u : 0u;
@@ -1168,7 +1219,7 @@ static int product_locale_language_id(const char* locale_id)
         {"tr-TR", 0x041f}, {"pl-PL", 0x0415}, {"nl-NL", 0x0413},
         {"sv-SE", 0x041d}, {"fi-FI", 0x040b}, {"da-DK", 0x0406},
         {"cs-CZ", 0x0405}, {"hu-HU", 0x040e}, {"ro-RO", 0x0418},
-        {"ar-SA", 0x0401}, {"fa-IR", 0x0429}, {"hi-IN", 0x0439}, {"th-TH", 0x041e},
+        {"ar-SA", 0x0401}, {"fa-IR", 0x0429}, {"he-IL", 0x040d}, {"hi-IN", 0x0439}, {"th-TH", 0x041e},
         {"id-ID", 0x0421}, {"vi-VN", 0x042a}
     };
     size_t index;
@@ -1190,7 +1241,7 @@ static const char* product_language_three_letter(const char* language)
     static const RinLocaleCode codes[] = {
         { "ar", "ara" }, { "cs", "ces" }, { "da", "dan" },
         { "de", "deu" }, { "en", "eng" }, { "es", "spa" },
-        { "fa", "fas" },
+        { "fa", "fas" }, { "he", "heb" },
         { "fi", "fin" }, { "fr", "fra" }, { "hi", "hin" },
         { "hu", "hun" }, { "id", "ind" }, { "it", "ita" },
         { "ja", "jpn" }, { "ko", "kor" }, { "nl", "nld" },
@@ -1213,7 +1264,7 @@ static const char* product_region_three_letter(const char* region)
         { "BR", "BRA" }, { "CN", "CHN" }, { "CZ", "CZE" },
         { "DE", "DEU" }, { "DK", "DNK" }, { "ES", "ESP" },
         { "FI", "FIN" }, { "FR", "FRA" }, { "GB", "GBR" },
-        { "HU", "HUN" }, { "ID", "IDN" }, { "IN", "IND" },
+        { "HU", "HUN" }, { "ID", "IDN" }, { "IL", "ISR" }, { "IN", "IND" },
         { "IT", "ITA" }, { "JP", "JPN" }, { "KR", "KOR" },
         { "MX", "MEX" }, { "NL", "NLD" }, { "PL", "POL" },
         { "PT", "PRT" }, { "RO", "ROU" }, { "RU", "RUS" },
@@ -2297,6 +2348,11 @@ int32_t GlobalizationNative_GetCalendars(const UChar* locale, CalendarId* calend
         if (strcmp(record.language, "ko") == 0 &&
             strcmp(record.region, "KR") == 0) {
             calendars[1] = 5;
+            return 2;
+        }
+        if (strcmp(record.language, "he") == 0 &&
+            strcmp(record.region, "IL") == 0) {
+            calendars[1] = 8;
             return 2;
         }
     }

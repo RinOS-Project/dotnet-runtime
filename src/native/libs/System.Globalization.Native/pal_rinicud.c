@@ -1923,10 +1923,16 @@ static int locale_parent_name(rin_icu_client_t* client, const char* locale_name,
     return 1;
 }
 
+static int locale_string_requires_ui_locale(LocaleStringData kind)
+{
+    return kind == LocaleString_LocalizedDisplayName ||
+        kind == LocaleString_LocalizedLanguageName;
+}
+
 int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStringData kind, UChar* value, int32_t value_length, const UChar* ui_locale)
 {
     char* locale_name = locale_utf8(locale);
-    char* ui_name = locale_utf8(ui_locale);
+    char* ui_name = NULL;
     RinIcuDataLocaleRecord record;
     char buffer[256];
     char parent[128];
@@ -1935,11 +1941,20 @@ int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStrin
     size_t length = 0u;
     int status = RIN_ICU_STATUS_UNSUPPORTED;
     rin_icu_client_t* client = product_client();
-    int have_record = get_locale_record(locale, &record);
+    int have_record;
     if (!locale_name) {
-        free(ui_name);
         return 0;
     }
+    if (locale_string_requires_ui_locale(kind) && !ui_locale) {
+        free(locale_name);
+        return 0;
+    }
+    ui_name = locale_utf8(ui_locale);
+    if (!ui_name) {
+        free(locale_name);
+        return 0;
+    }
+    have_record = get_locale_record(locale, &record);
     if (client && have_record && (kind == LocaleString_EnglishDisplayName || kind == LocaleString_NativeDisplayName || kind == LocaleString_LocalizedDisplayName ||
                                   kind == LocaleString_EnglishLanguageName || kind == LocaleString_NativeLanguageName || kind == LocaleString_LocalizedLanguageName ||
                                   kind == LocaleString_EnglishCountryName || kind == LocaleString_NativeCountryName ||

@@ -59,6 +59,11 @@ internal sealed class CodeDirectoryBlob : IBlob
 
         ulong specialHashBytes = (ulong)specialSlotCount * hashSize;
         ulong codeHashBytes = (ulong)codeSlotCount * hashSize;
+        if (specialHashBytes > (ulong)hashesOffset - sizeof(uint) * 2)
+        {
+            throw new InvalidDataException("Code directory special-slot hashes underflow the blob data.");
+        }
+
         ulong hashesDataEnd = (ulong)hashesOffset + codeHashBytes;
         ulong specialHashesStart = (ulong)hashesOffset - specialHashBytes;
         if (specialHashesStart < sizeof(uint) * 2 ||

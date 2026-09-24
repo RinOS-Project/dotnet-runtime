@@ -157,6 +157,11 @@ internal class SuperBlob : IBlob
             }
 
             long childOffset = offset + blobOffset;
+            if (childOffset > long.MaxValue - sizeof(uint))
+            {
+                throw new InvalidDataException("Super blob child header overflows the reader position.");
+            }
+
             uint childSize = reader.ReadUInt32BigEndian(childOffset + sizeof(uint));
             if (childSize < sizeof(uint) * 2 || childSize > size - blobOffset || childSize > int.MaxValue)
             {

@@ -265,6 +265,11 @@ internal sealed class CodeDirectoryBlob : IBlob
         {
             return false;
         }
+        if (_specialSlotHashes.Length != other._specialSlotHashes.Length ||
+            _codeHashes.Length != other._codeHashes.Length)
+        {
+            return false;
+        }
         for (int i = 0; i < _specialSlotHashes.Length; i++)
         {
             if (!_specialSlotHashes[i].SequenceEqual(other._specialSlotHashes[i]))
@@ -286,7 +291,32 @@ internal sealed class CodeDirectoryBlob : IBlob
 
     public override int GetHashCode()
     {
-        throw new NotImplementedException();
+        CodeDirectoryHeader header = _cdHeader;
+        header.ExecSegmentLimit = 0;
+
+        var hash = new HashCode();
+        hash.Add(header);
+        hash.Add(_identifier, StringComparer.Ordinal);
+        hash.Add(_specialSlotHashes.Length);
+        foreach (byte[] slotHash in _specialSlotHashes)
+        {
+            AddHashBytes(ref hash, slotHash);
+        }
+        hash.Add(_codeHashes.Length);
+        for (int i = 2; i < _codeHashes.Length; i++)
+        {
+            AddHashBytes(ref hash, _codeHashes[i]);
+        }
+        return hash.ToHashCode();
+    }
+
+    private static void AddHashBytes(ref HashCode hash, byte[] bytes)
+    {
+        hash.Add(bytes.Length);
+        foreach (byte value in bytes)
+        {
+            hash.Add(value);
+        }
     }
 
     internal static uint GetIdentifierLength(string identifier)

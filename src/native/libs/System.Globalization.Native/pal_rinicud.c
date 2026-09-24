@@ -1870,7 +1870,15 @@ int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStrin
         } else if (kind == LocaleString_EnglishLanguageName || kind == LocaleString_NativeLanguageName || kind == LocaleString_LocalizedLanguageName) {
             code = record.language;
         }
-        status = rin_icu_display_name(client, ui_name, code, type, style, RIN_ICU_LANGUAGE_DISPLAY_STANDARD, buffer, sizeof(buffer), &length);
+        const char* display_locale = ui_name;
+        if (kind == LocaleString_EnglishDisplayName || kind == LocaleString_EnglishLanguageName ||
+            kind == LocaleString_EnglishCountryName || kind == LocaleString_CurrencyEnglishName) {
+            display_locale = "en";
+        } else if (kind == LocaleString_NativeDisplayName || kind == LocaleString_NativeLanguageName ||
+                   kind == LocaleString_NativeCountryName || kind == LocaleString_CurrencyNativeName) {
+            display_locale = locale_name;
+        }
+        status = rin_icu_display_name(client, display_locale, code, type, style, RIN_ICU_LANGUAGE_DISPLAY_STANDARD, buffer, sizeof(buffer), &length);
     }
     if (status != RIN_ICU_STATUS_OK && have_record) {
         switch (kind) {

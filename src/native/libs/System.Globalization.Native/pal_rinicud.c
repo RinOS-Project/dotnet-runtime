@@ -977,6 +977,21 @@ static int copy_utf8(const char* value, size_t length, UChar* dest, int32_t capa
     return written;
 }
 
+/* PAL string-returning entry points receive a caller-owned buffer and expose
+ * success as a boolean/result code. Keep the length-based copy above for
+ * NormalizeString and IDNA, but terminate string-producing paths here. An
+ * empty string is valid, so -1 is reserved for conversion/capacity failure. */
+static int copy_utf8_z(const char* value, size_t length, UChar* dest, int32_t capacity)
+{
+    int32_t written = 0;
+    if (!value || !utf8_to_utf16(value, length, NULL, 0, &written)) return -1;
+    if (!dest) return written;
+    if (capacity <= 0 || written >= capacity) return -1;
+    if (!utf8_to_utf16(value, length, dest, capacity - 1, &written)) return -1;
+    dest[written] = 0u;
+    return written;
+}
+
 static ResultCode copy_calendar_text(const char* text,
                                      UChar* value,
                                      int32_t capacity,
@@ -986,8 +1001,8 @@ static ResultCode copy_calendar_text(const char* text,
     if (!text || capacity < 0 ||
         !utf8_to_utf16(text, strlen(text), NULL, 0, &required)) return UnknownError;
     if (out_length) *out_length = required;
-    if (!value || required > capacity) return InsufficientBuffer;
-    return utf8_to_utf16(text, strlen(text), value, capacity, NULL)
+    if (!value || required >= capacity) return InsufficientBuffer;
+    return copy_utf8_z(text, strlen(text), value, capacity) >= 0
         ? Success
         : UnknownError;
 }
@@ -1364,19 +1379,19 @@ static int service_text_call(int (*call)(rin_icu_client_t*, const char*, char*, 
     size_t length = 0u;
     char* dynamic = NULL;
     int status;
-    if (!client) return 0;
+    if (!client) return -1;
     status = call(client, input ? input : "", buffer, sizeof(buffer), &length);
     if (status == RIN_ICU_STATUS_NO_SPACE) {
-        if (length == SIZE_MAX || length > RIN_ICU_MAX_INLINE_PAYLOAD) return 0;
+        if (length == SIZE_MAX || length > RIN_ICU_MAX_INLINE_PAYLOAD) return -1;
         dynamic = (char*)malloc(length + 1u);
-        if (!dynamic) return 0;
+        if (!dynamic) return -1;
         status = call(client, input ? input : "", dynamic, length + 1u, &length);
     }
     if (status != RIN_ICU_STATUS_OK || length > RIN_ICU_MAX_INLINE_PAYLOAD) {
         free(dynamic);
-        return 0;
+        return -1;
     }
-    status = copy_utf8(dynamic ? dynamic : buffer, length, dest, capacity);
+    status = copy_utf8_z(dynamic ? dynamic : buffer, length, dest, capacity);
     free(dynamic);
     return status;
 }
@@ -1757,7 +1772,7 @@ static int32_t locale_call(const UChar* locale, UChar* value, int32_t value_leng
 
 int32_t GlobalizationNative_GetLocaleName(const UChar* locale, UChar* value, int32_t value_length)
 {
-    return locale_call(locale, value, value_length, rin_icu_locale_canonicalize) > 0;
+    return locale_call(locale, value, value_length, rin_icu_locale_canonicalize) >= 0;
 }
 
 int32_t GlobalizationNative_GetDefaultLocaleName(UChar* value, int32_t value_length)
@@ -1766,7 +1781,7 @@ int32_t GlobalizationNative_GetDefaultLocaleName(UChar* value, int32_t value_len
     char buffer[128];
     size_t length = 0u;
     if (!client || rin_icu_locale_preferred(client, buffer, sizeof(buffer), &length) != RIN_ICU_STATUS_OK) return 0;
-    return copy_utf8(buffer, length, value, value_length) > 0;
+    return copy_utf8_z(buffer, length, value, value_length) >= 0;
 }
 
 int32_t GlobalizationNative_IsPredefinedLocale(const UChar* locale)
@@ -1877,8 +1892,8 @@ int32_t GlobalizationNative_GetLocaleTimeFormat(const UChar* locale, int short_f
         if (seconds) memmove(seconds, seconds + 3u, strlen(seconds + 3u) + 1u);
         if (zone) memmove(zone, zone + 2u, strlen(zone + 2u) + 1u);
     }
-    result = copy_utf8(format, strlen(format), value, value_length);
-    return result > 0;
+    result = copy_utf8_z(format, strlen(format), value, value_length);
+    return result >= 0;
 }
 
 static int locale_parent_name(rin_icu_client_t* client, const char* locale_name, char* parent, size_t capacity)
@@ -2004,7 +2019,7 @@ int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStrin
     free(locale_name);
     free(ui_name);
     if (status != RIN_ICU_STATUS_OK) return 0;
-    return copy_utf8(buffer, length, value, value_length) > 0;
+    return copy_utf8_z(buffer, length, value, value_length) >= 0;
 }
 
 int32_t GlobalizationNative_GetLocaleInfoInt(const UChar* locale, LocaleNumberData kind, int32_t* value)
@@ -2852,7 +2867,7 @@ static int timezone_display_name_call(const UChar* locale, const UChar* time_zon
     if (!locale_name || !time_zone_name || !client || service_type == 0u) {
         free(locale_name);
         free(time_zone_name);
-        return 0;
+        return -1;
     }
     status = rin_icu_display_name(client, locale_name, time_zone_name,
                                   service_type, style,
@@ -2862,13 +2877,13 @@ static int timezone_display_name_call(const UChar* locale, const UChar* time_zon
         if (length == SIZE_MAX || length > RIN_ICU_MAX_INLINE_PAYLOAD) {
             free(locale_name);
             free(time_zone_name);
-            return 0;
+            return -1;
         }
         dynamic = (char*)malloc(length + 1u);
         if (!dynamic) {
             free(locale_name);
             free(time_zone_name);
-            return 0;
+            return -1;
         }
         status = rin_icu_display_name(client, locale_name, time_zone_name,
                                       service_type, style,
@@ -2879,9 +2894,9 @@ static int timezone_display_name_call(const UChar* locale, const UChar* time_zon
     free(time_zone_name);
     if (status != RIN_ICU_STATUS_OK || length == 0u || length > RIN_ICU_MAX_INLINE_PAYLOAD) {
         free(dynamic);
-        return 0;
+        return -1;
     }
-    status = copy_utf8(dynamic ? dynamic : buffer, length, dest, dest_length);
+    status = copy_utf8_z(dynamic ? dynamic : buffer, length, dest, dest_length);
     free(dynamic);
     return status;
 }
@@ -2928,8 +2943,8 @@ int32_t GlobalizationNative_IanaIdToWindowsId(const UChar* iana_id, UChar* windo
 ResultCode GlobalizationNative_GetTimeZoneDisplayName(const UChar* locale, const UChar* time_zone, TimeZoneDisplayNameType type, UChar* result, int32_t result_length)
 {
     int32_t required = timezone_display_name_call(locale, time_zone, type, NULL, 0);
-    if (required <= 0) return UnknownError;
-    if (result && result_length < required) return InsufficientBuffer;
-    if (result && timezone_display_name_call(locale, time_zone, type, result, result_length) <= 0) return UnknownError;
+    if (required < 0) return UnknownError;
+    if (result && result_length <= required) return InsufficientBuffer;
+    if (result && timezone_display_name_call(locale, time_zone, type, result, result_length) < 0) return UnknownError;
     return Success;
 }

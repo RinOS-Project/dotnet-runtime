@@ -735,12 +735,33 @@ static const RinCalendarSymbols* calendar_symbols_for_language(const char* langu
     return NULL;
 }
 
+static int is_product_gregorian_calendar(CalendarId calendar)
+{
+    switch (calendar) {
+        case 1:  /* Gregorian (localized) */
+        case 2:  /* Gregorian (U.S.) */
+        case 9:  /* Gregorian Middle East French */
+        case 10: /* Gregorian Arabic */
+        case 11: /* Gregorian transliterated English */
+        case 12: /* Gregorian transliterated French */
+        case 13: /* Julian: managed data uses Gregorian-shaped fields */
+            return 1;
+        default:
+            return 0;
+    }
+}
+
+static int is_product_calendar(CalendarId calendar)
+{
+    return is_product_gregorian_calendar(calendar) || calendar == 3;
+}
+
 static const char* calendar_symbol(const RinIcuDataLocaleRecord* record,
                                    CalendarId calendar, CalendarDataType kind,
                                    size_t index)
 {
     const RinCalendarSymbols* symbols;
-    if (!record || (calendar != 1 && calendar != 3)) return NULL;
+    if (!record || !is_product_calendar(calendar)) return NULL;
     symbols = calendar_symbols_for_language(record->language);
     if (!symbols) return NULL;
     if (kind == CalendarData_NativeName) {
@@ -2088,7 +2109,7 @@ ResultCode GlobalizationNative_GetCalendarInfo(const UChar* locale, CalendarId c
 {
     RinIcuDataLocaleRecord record;
     char pattern[128];
-    if ((calendar != 1 && calendar != 3) || capacity < 0 || !get_locale_record(locale, &record)) return UnknownError;
+    if (!is_product_calendar(calendar) || capacity < 0 || !get_locale_record(locale, &record)) return UnknownError;
     switch (kind) {
         case CalendarData_NativeName:
             return copy_calendar_text(calendar_symbol(&record, calendar, kind, 0u), value, capacity, NULL);
@@ -2110,7 +2131,7 @@ int32_t GlobalizationNative_EnumCalendarInfo(EnumCalendarInfoCallback callback, 
     RinIcuDataLocaleRecord record;
     UChar pattern[128];
     int32_t pattern_length;
-    if (!callback || (calendar != 1 && calendar != 3) || !get_locale_record(locale, &record)) return 0;
+    if (!callback || !is_product_calendar(calendar) || !get_locale_record(locale, &record)) return 0;
     if (kind == CalendarData_NativeName) {
         UChar name[64];
         int32_t length = 0;

@@ -1648,10 +1648,10 @@ int32_t GlobalizationNative_CompareString(SortHandle* handle, const UChar* lhs, 
 {
     char* left = sort_text(lhs, lhs_length, NULL);
     char* right = sort_text(rhs, rhs_length, NULL);
-    int result = 0;
+    int result = -1;
     rin_icu_handle_t service_handle = collator_handle_for_options(handle, options);
     if (!handle || !left || !right || service_handle == 0u ||
-        rin_icu_collator_compare(handle->client, service_handle, left, right, &result) != RIN_ICU_STATUS_OK) result = 0;
+        rin_icu_collator_compare(handle->client, service_handle, left, right, &result) != RIN_ICU_STATUS_OK) result = -1;
     free(left);
     free(right);
     return result;

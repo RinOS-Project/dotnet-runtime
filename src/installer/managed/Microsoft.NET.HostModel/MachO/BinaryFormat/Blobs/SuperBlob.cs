@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 
 namespace Microsoft.NET.HostModel.MachO;
@@ -117,17 +118,63 @@ internal class SuperBlob : IBlob
     /// </summary>
     public static SuperBlob Read(IMachOFileReader reader, long offset)
     {
+        if (offset < 0)
+        {
+            throw new InvalidDataException("Super blob offset cannot be negative.");
+        }
+
         BlobMagic magic = (BlobMagic)reader.ReadUInt32BigEndian(offset);
         uint size = reader.ReadUInt32BigEndian(offset + sizeof(BlobMagic));
         uint count = reader.ReadUInt32BigEndian(offset + sizeof(BlobMagic) + sizeof(uint));
+        const uint headerSize = sizeof(uint) * 3;
+        if (size < headerSize)
+        {
+            throw new InvalidDataException($"Super blob size {size} is smaller than its header.");
+        }
+
+        ulong indexBytes = (ulong)count * BlobIndex.Size;
+        if (indexBytes > size - headerSize)
+        {
+            throw new InvalidDataException("Super blob index table exceeds the declared blob size.");
+        }
+
+        uint firstBlobOffset = checked((uint)(headerSize + indexBytes));
 
         var blobs = new List<IBlob>((int)count);
         var blobIndices = new List<BlobIndex>((int)count);
         for (int i = 0; i < count; i++)
         {
             reader.Read(offset + sizeof(uint) * 3 + (i * BlobIndex.Size), out BlobIndex blobIndex);
+            uint blobOffset = blobIndex.Offset;
+            if (blobOffset < firstBlobOffset || blobOffset > size - sizeof(uint) * 2)
+            {
+                throw new InvalidDataException($"Super blob child offset {blobOffset} is outside the declared blob.");
+            }
+
+            if (blobOffset > long.MaxValue - offset)
+            {
+                throw new InvalidDataException("Super blob child offset overflows the reader position.");
+            }
+
+            long childOffset = offset + blobOffset;
+            if (childOffset > long.MaxValue - sizeof(uint))
+            {
+                throw new InvalidDataException("Super blob child header overflows the reader position.");
+            }
+
+            uint childSize = reader.ReadUInt32BigEndian(childOffset + sizeof(uint));
+            if (childSize < sizeof(uint) * 2 || childSize > size - blobOffset || childSize > int.MaxValue)
+            {
+                throw new InvalidDataException($"Super blob child size {childSize} is outside the declared blob.");
+            }
+
             blobIndices.Add(blobIndex);
-            blobs.Add(BlobParser.ParseBlob(reader, offset + blobIndex.Offset));
+            IBlob blob = BlobParser.ParseBlob(reader, childOffset);
+            if (blob.Size > childSize)
+            {
+                throw new InvalidDataException("Parsed super blob child exceeds its declared size.");
+            }
+            blobs.Add(blob);
         }
         Debug.Assert(size == sizeof(uint) + sizeof(uint) + sizeof(uint)
                              + blobIndices.Count * BlobIndex.Size

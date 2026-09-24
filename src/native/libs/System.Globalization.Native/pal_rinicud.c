@@ -1190,6 +1190,56 @@ static size_t record_field_length(const char* field, size_t capacity)
     return length;
 }
 
+static int append_display_name_text(char* dest, size_t capacity, size_t* length, const char* text)
+{
+    size_t text_length;
+    if (!dest || !length || !text || *length >= capacity) return 0;
+    text_length = strlen(text);
+    if (text_length >= capacity - *length) return 0;
+    memcpy(dest + *length, text, text_length);
+    *length += text_length;
+    dest[*length] = '\0';
+    return 1;
+}
+
+static int product_locale_display_name(rin_icu_client_t* client,
+                                       const char* display_locale,
+                                       const RinIcuDataLocaleRecord* record,
+                                       char* dest,
+                                       size_t capacity,
+                                       size_t* out_length)
+{
+    char language[256];
+    char region[256];
+    size_t language_length = 0u;
+    size_t region_length = 0u;
+    size_t length = 0u;
+    int status;
+    if (!client || !display_locale || !record || !dest || capacity == 0u) return RIN_ICU_STATUS_INVALID;
+    status = rin_icu_display_name(client, display_locale, record->language,
+                                  RIN_ICU_DISPLAY_NAME_LANGUAGE, RIN_ICU_STYLE_LONG,
+                                  RIN_ICU_LANGUAGE_DISPLAY_STANDARD, language,
+                                  sizeof(language), &language_length);
+    if (status != RIN_ICU_STATUS_OK || language_length >= sizeof(language) ||
+        !append_display_name_text(dest, capacity, &length, language)) {
+        return status != RIN_ICU_STATUS_OK ? status : RIN_ICU_STATUS_NO_SPACE;
+    }
+    if (record->region[0] != '\0') {
+        status = rin_icu_display_name(client, display_locale, record->region,
+                                      RIN_ICU_DISPLAY_NAME_REGION, RIN_ICU_STYLE_LONG,
+                                      RIN_ICU_LANGUAGE_DISPLAY_STANDARD, region,
+                                      sizeof(region), &region_length);
+        if (status != RIN_ICU_STATUS_OK || region_length >= sizeof(region) ||
+            !append_display_name_text(dest, capacity, &length, " (") ||
+            !append_display_name_text(dest, capacity, &length, region) ||
+            !append_display_name_text(dest, capacity, &length, ")")) {
+            return status != RIN_ICU_STATUS_OK ? status : RIN_ICU_STATUS_NO_SPACE;
+        }
+    }
+    if (out_length) *out_length = length;
+    return RIN_ICU_STATUS_OK;
+}
+
 static int append_pattern_text(char* dest, size_t capacity, size_t* length, const char* text)
 {
     size_t text_length = strlen(text);
@@ -1861,6 +1911,10 @@ int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStrin
         uint32_t type = RIN_ICU_DISPLAY_NAME_LANGUAGE;
         const char* code = locale_name;
         uint32_t style = RIN_ICU_STYLE_LONG;
+        int locale_display_name = kind == LocaleString_EnglishDisplayName ||
+            kind == LocaleString_NativeDisplayName || kind == LocaleString_LocalizedDisplayName;
+        const char* display_locale = ui_name;
+        if (locale_display_name) code = record.language;
         if (kind == LocaleString_EnglishCountryName || kind == LocaleString_NativeCountryName) {
             type = RIN_ICU_DISPLAY_NAME_REGION;
             code = record.region;
@@ -1870,7 +1924,6 @@ int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStrin
         } else if (kind == LocaleString_EnglishLanguageName || kind == LocaleString_NativeLanguageName || kind == LocaleString_LocalizedLanguageName) {
             code = record.language;
         }
-        const char* display_locale = ui_name;
         if (kind == LocaleString_EnglishDisplayName || kind == LocaleString_EnglishLanguageName ||
             kind == LocaleString_EnglishCountryName || kind == LocaleString_CurrencyEnglishName) {
             display_locale = "en";
@@ -1878,7 +1931,9 @@ int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStrin
                    kind == LocaleString_NativeCountryName || kind == LocaleString_CurrencyNativeName) {
             display_locale = locale_name;
         }
-        status = rin_icu_display_name(client, display_locale, code, type, style, RIN_ICU_LANGUAGE_DISPLAY_STANDARD, buffer, sizeof(buffer), &length);
+        status = locale_display_name
+            ? product_locale_display_name(client, display_locale, &record, buffer, sizeof(buffer), &length)
+            : rin_icu_display_name(client, display_locale, code, type, style, RIN_ICU_LANGUAGE_DISPLAY_STANDARD, buffer, sizeof(buffer), &length);
     }
     if (status != RIN_ICU_STATUS_OK && have_record) {
         switch (kind) {

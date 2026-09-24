@@ -89,11 +89,42 @@ namespace
 
     std::string ConvertWideToUtf8(_In_ const std::wstring &wide)
     {
-        // [TODO] Properly convert to UTF-8
-        std::string narrow;
-        for (WCHAR p : wide)
-            narrow.push_back(static_cast<CHAR>(p));
+        if (wide.empty())
+            return {};
 
+        // Do not truncate UTF-16 code units.  Besides losing non-ASCII paths,
+        // the old byte cast also accepted unpaired surrogates as if they were
+        // valid UTF-8.  Passing an explicit length keeps embedded NULs intact,
+        // while WC_ERR_INVALID_CHARS makes malformed UTF-16 fail closed.
+        if (wide.size() > static_cast<size_t>(INT_MAX))
+            return {};
+
+        int required = ::WideCharToMultiByte(
+            CP_UTF8,
+            WC_ERR_INVALID_CHARS,
+            wide.data(),
+            static_cast<int>(wide.size()),
+            nullptr,
+            0,
+            nullptr,
+            nullptr);
+        if (required <= 0)
+            return {};
+
+        std::string narrow(static_cast<size_t>(required), '\0');
+        int written = ::WideCharToMultiByte(
+            CP_UTF8,
+            WC_ERR_INVALID_CHARS,
+            wide.data(),
+            static_cast<int>(wide.size()),
+            narrow.data(),
+            required,
+            nullptr,
+            nullptr);
+        if (written <= 0)
+            return {};
+
+        narrow.resize(static_cast<size_t>(written));
         return narrow;
     }
 

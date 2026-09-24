@@ -561,6 +561,16 @@ static const char* const g_ar_abbreviated_day_names[] = {
 static const char* const g_ar_super_short_day_names[] = {
     "ح", "ن", "ث", "ر", "خ", "ج", "س"
 };
+static const char* const g_ar_hijri_month_names[] = {
+    "محرم", "صفر", "ربيع الأول", "ربيع الآخر", "جمادى الأولى", "جمادى الآخرة",
+    "رجب", "شعبان", "رمضان", "شوال", "ذو القعدة", "ذو الحجة", ""
+};
+static const char* const g_ar_hijri_abbreviated_month_names[] = {
+    "محرم", "صفر", "ربيع 1", "ربيع 2", "جمادى 1", "جمادى 2",
+    "رجب", "شعبان", "رمضان", "شوال", "ذو القعدة", "ذو الحجة", ""
+};
+static const char* const g_hijri_era_names[] = { "بعد الهجرة" };
+static const char* const g_hijri_era_abbreviations[] = { "هـ" };
 
 static const char* const g_fa_month_names[] = {
     "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
@@ -801,6 +811,10 @@ static int is_product_calendar_for_locale(const RinIcuDataLocaleRecord* record,
         return strcmp(record->language, "th") == 0 &&
             strcmp(record->region, "TH") == 0;
     }
+    if (calendar == 6 || calendar == 23) {
+        return strcmp(record->language, "ar") == 0 &&
+            strcmp(record->region, "SA") == 0;
+    }
     if (calendar == 22) {
         return strcmp(record->language, "fa") == 0 &&
             strcmp(record->region, "IR") == 0;
@@ -820,6 +834,8 @@ static const char* calendar_native_name(const RinIcuDataLocaleRecord* record,
         case 5: return "단기력";
         case 7: return "ปฏิทินพุทธ";
         case 22: return "تقویم هجری شمسی";
+        case 6: return "التقويم الهجري";
+        case 23: return "تقويم أم القرى";
         default: return symbols->native_gregorian_name;
     }
 }
@@ -856,12 +872,30 @@ static const char* calendar_symbol(const RinIcuDataLocaleRecord* record,
             eras = kind == CalendarData_EraNames
                 ? g_persian_era_names : g_persian_era_abbreviations;
             count = 1u;
+        } else if (calendar == 6 || calendar == 23) {
+            eras = kind == CalendarData_EraNames
+                ? g_hijri_era_names : g_hijri_era_abbreviations;
+            count = 1u;
         } else {
             eras = kind == CalendarData_EraNames
                 ? g_gregorian_era_names : g_gregorian_era_abbreviations;
             count = 1u;
         }
         return index < count ? eras[index] : NULL;
+    }
+    if (calendar == 6 || calendar == 23) {
+        if (kind == CalendarData_MonthNames) {
+            return index < 13u ? g_ar_hijri_month_names[index] : NULL;
+        }
+        if (kind == CalendarData_AbbrevMonthNames) {
+            return index < 13u ? g_ar_hijri_abbreviated_month_names[index] : NULL;
+        }
+        if (kind == CalendarData_MonthGenitiveNames) {
+            return index < 13u ? g_ar_hijri_month_names[index] : NULL;
+        }
+        if (kind == CalendarData_AbbrevMonthGenitiveNames) {
+            return index < 13u ? g_ar_hijri_abbreviated_month_names[index] : NULL;
+        }
     }
     if (kind == CalendarData_MonthNames) {
         return index < 13u ? symbols->month_names[index] : NULL;
@@ -2230,6 +2264,14 @@ int32_t GlobalizationNative_GetCalendars(const UChar* locale, CalendarId* calend
     if (!calendars || capacity <= 0 || !get_locale_record(locale, &record)) return 0;
     if (strcmp(record.language, "fa") == 0 && strcmp(record.region, "IR") == 0) {
         calendars[0] = 22;
+        if (capacity > 1) {
+            calendars[1] = 1;
+            return 2;
+        }
+        return 1;
+    }
+    if (strcmp(record.language, "ar") == 0 && strcmp(record.region, "SA") == 0) {
+        calendars[0] = 23;
         if (capacity > 1) {
             calendars[1] = 1;
             return 2;

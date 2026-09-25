@@ -439,6 +439,7 @@ c_static_assert(sizeof(LinkLayerAddressInfo) == 20);
 c_static_assert(sizeof_member(LinkLayerAddressInfo, AddressBytes) == 12);
 c_static_assert(sizeof_member(NetworkInterfaceInfo, AddressBytes) == 12);
 c_static_assert(sizeof(NetworkInterfaceInfo) >= sizeof(IpAddressInfo));
+c_static_assert(sizeof(RinOSNetworkPrimaryInfo) == 36);
 
 int32_t SystemNative_GetNetworkInterfaces(int32_t * interfaceCount, NetworkInterfaceInfo **interfaceList, int32_t * addressCount, IpAddressInfo **addressList )
 {
@@ -757,6 +758,39 @@ int32_t SystemNative_GetNetworkInterfaces(int32_t * interfaceCount, NetworkInter
     (void)interfaceList;
     (void)addressCount;
     (void)addressList;
+    errno = ENOTSUP;
+    return -1;
+#endif
+}
+
+int32_t SystemNative_GetRinOSNetworkPrimaryInfo(RinOSNetworkPrimaryInfo* info)
+{
+    if (info == NULL)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    memset(info, 0, sizeof(*info));
+#if defined(TARGET_RINOS)
+    RinNetPrimaryInfo primary = {0};
+    if (rin_net_get_primary_info(&primary) != 0 ||
+        primary.ifname[0] == '\0' || primary.device_generation == 0u ||
+        primary.link_type > RIN_NET_LINK_TYPE_MAX)
+    {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    memcpy(info->Name, primary.ifname, sizeof(info->Name));
+    info->Name[sizeof(info->Name) - 1u] = '\0';
+    memcpy(info->AddressBytes, primary.ip, sizeof(info->AddressBytes));
+    memcpy(info->NetmaskBytes, primary.netmask, sizeof(info->NetmaskBytes));
+    memcpy(info->GatewayBytes, primary.gateway, sizeof(info->GatewayBytes));
+    memcpy(info->DnsBytes, primary.dns, sizeof(info->DnsBytes));
+    info->Flags = primary.flags & RIN_NETINFO_KNOWN_FLAGS;
+    return 0;
+#else
     errno = ENOTSUP;
     return -1;
 #endif

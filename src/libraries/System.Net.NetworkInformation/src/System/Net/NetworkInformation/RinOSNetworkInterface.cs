@@ -1,6 +1,7 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Runtime.InteropServices;
@@ -26,7 +27,8 @@ namespace System.Net.NetworkInformation
             int mtu,
             NetworkInterfaceType interfaceType,
             OperationalStatus operationalStatus,
-            bool supportsMulticast)
+            bool supportsMulticast,
+            Interop.Sys.RinOSNetworkPrimaryInfo? primaryInfo)
             : base(name)
         {
             _index = index;
@@ -35,7 +37,7 @@ namespace System.Net.NetworkInformation
             _networkInterfaceType = interfaceType;
             _operationalStatus = operationalStatus;
             _supportsMulticast = supportsMulticast;
-            _ipProperties = new RinOSIPInterfaceProperties(this);
+            _ipProperties = new RinOSIPInterfaceProperties(this, primaryInfo);
         }
 
         internal static unsafe NetworkInterface[] GetRinOSNetworkInterfaces()
@@ -45,6 +47,8 @@ namespace System.Net.NetworkInformation
             Interop.Sys.NetworkInterfaceInfo* interfaceList = null;
             Interop.Sys.IpAddressInfo* addressList = null;
             IntPtr globalMemory = IntPtr.Zero;
+            Interop.Sys.RinOSNetworkPrimaryInfo primaryInfo = default;
+            bool hasPrimaryInfo = Interop.Sys.GetRinOSNetworkPrimaryInfo(&primaryInfo) == 0;
 
             if (Interop.Sys.GetNetworkInterfaces(&interfaceCount, &interfaceList, &addressCount, &addressList) != 0)
             {
@@ -67,7 +71,13 @@ namespace System.Net.NetworkInformation
                         interfaceList->Mtu,
                         (NetworkInterfaceType)interfaceList->HardwareType,
                         (OperationalStatus)interfaceList->OperationalState,
-                        interfaceList->SupportsMulticast != 0);
+                        interfaceList->SupportsMulticast != 0,
+                        hasPrimaryInfo && string.Equals(
+                            name,
+                            Utf8StringMarshaller.ConvertToManaged((byte*)&primaryInfo.Name),
+                            StringComparison.Ordinal)
+                            ? primaryInfo
+                            : null);
 
                     if (interfaceList->NumAddressBytes > 0)
                     {

@@ -43,6 +43,17 @@ internal static partial class Interop
             private InlineArray3<byte> __padding;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RinOSNetworkPrimaryInfo
+        {
+            public InlineArray16<byte> Name;
+            public InlineArray4<byte> AddressBytes;
+            public InlineArray4<byte> NetmaskBytes;
+            public InlineArray4<byte> GatewayBytes;
+            public InlineArray4<byte> DnsBytes;
+            public uint Flags;
+        }
+
         [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_EnumerateInterfaceAddresses")]
         public static unsafe partial int EnumerateInterfaceAddresses(
             void* context,
@@ -55,6 +66,9 @@ internal static partial class Interop
 
         [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_GetNetworkInterfaces", SetLastError = true)]
         public static unsafe partial int GetNetworkInterfaces(int* count, NetworkInterfaceInfo** addrs, int* addressCount, IpAddressInfo** aa);
+
+        [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_GetRinOSNetworkPrimaryInfo", SetLastError = true)]
+        public static unsafe partial int GetRinOSNetworkPrimaryInfo(RinOSNetworkPrimaryInfo* info);
 
     }
 }

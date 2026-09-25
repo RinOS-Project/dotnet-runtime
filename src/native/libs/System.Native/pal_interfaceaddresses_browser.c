@@ -38,6 +38,19 @@ int32_t SystemNative_GetNetworkInterfaces(int32_t* interfaceCount, NetworkInterf
     return 0;
 }
 
+int32_t SystemNative_GetRinOSNetworkPrimaryInfo(RinOSNetworkPrimaryInfo* info)
+{
+    if (info == NULL)
+    {
+        errno = EFAULT;
+        return -1;
+    }
+
+    memset(info, 0, sizeof(*info));
+    errno = ENOTSUP;
+    return -1;
+}
+
 int32_t SystemNative_EnumerateGatewayAddressesForInterface(void* context, uint32_t interfaceIndex, GatewayAddressFound onGatewayFound)
 {
     (void)context;

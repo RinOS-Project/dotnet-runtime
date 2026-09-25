@@ -2119,8 +2119,12 @@ static int locale_parent_name(rin_icu_client_t* client, const char* locale_name,
     underscore = strrchr(canonical, '_');
     if (!separator || (underscore && underscore > separator)) separator = underscore;
     if (!separator) {
-        if (capacity < 5u) return 0;
-        memcpy(parent, "root", 5u);
+        /* ICU represents the parent of a neutral locale and of the root
+         * locale as the invariant culture, which is the empty locale name.
+         * Returning the product-internal "root" identifier leaks the service
+         * catalog key through CultureInfo.Parent. */
+        if (capacity == 0u) return 0;
+        parent[0] = '\0';
         return 1;
     }
     length = (size_t)(separator - canonical);

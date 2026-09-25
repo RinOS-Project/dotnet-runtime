@@ -25,7 +25,7 @@ namespace Microsoft.CSharp.RuntimeBinder.ComInterop
                 );
             }
 
-            throw new NotImplementedException();
+            return base.BindGetMember(binder);
         }
 
         public override IEnumerable<string> GetDynamicMemberNames() {

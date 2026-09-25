@@ -84,7 +84,7 @@ namespace System.IO.Hashing
         }
 
         internal virtual ulong Update(ulong value, ReadOnlySpan<byte> source) =>
-            throw new NotImplementedException();
+            throw new NotSupportedException();
 
         internal ulong Finalize(ulong value)
         {

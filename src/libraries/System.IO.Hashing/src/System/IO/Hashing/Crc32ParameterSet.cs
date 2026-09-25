@@ -84,7 +84,7 @@ namespace System.IO.Hashing
         }
 
         internal virtual uint Update(uint value, ReadOnlySpan<byte> source) =>
-            throw new NotImplementedException();
+            throw new NotSupportedException();
 
         internal uint Finalize(uint value)
         {

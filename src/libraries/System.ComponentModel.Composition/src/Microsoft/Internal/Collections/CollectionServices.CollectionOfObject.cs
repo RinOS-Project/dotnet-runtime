@@ -55,17 +55,17 @@ namespace Microsoft.Internal.Collections
 
             public bool Contains(object item)
             {
-                throw new NotImplementedException();
+                return _list.Contains(item);
             }
 
             public void CopyTo(object[] array, int arrayIndex)
             {
-                throw new NotImplementedException();
+                _list.CopyTo(array, arrayIndex);
             }
 
             public int Count
             {
-                get { throw new NotImplementedException(); }
+                get { return _list.Count; }
             }
 
             public bool IsReadOnly
@@ -75,17 +75,27 @@ namespace Microsoft.Internal.Collections
 
             public bool Remove(object item)
             {
-                throw new NotImplementedException();
+                int index = _list.IndexOf(item);
+                if (index < 0)
+                {
+                    return false;
+                }
+
+                _list.RemoveAt(index);
+                return true;
             }
 
             public IEnumerator<object> GetEnumerator()
             {
-                throw new NotImplementedException();
+                foreach (object item in _list)
+                {
+                    yield return item;
+                }
             }
 
             IEnumerator IEnumerable.GetEnumerator()
             {
-                throw new NotImplementedException();
+                return _list.GetEnumerator();
             }
         }
 
@@ -110,17 +120,36 @@ namespace Microsoft.Internal.Collections
 
             public bool Contains(object item)
             {
-                throw new NotImplementedException();
+                if (item is null)
+                {
+                    return default(T) is null && _collectionOfT.Contains(default!);
+                }
+
+                return item is T itemOfT && _collectionOfT.Contains(itemOfT);
             }
 
             public void CopyTo(object[] array, int arrayIndex)
             {
-                throw new NotImplementedException();
+                ArgumentNullException.ThrowIfNull(array);
+                if ((uint)arrayIndex > (uint)array.Length)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(arrayIndex));
+                }
+
+                if (array.Length - arrayIndex < _collectionOfT.Count)
+                {
+                    throw new ArgumentException("The destination array is not long enough to copy all the items in the collection.", nameof(array));
+                }
+
+                foreach (T item in _collectionOfT)
+                {
+                    array[arrayIndex++] = item!;
+                }
             }
 
             public int Count
             {
-                get { throw new NotImplementedException(); }
+                get { return _collectionOfT.Count; }
             }
 
             public bool IsReadOnly
@@ -130,17 +159,25 @@ namespace Microsoft.Internal.Collections
 
             public bool Remove(object item)
             {
-                throw new NotImplementedException();
+                if (item is null)
+                {
+                    return default(T) is null && _collectionOfT.Remove(default!);
+                }
+
+                return item is T itemOfT && _collectionOfT.Remove(itemOfT);
             }
 
             public IEnumerator<object> GetEnumerator()
             {
-                throw new NotImplementedException();
+                foreach (T item in _collectionOfT)
+                {
+                    yield return item!;
+                }
             }
 
             IEnumerator IEnumerable.GetEnumerator()
             {
-                throw new NotImplementedException();
+                return ((IEnumerable)_collectionOfT).GetEnumerator();
             }
         }
     }

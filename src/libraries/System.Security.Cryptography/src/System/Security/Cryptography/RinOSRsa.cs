@@ -179,6 +179,7 @@ namespace System.Security.Cryptography
                                         RSAEncryptionPadding padding, out int bytesWritten)
         {
             ArgumentNullException.ThrowIfNull(padding);
+            ThrowIfDisposed();
             int mode = GetEncryptionMode(padding, out int hashAlgorithm);
             fixed (byte* pData = data)
             fixed (byte* pDestination = destination)
@@ -206,6 +207,7 @@ namespace System.Security.Cryptography
                                         RSAEncryptionPadding padding, out int bytesWritten)
         {
             ArgumentNullException.ThrowIfNull(padding);
+            ThrowIfDisposed();
             int mode = GetEncryptionMode(padding, out int hashAlgorithm);
             fixed (byte* pData = data)
             fixed (byte* pDestination = destination)
@@ -235,6 +237,7 @@ namespace System.Security.Cryptography
                                          RSASignaturePadding padding, out int bytesWritten)
         {
             ArgumentNullException.ThrowIfNull(padding);
+            ThrowIfDisposed();
             int hashId = GetHashAlgorithm(hashAlgorithm, out int hashSize);
             int mode = padding.Mode switch
             {
@@ -258,6 +261,7 @@ namespace System.Security.Cryptography
                                         RSASignaturePadding padding)
         {
             ArgumentNullException.ThrowIfNull(padding);
+            ThrowIfDisposed();
             int hashId = GetHashAlgorithm(hashAlgorithm, out int hashSize);
             int mode = padding.Mode switch
             {

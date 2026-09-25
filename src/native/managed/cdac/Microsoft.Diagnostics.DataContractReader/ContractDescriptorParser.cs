@@ -158,7 +158,18 @@ public partial class ContractDescriptorParser
 
         public override void Write(Utf8JsonWriter writer, TypeDescriptor value, JsonSerializerOptions options)
         {
-            throw new NotImplementedException();
+            writer.WriteStartObject();
+            if (value.Size is uint size)
+                writer.WriteNumber(TypeDescriptorSizeSigil, size);
+            if (value.Fields is not null)
+            {
+                foreach (KeyValuePair<string, FieldDescriptor> field in value.Fields)
+                {
+                    writer.WritePropertyName(field.Key);
+                    JsonSerializer.Serialize(writer, field.Value, options);
+                }
+            }
+            writer.WriteEndObject();
         }
     }
 
@@ -190,7 +201,16 @@ public partial class ContractDescriptorParser
 
         public override void Write(Utf8JsonWriter writer, FieldDescriptor value, JsonSerializerOptions options)
         {
-            throw new JsonException();
+            if (value.Type is null)
+            {
+                writer.WriteNumberValue(value.Offset);
+                return;
+            }
+
+            writer.WriteStartArray();
+            writer.WriteNumberValue(value.Offset);
+            writer.WriteStringValue(value.Type);
+            writer.WriteEndArray();
         }
     }
 
@@ -268,7 +288,47 @@ public partial class ContractDescriptorParser
 
         public override void Write(Utf8JsonWriter writer, GlobalDescriptor value, JsonSerializerOptions options)
         {
-            throw new JsonException();
+            if (value.Indirect)
+            {
+                if (value.NumericValue is not ulong numericValue)
+                    throw new JsonException("Indirect global value must contain a numeric value.");
+                writer.WriteStartArray();
+                if (value.Type is null)
+                {
+                    writer.WriteNumberValue(numericValue);
+                }
+                else
+                {
+                    writer.WriteStartArray();
+                    writer.WriteNumberValue(numericValue);
+                    writer.WriteEndArray();
+                    writer.WriteStringValue(value.Type);
+                }
+                writer.WriteEndArray();
+                return;
+            }
+
+            bool hasNumericValue = value.NumericValue is ulong;
+            bool hasStringValue = value.StringValue is not null;
+            if (!hasNumericValue && !hasStringValue)
+                throw new JsonException("Global value must contain a numeric or string value.");
+
+            if (value.Type is null)
+            {
+                if (hasStringValue)
+                    writer.WriteStringValue(value.StringValue);
+                else
+                    writer.WriteNumberValue(value.NumericValue!.Value);
+                return;
+            }
+
+            writer.WriteStartArray();
+            if (hasStringValue)
+                writer.WriteStringValue(value.StringValue);
+            else
+                writer.WriteNumberValue(value.NumericValue!.Value);
+            writer.WriteStringValue(value.Type);
+            writer.WriteEndArray();
         }
     }
 

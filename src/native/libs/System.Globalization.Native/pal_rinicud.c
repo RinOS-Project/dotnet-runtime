@@ -1948,7 +1948,9 @@ int32_t GlobalizationNative_EndsWith(SortHandle* handle, const UChar* target, in
 static int32_t locale_call(const UChar* locale, UChar* value, int32_t value_length, int (*call)(rin_icu_client_t*, const char*, char*, size_t, size_t*))
 {
     char* locale_name = locale_utf8(locale);
-    int32_t result = service_text_call(call, locale_name, value, value_length);
+    int32_t result;
+    if (!locale_name) return 0;
+    result = service_text_call(call, locale_name, value, value_length);
     free(locale_name);
     return result;
 }
@@ -2025,7 +2027,7 @@ int32_t GlobalizationNative_GetLocales(UChar* value, int32_t value_length)
     int32_t written = 0;
     int32_t required = 0;
     int status;
-    if (!client || (value && value_length < 0)) return -1;
+    if (!client || value_length < 0) return -1;
     status = rin_icu_locale_available(client, NULL, 0u, &length);
     if (status != RIN_ICU_STATUS_OK || length > RIN_ICU_MAX_INLINE_PAYLOAD || length == SIZE_MAX) return -1;
     list = (char*)malloc(length + 1u);

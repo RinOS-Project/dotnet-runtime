@@ -2162,10 +2162,12 @@ int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStrin
         free(locale_name);
         return 0;
     }
-    ui_name = locale_utf8(ui_locale);
-    if (!ui_name) {
-        free(locale_name);
-        return 0;
+    if (locale_string_requires_ui_locale(kind)) {
+        ui_name = locale_utf8(ui_locale);
+        if (!ui_name) {
+            free(locale_name);
+            return 0;
+        }
     }
     have_record = get_locale_record(locale, &record);
     if (client && have_record && (kind == LocaleString_EnglishDisplayName || kind == LocaleString_NativeDisplayName || kind == LocaleString_LocalizedDisplayName ||

@@ -1,7 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -200,7 +199,6 @@ ResultCode GlobalizationNative_GetCalendarInfo(
         case CalendarData_MonthDay:
             return GetMonthDayPattern(locale, result, resultCapacity);
         default:
-            assert(false);
             return UnknownError;
     }
 }
@@ -528,7 +526,6 @@ int32_t GlobalizationNative_EnumCalendarInfo(EnumCalendarInfoCallback callback,
         case CalendarData_AbbrevEraNames:
             return EnumAbbrevEraNames(locale, calendarId, callback, context);
         default:
-            assert(false);
             return false;
     }
 }

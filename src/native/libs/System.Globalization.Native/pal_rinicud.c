@@ -1808,10 +1808,12 @@ static int create_sort_handle(const char* locale, SortHandle** out_handle)
 
 static rin_icu_handle_t collator_handle_for_options(SortHandle* handle, int32_t compare_options)
 {
-    uint32_t normalized = (uint32_t)compare_options & CompareOptionsMask;
+    uint32_t raw_options = (uint32_t)compare_options;
+    uint32_t normalized;
     rin_icu_collator_options_t options;
     rin_icu_handle_t service_handle = 0u;
-    if (!handle) return 0u;
+    if (!handle || (raw_options & ~((uint32_t)CompareOptionsMask)) != 0u) return 0u;
+    normalized = raw_options & CompareOptionsMask;
     if (handle->option_initialized[normalized]) return handle->option_handles[normalized];
     collator_options_from_compare(compare_options, &options);
     if (rin_icu_collator_create(handle->client, handle->locale, &options, &service_handle) != RIN_ICU_STATUS_OK) {

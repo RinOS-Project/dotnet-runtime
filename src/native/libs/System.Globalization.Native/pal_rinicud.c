@@ -1667,7 +1667,7 @@ void GlobalizationNative_InitOrdinalCasingPage(int32_t page_number, UChar* targe
 {
     uint32_t first_codepoint;
     int i;
-    if (!target) return;
+    if (!target || page_number < 0 || page_number > 0xff) return;
     first_codepoint = ((uint32_t)page_number) << 8;
     for (i = 0; i < 256; ++i) {
         target[i] = (UChar)rin_unicode_toupper(first_codepoint + (uint32_t)i);
@@ -1684,7 +1684,7 @@ void GlobalizationNative_InitOrdinalLowerCasingPage(int32_t page_number, UChar* 
 {
     uint32_t first_codepoint;
     int i;
-    if (!target) return;
+    if (!target || page_number < 0 || page_number > 0xff) return;
     first_codepoint = ((uint32_t)page_number) << 8;
     for (i = 0; i < 256; ++i) {
         target[i] = (UChar)rin_unicode_tolower(first_codepoint + (uint32_t)i);

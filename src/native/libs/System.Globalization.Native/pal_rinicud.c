@@ -1375,7 +1375,10 @@ static int product_percent_positive_pattern(const RinIcuDataLocaleRecord* record
 static int product_first_day_of_week(const char* region)
 {
     static const char* sunday_regions[] = {
-        "BR", "CA", "CN", "ID", "IN", "JP", "KR", "MX", "SA", "TH", "TW", "US"
+        "BR", "CA", "ID", "IN", "JP", "KR", "MX", "PT", "SA", "TH", "TW", "US"
+    };
+    static const char* saturday_regions[] = {
+        "IR"
     };
     size_t index;
     if (!region) return -1;
@@ -1383,14 +1386,17 @@ static int product_first_day_of_week(const char* region)
     for (index = 0u; index < sizeof(sunday_regions) / sizeof(sunday_regions[0]); ++index) {
         if (strcmp(region, sunday_regions[index]) == 0) return 0;
     }
+    for (index = 0u; index < sizeof(saturday_regions) / sizeof(saturday_regions[0]); ++index) {
+        if (strcmp(region, saturday_regions[index]) == 0) return 6;
+    }
     return 1;
 }
 
 static int product_first_week_rule(const char* region)
 {
     static const char* first_four_day_regions[] = {
-        "BE", "BG", "CH", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GB",
-        "GR", "IE", "IS", "IT", "LT", "LU", "NL", "PL", "RU", "SE", "SK"
+        "AT", "BE", "BG", "CH", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GB",
+        "GR", "IE", "IS", "IT", "LT", "LU", "NL", "PL", "PT", "RU", "SE", "SK"
     };
     size_t index;
     if (!region) return -1;

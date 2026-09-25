@@ -1417,7 +1417,11 @@ extern "C" void QCALLTYPE AssemblyNative_ApplyUpdate(
         g_metadataUpdatesApplied = true;
     }
 #else
-    COMPlusThrow(kNotImplementedException);
+    // Metadata updater support is intentionally disabled in this runtime
+    // configuration.  IsApplyUpdateSupported() reports the same capability
+    // boundary; do not expose it as an implementation stub to callers that
+    // invoke the API directly.
+    COMPlusThrow(kNotSupportedException);
 #endif
 
     END_QCALL;

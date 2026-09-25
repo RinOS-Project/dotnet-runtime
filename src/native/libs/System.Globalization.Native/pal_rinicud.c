@@ -1211,10 +1211,10 @@ static int product_locale_language_id(const char* locale_id)
         int value;
     };
     static const struct LocaleIdEntry entries[] = {
-        {"en-US", 0x0409}, {"en-GB", 0x0809}, {"ja-JP", 0x0411},
+        {"en-US", 0x0409}, {"en-GB", 0x0809}, {"en-IN", 0x4009}, {"ja-JP", 0x0411},
         {"zh-CN", 0x0804}, {"zh-TW", 0x0404}, {"ko-KR", 0x0412},
-        {"fr-FR", 0x040c}, {"de-DE", 0x0407}, {"es-ES", 0x0c0a},
-        {"es-MX", 0x080a}, {"it-IT", 0x0410}, {"pt-BR", 0x0416},
+        {"fr-FR", 0x040c}, {"fr-BE", 0x080c}, {"de-DE", 0x0407}, {"de-AT", 0x0c07}, {"es-ES", 0x0c0a},
+        {"es-MX", 0x080a}, {"es-US", 0x540a}, {"it-IT", 0x0410}, {"pt-BR", 0x0416},
         {"pt-PT", 0x0816}, {"ru-RU", 0x0419}, {"uk-UA", 0x0422},
         {"tr-TR", 0x041f}, {"pl-PL", 0x0415}, {"nl-NL", 0x0413},
         {"sv-SE", 0x041d}, {"fi-FI", 0x040b}, {"da-DK", 0x0406},

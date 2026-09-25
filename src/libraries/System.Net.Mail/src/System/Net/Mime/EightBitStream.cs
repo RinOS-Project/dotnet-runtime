@@ -50,12 +50,12 @@ namespace System.Net.Mime
 
         protected override int ReadInternal(Span<byte> buffer)
         {
-            throw new NotImplementedException();
+            throw new NotSupportedException(SR.ReadNotSupported);
         }
 
         protected override ValueTask<int> ReadAsyncInternal(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
-            throw new NotImplementedException();
+            throw new NotSupportedException(SR.ReadNotSupported);
         }
 
         // Implement abstract Write methods
@@ -164,12 +164,12 @@ namespace System.Net.Mime
             await base.DisposeAsync().ConfigureAwait(false);
         }
 
-        public int DecodeBytes(Span<byte> buffer) { throw new NotImplementedException(); }
+        public int DecodeBytes(Span<byte> buffer) { throw new NotSupportedException(SR.ReadNotSupported); }
 
-        public int EncodeBytes(ReadOnlySpan<byte> buffer) { throw new NotImplementedException(); }
+        public int EncodeBytes(ReadOnlySpan<byte> buffer) { throw new NotSupportedException(SR.WriteNotSupported); }
 
-        public int EncodeString(string value, Encoding encoding) { throw new NotImplementedException(); }
+        public int EncodeString(string value, Encoding encoding) { throw new NotSupportedException(SR.WriteNotSupported); }
 
-        public string GetEncodedString() { throw new NotImplementedException(); }
+        public string GetEncodedString() { throw new NotSupportedException(SR.ReadNotSupported); }
     }
 }

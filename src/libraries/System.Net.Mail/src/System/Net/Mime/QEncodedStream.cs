@@ -217,12 +217,38 @@ namespace System.Net.Mime
 
         protected override int ReadInternal(Span<byte> buffer)
         {
-            throw new NotImplementedException();
+            while (true)
+            {
+                int read = BaseStream.Read(buffer);
+                if (read == 0)
+                {
+                    return 0;
+                }
+
+                read = DecodeBytes(buffer.Slice(0, read));
+                if (read > 0)
+                {
+                    return read;
+                }
+            }
         }
 
-        protected override ValueTask<int> ReadAsyncInternal(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        protected override async ValueTask<int> ReadAsyncInternal(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
-            throw new NotImplementedException();
+            while (true)
+            {
+                int read = await BaseStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+                if (read == 0)
+                {
+                    return 0;
+                }
+
+                read = DecodeBytes(buffer.Span.Slice(0, read));
+                if (read > 0)
+                {
+                    return read;
+                }
+            }
         }
 
         protected override void WriteInternal(ReadOnlySpan<byte> buffer)

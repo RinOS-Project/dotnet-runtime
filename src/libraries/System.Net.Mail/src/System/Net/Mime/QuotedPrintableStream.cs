@@ -331,12 +331,12 @@ namespace System.Net.Mime
 
         protected override int ReadInternal(Span<byte> buffer)
         {
-            throw new NotImplementedException();
+            throw new NotSupportedException(SR.ReadNotSupported);
         }
 
         protected override ValueTask<int> ReadAsyncInternal(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
-            throw new NotImplementedException();
+            throw new NotSupportedException(SR.ReadNotSupported);
         }
 
         protected override void WriteInternal(ReadOnlySpan<byte> buffer)

@@ -75,12 +75,12 @@ namespace System.Net
 
         protected override void WriteInternal(ReadOnlySpan<byte> buffer)
         {
-            throw new NotImplementedException();
+            throw new NotSupportedException(SR.WriteNotSupported);
         }
 
         protected override ValueTask WriteAsyncInternal(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
         {
-            throw new NotImplementedException();
+            throw new NotSupportedException(SR.WriteNotSupported);
         }
 
         // adds additional content to the beginning of the buffer

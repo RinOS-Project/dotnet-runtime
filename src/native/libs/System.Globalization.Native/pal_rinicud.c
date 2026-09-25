@@ -2391,6 +2391,8 @@ ResultCode GlobalizationNative_GetCalendarInfo(const UChar* locale, CalendarId c
 {
     RinIcuDataLocaleRecord record;
     char pattern[128];
+    const char* date_pattern;
+    size_t date_pattern_capacity;
     if (capacity < 0 || !get_locale_record(locale, &record) ||
         !is_product_calendar_for_locale(&record, calendar)) return UnknownError;
     switch (kind) {
@@ -2399,7 +2401,10 @@ ResultCode GlobalizationNative_GetCalendarInfo(const UChar* locale, CalendarId c
         case CalendarData_MonthDay:
         case CalendarData_ShortDates:
         case CalendarData_LongDates:
-            if (!product_pattern(record.date_pattern, sizeof(record.date_pattern), 0, kind == CalendarData_MonthDay, pattern, sizeof(pattern))) return UnknownError;
+            date_pattern = kind == CalendarData_LongDates ? record.long_date_pattern : record.date_pattern;
+            date_pattern_capacity = kind == CalendarData_LongDates
+                ? sizeof(record.long_date_pattern) : sizeof(record.date_pattern);
+            if (!product_pattern(date_pattern, date_pattern_capacity, 0, kind == CalendarData_MonthDay, pattern, sizeof(pattern))) return UnknownError;
             return copy_calendar_text(pattern, value, capacity, NULL);
         case CalendarData_YearMonths:
             if (!product_year_month_pattern(record.date_pattern, sizeof(record.date_pattern), pattern, sizeof(pattern))) return UnknownError;
@@ -2442,9 +2447,13 @@ int32_t GlobalizationNative_EnumCalendarInfo(EnumCalendarInfoCallback callback, 
         kind != CalendarData_YearMonths) return 0;
     {
         char product_format[128];
+        const char* date_pattern = kind == CalendarData_LongDates
+            ? record.long_date_pattern : record.date_pattern;
+        size_t date_pattern_capacity = kind == CalendarData_LongDates
+            ? sizeof(record.long_date_pattern) : sizeof(record.date_pattern);
         int format_length = kind == CalendarData_YearMonths
             ? product_year_month_pattern(record.date_pattern, sizeof(record.date_pattern), product_format, sizeof(product_format))
-            : product_pattern(record.date_pattern, sizeof(record.date_pattern), 0, 0, product_format, sizeof(product_format));
+            : product_pattern(date_pattern, date_pattern_capacity, 0, 0, product_format, sizeof(product_format));
         if (format_length <= 0) return 0;
         pattern_length = copy_utf8(product_format, strlen(product_format), pattern, (int32_t)(sizeof(pattern) / sizeof(pattern[0])));
     }

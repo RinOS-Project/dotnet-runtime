@@ -572,6 +572,14 @@ static const char* const g_ar_hijri_abbreviated_month_names[] = {
 static const char* const g_hijri_era_names[] = { "بعد الهجرة" };
 static const char* const g_hijri_era_abbreviations[] = { "هـ" };
 
+static const char* const g_fa_gregorian_month_names[] = {
+    "ژانویه", "فوریه", "مارس", "آوریل", "مه", "ژوئن",
+    "ژوئیه", "اوت", "سپتامبر", "اکتبر", "نوامبر", "دسامبر", ""
+};
+static const char* const g_fa_gregorian_abbreviated_month_names[] = {
+    "ژانویه", "فوریه", "مارس", "آوریل", "مه", "ژوئن",
+    "ژوئیه", "اوت", "سپتامبر", "اکتبر", "نوامبر", "دسامبر", ""
+};
 static const char* const g_fa_month_names[] = {
     "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
     "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند", ""
@@ -775,7 +783,7 @@ static const RinCalendarSymbols g_calendar_symbols[] = {
     { "ar", g_ar_month_names, g_ar_abbreviated_month_names, g_ar_day_names,
       g_ar_abbreviated_day_names, g_ar_super_short_day_names, "التقويم الميلادي", "التقويم الياباني",
       g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
-    { "fa", g_fa_month_names, g_fa_abbreviated_month_names, g_fa_day_names,
+    { "fa", g_fa_gregorian_month_names, g_fa_gregorian_abbreviated_month_names, g_fa_day_names,
       g_fa_abbreviated_day_names, g_fa_super_short_day_names, "تقویم میلادی", "تقویم ژاپنی",
       g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
     { "he", g_he_month_names, g_he_abbreviated_month_names, g_he_day_names,
@@ -936,6 +944,14 @@ static const char* calendar_symbol(const RinIcuDataLocaleRecord* record,
         }
         if (kind == CalendarData_AbbrevMonthGenitiveNames) {
             return index < 13u ? g_ar_hijri_abbreviated_month_names[index] : NULL;
+        }
+    }
+    if (calendar == 22) {
+        if (kind == CalendarData_MonthNames || kind == CalendarData_MonthGenitiveNames) {
+            return index < 13u ? g_fa_month_names[index] : NULL;
+        }
+        if (kind == CalendarData_AbbrevMonthNames || kind == CalendarData_AbbrevMonthGenitiveNames) {
+            return index < 13u ? g_fa_abbreviated_month_names[index] : NULL;
         }
     }
     if (calendar == 8) {

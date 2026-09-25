@@ -70,9 +70,9 @@ namespace System.Security.Cryptography
         public override byte[] SignHash(byte[] hash)
         {
             ArgumentNullException.ThrowIfNull(hash);
+            ThrowIfDisposed();
             if (hash.Length != Sha256Size)
                 throw new PlatformNotSupportedException("RinOS ECDSA currently supports SHA-256 hashes.");
-            ThrowIfDisposed();
 
             byte[] signature = new byte[SignatureSize];
             int signatureLength = 0;
@@ -94,9 +94,9 @@ namespace System.Security.Cryptography
         {
             ArgumentNullException.ThrowIfNull(hash);
             ArgumentNullException.ThrowIfNull(signature);
+            ThrowIfDisposed();
             if (hash.Length != Sha256Size || signature.Length != SignatureSize)
                 return false;
-            ThrowIfDisposed();
 
             fixed (byte* pHash = hash)
             fixed (byte* pSignature = signature)

@@ -60,7 +60,7 @@ namespace Internal
                 return ByrefTypeHashCode(TypeHashCode(type.GetElementType()));
             }
 
-            throw new NotImplementedException();
+            throw new InvalidOperationException("The TypeName instance has an unsupported shape.");
         }
 
         /// <summary>

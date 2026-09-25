@@ -5,6 +5,8 @@ namespace System.Reflection
 {
     public abstract partial class ConstructorInfo : MethodBase
     {
-        internal virtual Type GetReturnType() { throw new NotImplementedException(); }
+        // Constructors have a void signature. Runtime-backed and emitted constructors
+        // override this when they can obtain the return type from their metadata.
+        internal virtual Type GetReturnType() => typeof(void);
     }
 }

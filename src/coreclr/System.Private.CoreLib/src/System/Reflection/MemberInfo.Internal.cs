@@ -5,7 +5,9 @@ namespace System.Reflection
 {
     public abstract partial class MemberInfo
     {
-        internal virtual bool CacheEquals(object? o) { throw new NotImplementedException(); }
+        // Concrete runtime member types compare their metadata identity. A custom
+        // MemberInfo that does not provide a cache key is only equal to itself.
+        internal virtual bool CacheEquals(object? o) => ReferenceEquals(this, o);
 
         internal bool HasSameMetadataDefinitionAsCore<TOther>(MemberInfo other) where TOther : MemberInfo
         {

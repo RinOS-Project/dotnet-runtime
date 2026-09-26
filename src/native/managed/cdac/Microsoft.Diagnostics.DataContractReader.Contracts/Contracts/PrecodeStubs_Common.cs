@@ -109,7 +109,7 @@ internal class PrecodeStubsCommon<TPrecodeStubsImplementation> : IPrecodeStubs w
         }
         if (_codePointerFlags.HasFlag(CodePointerFlags.HasArm64PtrAuth))
         {
-            throw new NotImplementedException("CodePointerReadableInstrPointer for ARM64 with pointer authentication");
+            throw new NotSupportedException("CodePointerReadableInstrPointer for ARM64 pointer authentication is not supported.");
         }
         Debug.Assert(_codePointerFlags == 0);
         return codePointer.AsTargetPointer;

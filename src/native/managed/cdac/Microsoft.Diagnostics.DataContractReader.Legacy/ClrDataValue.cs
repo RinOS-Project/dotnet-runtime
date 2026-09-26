@@ -1161,11 +1161,11 @@ public sealed unsafe partial class ClrDataValue : IXCLRDataValue
         ClrDataValue value = new(
             target,
             threadAddress,
-            0,
+            flags: 0,
             typeHandle: null,
-            TargetPointer.Null,
-            [],
-            legacyValue: null,
+            baseAddress: TargetPointer.Null,
+            locations: [],
+            legacyImpl: null,
             apiLock: apiLock);
         var metadata = value.GetFieldMetadata(fieldDesc);
         return value.CreateFieldValue(

@@ -77,7 +77,7 @@ internal readonly struct CdacTypeHandle : Internal.CallingConvention.ITypeHandle
 
         if (ExactTypeHandle is null)
         {
-            throw new NotImplementedException(
+            throw new InvalidOperationException(
                 $"Exact runtime layout is unavailable for {_typeInfo.ElementType}.");
         }
 
@@ -181,7 +181,7 @@ internal readonly struct CdacTypeHandle : Internal.CallingConvention.ITypeHandle
     {
         // TODO(riscv-loongarch): Implement RISC-V/LoongArch64 FP struct classification.
         // Structs with 1-2 floating-point fields can be passed in FP registers.
-        throw new NotImplementedException("RISC-V/LoongArch64 FP struct classification is not yet implemented.");
+        throw new NotSupportedException("RISC-V/LoongArch64 FP struct classification is not supported.");
     }
 
     public bool IsTrivialPointerSizedStruct()

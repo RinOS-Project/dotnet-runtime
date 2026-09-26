@@ -123,7 +123,7 @@ public sealed unsafe partial class ClrDataTypeDefinition : IXCLRDataTypeDefiniti
             if (mod.IsNullRef)
                 return HResults.S_OK;
 
-            mod.Interface = new ClrDataModule(_target, _module, legacyModule, _apiLock);
+            mod.Interface = new ClrDataModule(_module, _target, legacyModule, _apiLock);
         }
         catch (System.Exception ex)
         {

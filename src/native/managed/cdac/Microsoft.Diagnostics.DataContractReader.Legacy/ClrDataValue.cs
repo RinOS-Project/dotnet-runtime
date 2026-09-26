@@ -1150,6 +1150,31 @@ public sealed unsafe partial class ClrDataValue : IXCLRDataValue
         return new ClrDataValue(_target, _threadAddress, flags, fieldType, baseAddress, locations, legacyValue, _apiLock);
     }
 
+    internal static ClrDataValue CreateStaticFieldValue(
+        Target target,
+        TargetPointer threadAddress,
+        TargetPointer fieldDesc,
+        bool isInherited,
+        IXCLRDataValue? legacyValue,
+        Lock apiLock)
+    {
+        ClrDataValue value = new(
+            target,
+            threadAddress,
+            0,
+            typeHandle: null,
+            TargetPointer.Null,
+            [],
+            legacyValue: null,
+            apiLock: apiLock);
+        var metadata = value.GetFieldMetadata(fieldDesc);
+        return value.CreateFieldValue(
+            new FieldEntry(fieldDesc, isInherited),
+            metadata.Definition,
+            metadata.EnclosingType,
+            legacyValue);
+    }
+
     private uint GetTypeFieldValueFlags(
         ITypeHandle? typeHandle,
         TargetPointer? fieldDesc,

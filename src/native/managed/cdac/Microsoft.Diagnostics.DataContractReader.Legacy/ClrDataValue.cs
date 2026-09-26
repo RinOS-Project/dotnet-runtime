@@ -800,12 +800,21 @@ public sealed unsafe partial class ClrDataValue : IXCLRDataValue
         return hr;
     }
 
-    private int EnumField(ulong* handle, DacComNullableByRef<IXCLRDataValue> field, uint nameBufLen, uint* nameLen, char* nameBuf, uint* token, bool byName)
+    private int EnumField(
+        ulong* handle,
+        DacComNullableByRef<IXCLRDataValue> field,
+        uint nameBufLen,
+        uint* nameLen,
+        char* nameBuf,
+        uint* token,
+        bool byName,
+        DacComNullableByRef<IXCLRDataModule>? tokenScope = null)
     {
         int hr = HResults.S_OK;
         FieldEnumeration? enumeration = null;
         int hrLocal = HResults.S_OK;
         IXCLRDataValue? legacyField = null;
+        IXCLRDataModule? legacyTokenScope = null;
         uint nameLenLocal = 0;
         uint tokenLocal = 0;
         char[] nameBufLocal = new char[nameBufLen > 0 ? nameBufLen : 1];
@@ -823,16 +832,31 @@ public sealed unsafe partial class ClrDataValue : IXCLRDataValue
             if (_legacyImpl is not null && enumeration.LegacyHandle != 0)
             {
                 ulong legacyHandle = (ulong)enumeration.LegacyHandle;
-                DacComNullableByRef<IXCLRDataValue> legacyFieldOut = new(isNullRef: false);
+                DacComNullableByRef<IXCLRDataValue> legacyFieldOut = new(isNullRef: field.IsNullRef);
+                DacComNullableByRef<IXCLRDataModule>? legacyTokenScopeOut = tokenScope is null
+                    ? null
+                    : new(isNullRef: tokenScope.IsNullRef);
                 fixed (char* nameBufLocalPtr = nameBufLocal)
                 {
-                    hrLocal = byName
-                        ? _legacyImpl.EnumFieldByName(&legacyHandle, legacyFieldOut, &tokenLocal)
-                        : _legacyImpl.EnumField(&legacyHandle, legacyFieldOut, nameBufLen, &nameLenLocal, nameBuf is null ? null : nameBufLocalPtr, &tokenLocal);
+                    if (tokenScope is null)
+                    {
+                        hrLocal = byName
+                            ? _legacyImpl.EnumFieldByName(&legacyHandle, legacyFieldOut, &tokenLocal)
+                            : _legacyImpl.EnumField(&legacyHandle, legacyFieldOut, nameBufLen, &nameLenLocal, nameBuf is null ? null : nameBufLocalPtr, &tokenLocal);
+                    }
+                    else
+                    {
+                        hrLocal = byName
+                            ? _legacyImpl.EnumFieldByName2(&legacyHandle, legacyFieldOut, legacyTokenScopeOut!, &tokenLocal)
+                            : _legacyImpl.EnumField2(&legacyHandle, legacyFieldOut, nameBufLen, &nameLenLocal, nameBuf is null ? null : nameBufLocalPtr, legacyTokenScopeOut!, &tokenLocal);
+                    }
                 }
                 enumeration.LegacyHandle = (nuint)legacyHandle;
                 if (hrLocal >= 0)
+                {
                     legacyField = legacyFieldOut.Interface;
+                    legacyTokenScope = legacyTokenScopeOut?.Interface;
+                }
             }
 
             if (!enumeration.Enumerator.MoveNext())
@@ -854,6 +878,11 @@ public sealed unsafe partial class ClrDataValue : IXCLRDataValue
                         *token = fieldToken;
                     if (!field.IsNullRef)
                         field.Interface = CreateFieldValue(entry, fieldDefinition, enclosingType, legacyField);
+                    if (tokenScope is not null && field.IsNullRef && !tokenScope.IsNullRef)
+                    {
+                        TargetPointer fieldModule = _target.Contracts.RuntimeTypeSystem.GetModule(enclosingType);
+                        tokenScope.Interface = new ClrDataModule(fieldModule, _target, legacyTokenScope, _apiLock);
+                    }
                 }
             }
         }
@@ -1212,7 +1241,7 @@ public sealed unsafe partial class ClrDataValue : IXCLRDataValue
     {
         using Lock.Scope scope = _apiLock.EnterScope();
 
-        return HResults.E_NOTIMPL;
+        return EnumField(handle, field, nameBufLen, nameLen, nameBuf, token, byName: false, tokenScope);
     }
 
     int IXCLRDataValue.EnumFieldByName2(
@@ -1223,7 +1252,7 @@ public sealed unsafe partial class ClrDataValue : IXCLRDataValue
     {
         using Lock.Scope scope = _apiLock.EnterScope();
 
-        return HResults.E_NOTIMPL;
+        return EnumField(handle, field, 0, null, null, token, byName: true, tokenScope);
     }
 
     int IXCLRDataValue.GetFieldByToken2(

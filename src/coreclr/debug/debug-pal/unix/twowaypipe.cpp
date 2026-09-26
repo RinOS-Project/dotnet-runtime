@@ -354,6 +354,10 @@ int TwoWayPipe::Read(void *buffer, DWORD bufferSize)
 
     while (true)
     {
+#if defined(TARGET_RINOS)
+        if (!RinOSDebugTransportPeerAuthorized(m_inboundPipe))
+            return -1;
+#endif
         bytesRead = (int)read(m_inboundPipe, buffer, cb);
         if (bytesRead == -1 && errno == EINTR)
             continue;
@@ -394,6 +398,8 @@ int TwoWayPipe::Write(const void *data, DWORD dataSize)
     while (true)
     {
 #if defined(TARGET_RINOS)
+        if (!RinOSDebugTransportPeerAuthorized(m_outboundPipe))
+            return -1;
         bytesWritten = (int)send(m_outboundPipe, data, cb, MSG_NOSIGNAL);
 #else
         bytesWritten = (int)write(m_outboundPipe, data, cb);

@@ -247,9 +247,13 @@ internal sealed class StressLogTraversal(Target target, IStressMessageReader mes
         public static StressLogMemory Create(Target target, TargetPointer address)
         {
             List<TargetPointer> chunks = [];
+            HashSet<TargetPointer> visitedThreads = [];
             // Do a simple traversal of the thread stress log list.
             while (address != TargetPointer.Null)
             {
+                if (!visitedThreads.Add(address))
+                    throw new InvalidOperationException("Cyclic stress log thread chain");
+
                 Data.ThreadStressLog threadLog = target.ProcessedData.GetOrAdd<Data.ThreadStressLog>(address);
                 TargetPointer chunkPtr = threadLog.ChunkListHead;
 

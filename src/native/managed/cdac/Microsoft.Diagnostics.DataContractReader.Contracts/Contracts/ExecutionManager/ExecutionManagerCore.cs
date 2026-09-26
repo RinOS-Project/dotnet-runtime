@@ -160,8 +160,12 @@ internal sealed partial class ExecutionManagerCore<T> : IExecutionManager
             TargetPointer rangeSectionFragmentPtr = rangeSectionLookup.FindFragment(target, topRangeSectionMap, jittedCodeAddress);
             // The lowest level of the range section map covers a large address space which may contain multiple small fragments.
             // Iterate over them to find the one that contains the jitted code address.
+            HashSet<TargetPointer> visitedFragments = [];
             while (rangeSectionFragmentPtr != TargetPointer.Null)
             {
+                if (!visitedFragments.Add(rangeSectionFragmentPtr))
+                    throw new InvalidOperationException("Cyclic range section fragment chain");
+
                 Data.RangeSectionFragment curFragment = target.ProcessedData.GetOrAdd<Data.RangeSectionFragment>(rangeSectionFragmentPtr);
                 if (curFragment.Contains(jittedCodeAddress))
                 {

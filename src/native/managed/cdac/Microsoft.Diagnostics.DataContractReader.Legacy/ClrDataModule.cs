@@ -403,6 +403,152 @@ public sealed unsafe partial class ClrDataModule : ICustomQueryInterface, IXCLRD
         }
     }
 
+    private readonly record struct DataFieldEntry(TargetPointer FieldDesc, bool IsInherited);
+
+    private sealed class DataByNameEnumeration : IEnum<DataFieldEntry>
+    {
+        public IEnumerator<DataFieldEntry> Enumerator { get; }
+        public nuint LegacyHandle { get; set; }
+        public TargetPointer ThreadAddress { get; }
+
+        public DataByNameEnumeration(
+            IEnumerable<DataFieldEntry> fields,
+            TargetPointer threadAddress,
+            nuint legacyHandle)
+        {
+            Enumerator = fields.GetEnumerator();
+            ThreadAddress = threadAddress;
+            LegacyHandle = legacyHandle;
+        }
+    }
+
+    private static TypeDefinitionHandle? ResolveType(
+        MetadataReader reader,
+        string typeFullName,
+        uint flags)
+    {
+        StringComparison comparison = (flags & (uint)CLRDataByNameFlag.CLRDATA_BYNAME_CASE_INSENSITIVE) != 0
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        string[] nestingParts = typeFullName.Split('+', '/');
+        string firstPart = nestingParts[0];
+        int lastDot = firstPart.LastIndexOf('.');
+        string @namespace = lastDot >= 0 ? firstPart[..lastDot] : string.Empty;
+        string outerName = lastDot >= 0 ? firstPart[(lastDot + 1)..] : firstPart;
+
+        TypeDefinitionHandle? current = null;
+        foreach (TypeDefinitionHandle handle in reader.TypeDefinitions)
+        {
+            TypeDefinition definition = reader.GetTypeDefinition(handle);
+            if (definition.IsNested)
+                continue;
+
+            if ((string.IsNullOrEmpty(@namespace) ||
+                 string.Equals(reader.GetString(definition.Namespace), @namespace, comparison)) &&
+                string.Equals(reader.GetString(definition.Name), outerName, comparison))
+            {
+                current = handle;
+                break;
+            }
+        }
+
+        for (int i = 1; i < nestingParts.Length && current is not null; i++)
+        {
+            TypeDefinitionHandle enclosing = current.Value;
+            current = null;
+            foreach (TypeDefinitionHandle nested in reader.GetTypeDefinition(enclosing).GetNestedTypes())
+            {
+                if (string.Equals(
+                    reader.GetString(reader.GetTypeDefinition(nested).Name),
+                    nestingParts[i],
+                    comparison))
+                {
+                    current = nested;
+                    break;
+                }
+            }
+        }
+
+        return current;
+    }
+
+    private (string Name, ITypeHandle EnclosingType) GetDataFieldMetadata(TargetPointer fieldDesc)
+    {
+        IRuntimeTypeSystem rts = _target.Contracts.RuntimeTypeSystem;
+        ITypeHandle enclosingType = rts.GetTypeHandle(rts.GetMTOfEnclosingClass(fieldDesc));
+        Contracts.ModuleHandle moduleHandle = _target.Contracts.Loader.GetModuleHandleFromModulePtr(
+            rts.GetModule(enclosingType));
+        MetadataReader reader = _target.Contracts.EcmaMetadata.GetMetadata(moduleHandle)
+            ?? throw new InvalidOperationException("Module metadata is unavailable.");
+        uint token = rts.GetFieldDescMemberDef(fieldDesc);
+        FieldDefinition definition = reader.GetFieldDefinition(
+            MetadataTokens.FieldDefinitionHandle(checked((int)EcmaMetadataUtils.GetRowId(token))));
+        return (reader.GetString(definition.Name), enclosingType);
+    }
+
+    private List<DataFieldEntry> GetDataFieldsByName(string fullName, uint flags)
+    {
+        int separatorIndex = fullName.LastIndexOf('.');
+        if (separatorIndex <= 0 || separatorIndex == fullName.Length - 1)
+            throw new ArgumentException(nameof(fullName));
+
+        string typeName = fullName[..separatorIndex];
+        string fieldName = fullName[(separatorIndex + 1)..];
+        ILoader loader = _target.Contracts.Loader;
+        Contracts.ModuleHandle moduleHandle = loader.GetModuleHandleFromModulePtr(_address);
+        MetadataReader reader = _target.Contracts.EcmaMetadata.GetMetadata(moduleHandle)
+            ?? throw new InvalidOperationException("Module metadata is unavailable.");
+        TypeDefinitionHandle? typeDefinition = ResolveType(reader, typeName, flags);
+        if (typeDefinition is null)
+            throw new ArgumentException(nameof(fullName));
+
+        uint typeToken = (uint)MetadataTokens.GetToken(typeDefinition.Value);
+        TargetPointer methodTable = loader.GetModuleLookupMapElement(
+            moduleHandle,
+            ModuleLookupMapKind.TypeDefToMethodTable,
+            typeToken,
+            out _);
+        if (methodTable == TargetPointer.Null)
+            throw new InvalidOperationException("Type handle is unavailable.");
+
+        IRuntimeTypeSystem rts = _target.Contracts.RuntimeTypeSystem;
+        List<ITypeHandle> types = [];
+        ITypeHandle current = rts.GetTypeHandle(methodTable);
+        do
+        {
+            types.Add(current);
+            TargetPointer parent = rts.GetParentMethodTable(current);
+            if (parent == TargetPointer.Null)
+                break;
+            current = rts.GetTypeHandle(parent);
+        }
+        while (true);
+
+        types.Reverse();
+        StringComparison comparison = (flags & (uint)CLRDataByNameFlag.CLRDATA_BYNAME_CASE_INSENSITIVE) != 0
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        List<DataFieldEntry> fields = [];
+        for (int i = 0; i < types.Count; i++)
+        {
+            bool inherited = i != types.Count - 1;
+            foreach (TargetPointer fieldDesc in rts.GetFieldDescList(types[i]))
+            {
+                if (!rts.IsFieldDescStatic(fieldDesc) && !rts.IsFieldDescThreadStatic(fieldDesc))
+                    continue;
+
+                if (string.Equals(GetDataFieldMetadata(fieldDesc).Name, fieldName, comparison))
+                    fields.Add(new DataFieldEntry(fieldDesc, inherited));
+            }
+        }
+
+        return fields;
+    }
+
+    private static TargetPointer GetThreadAddress(IXCLRDataTask? tlsTask)
+        => tlsTask is ClrDataTask task ? task.Address : TargetPointer.Null;
+
     int IXCLRDataModule.StartEnumAssemblies(ulong* handle)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
@@ -1449,20 +1595,125 @@ public sealed unsafe partial class ClrDataModule : ICustomQueryInterface, IXCLRD
     int IXCLRDataModule.StartEnumDataByName(char* name, uint flags, IXCLRDataAppDomain? appDomain, IXCLRDataTask? tlsTask, ulong* handle)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        int hrLocal = HResults.S_OK;
+        ulong legacyHandle = 0;
 
-        return LegacyFallbackHelper.CanFallback() && _legacyModule is not null ? _legacyModule.StartEnumDataByName(name, flags, appDomain, tlsTask, handle) : HResults.E_NOTIMPL;
+        try
+        {
+            if (handle is null)
+                throw new ArgumentNullException(nameof(handle));
+
+            *handle = 0;
+            if (_legacyModule is not null)
+                hrLocal = _legacyModule.StartEnumDataByName(name, flags, appDomain, tlsTask, &legacyHandle);
+            if (name is null || *name == '\0')
+                throw new ArgumentException(nameof(name));
+            if (flags > (uint)CLRDataByNameFlag.CLRDATA_BYNAME_CASE_INSENSITIVE)
+                throw new ArgumentException(nameof(flags));
+
+            DataByNameEnumeration enumeration = new(
+                GetDataFieldsByName(new string(name), flags),
+                GetThreadAddress(tlsTask),
+                (nuint)legacyHandle);
+            *handle = (ulong)((IEnum<DataFieldEntry>)enumeration).GetHandle();
+            legacyHandle = 0;
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+        finally
+        {
+            if (_legacyModule is not null && legacyHandle != 0)
+                _legacyModule.EndEnumDataByName(legacyHandle);
+        }
+
+#if DEBUG
+        if (_legacyModule is not null)
+            Debug.ValidateHResult(hr, hrLocal, HResultValidationMode.AllowCdacSuccess);
+#endif
+        return hr;
     }
     int IXCLRDataModule.EnumDataByName(ulong* handle, DacComNullableByRef<IXCLRDataValue> value)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        int hrLocal = HResults.S_OK;
+        DataByNameEnumeration? enumeration = null;
+        IXCLRDataValue? legacyValue = null;
 
-        return LegacyFallbackHelper.CanFallback() && _legacyModule is not null ? _legacyModule.EnumDataByName(handle, value) : HResults.E_NOTIMPL;
+        try
+        {
+            if (handle is null || *handle == 0)
+                throw new ArgumentException("Invalid data enumeration handle.", nameof(handle));
+
+            GCHandle gcHandle = GCHandle.FromIntPtr((IntPtr)(*handle));
+            if (gcHandle.Target is not DataByNameEnumeration enumerationLocal)
+                throw new ArgumentException("Invalid data enumeration handle.", nameof(handle));
+            enumeration = enumerationLocal;
+
+            if (_legacyModule is not null && enumeration.LegacyHandle != 0)
+            {
+                ulong legacyHandle = enumeration.LegacyHandle;
+                DacComNullableByRef<IXCLRDataValue> legacyValueOut = new(isNullRef: value.IsNullRef);
+                hrLocal = _legacyModule.EnumDataByName(&legacyHandle, legacyValueOut);
+                enumeration.LegacyHandle = (nuint)legacyHandle;
+                if (hrLocal >= 0)
+                    legacyValue = legacyValueOut.Interface;
+            }
+
+            if (!enumeration.Enumerator.MoveNext())
+            {
+                hr = HResults.S_FALSE;
+            }
+            else if (!value.IsNullRef)
+            {
+                DataFieldEntry entry = enumeration.Enumerator.Current;
+                value.Interface = ClrDataValue.CreateStaticFieldValue(
+                    _target,
+                    enumeration.ThreadAddress,
+                    entry.FieldDesc,
+                    entry.IsInherited,
+                    legacyValue,
+                    _apiLock);
+            }
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyModule is not null && enumeration is not null)
+            Debug.ValidateHResult(hr, hrLocal, HResultValidationMode.AllowCdacSuccess);
+#endif
+        return hr;
     }
     int IXCLRDataModule.EndEnumDataByName(ulong handle)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        if (handle == 0)
+            return HResults.S_OK;
 
-        return LegacyFallbackHelper.CanFallback() && _legacyModule is not null ? _legacyModule.EndEnumDataByName(handle) : HResults.E_NOTIMPL;
+        DataByNameEnumeration enumeration;
+        try
+        {
+            GCHandle gcHandle = GCHandle.FromIntPtr((IntPtr)handle);
+            if (gcHandle.Target is not DataByNameEnumeration enumerationLocal)
+                throw new ArgumentException("Invalid data enumeration handle.");
+            enumeration = enumerationLocal;
+            ((IEnum<DataFieldEntry>)enumeration).Dispose();
+            gcHandle.Free();
+        }
+        catch (System.Exception ex)
+        {
+            return ex.HResult;
+        }
+
+        if (_legacyModule is not null && enumeration.LegacyHandle != 0)
+            return _legacyModule.EndEnumDataByName(enumeration.LegacyHandle);
+        return HResults.S_OK;
     }
 
     int IXCLRDataModule.GetName(uint bufLen, uint* nameLen, char* name)

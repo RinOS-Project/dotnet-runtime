@@ -122,6 +122,30 @@ public class SyncBlockTests
 
     [Theory]
     [ClassData(typeof(MockTarget.StdArch))]
+    public void GetAdditionalThreadCount_TraversesLinkedSyncBlocks(MockTarget.Architecture arch)
+    {
+        TargetPointer lastAdded = TargetPointer.Null;
+        ISyncBlock contract = CreateSyncBlockContract(arch, syncBlock =>
+        {
+            syncBlock.AddSyncBlockToCleanupList(
+                TargetPointer.Null,
+                TargetPointer.Null,
+                TargetPointer.Null);
+            syncBlock.AddSyncBlockToCleanupList(
+                TargetPointer.Null,
+                TargetPointer.Null,
+                TargetPointer.Null);
+            lastAdded = syncBlock.AddSyncBlockToCleanupList(
+                TargetPointer.Null,
+                TargetPointer.Null,
+                TargetPointer.Null).Address;
+        });
+
+        Assert.Equal(2u, contract.GetAdditionalThreadCount(lastAdded));
+    }
+
+    [Theory]
+    [ClassData(typeof(MockTarget.StdArch))]
     public void GetBuiltInComData_NoInteropInfo(MockTarget.Architecture arch)
     {
         TargetPointer syncBlockAddress = TargetPointer.Null;

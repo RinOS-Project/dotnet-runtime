@@ -1327,10 +1327,11 @@ namespace System.Net.Security
         }
 
         // Empty-input probe used when the caller's buffer doesn't yet hold a complete TLS
-        // frame. On OpenSSL the PAL's record layer may still have plaintext queued from a
-        // prior call (handshake input that included trailing app-data, or a second record
-        // coalesced into the same TCP segment); calling DecryptMessage with an empty span
-        // surfaces it. On SChannel / SecureTransport the equivalent buffer does not exist,
+        // frame. OpenSSL and RinTLS may still have plaintext queued in the PAL record layer
+        // after a prior call (handshake input that included trailing app-data, or a second record
+        // coalesced into the same TCP segment, or a record larger than the destination);
+        // calling DecryptMessage with an empty span surfaces it. On SChannel / SecureTransport
+        // the equivalent buffer does not exist,
         // so the probe is skipped and the caller is asked for more bytes instead. The
         // bytesConsumed out-parameter on the public Decrypt method is necessarily 0 here:
         // no caller bytes were taken.
@@ -1338,7 +1339,8 @@ namespace System.Net.Security
         {
             bytesWritten = 0;
 
-            if (!OperatingSystem.IsLinux() && !OperatingSystem.IsFreeBSD() && !OperatingSystem.IsAndroid())
+            if (!OperatingSystem.IsLinux() && !OperatingSystem.IsFreeBSD() &&
+                !OperatingSystem.IsAndroid() && !OperatingSystem.IsOSPlatform("rinos"))
             {
                 return TlsOperationStatus.NeedMoreData;
             }

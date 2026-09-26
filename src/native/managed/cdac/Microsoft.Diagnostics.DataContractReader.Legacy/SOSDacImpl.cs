@@ -1999,8 +1999,72 @@ public sealed unsafe partial class SOSDacImpl
     int ISOSDacInterface.GetHeapAllocData(uint count, void* data, uint* pNeeded)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        try
+        {
+            if (data == null && pNeeded == null)
+                throw new ArgumentException();
 
-        return HResults.E_NOTIMPL;
+            IGC gc = _target.Contracts.GC;
+            string[] gcIdentifiers = gc.GetGCIdentifiers();
+            bool serverMode = gcIdentifiers.Contains(GCIdentifiers.Server);
+            uint heapCount = serverMode ? gc.GetGCHeapCount() : 1;
+            TargetPointer[] serverHeaps = serverMode
+                ? gc.GetGCHeaps().Take(checked((int)heapCount)).ToArray()
+                : Array.Empty<TargetPointer>();
+
+            if (pNeeded != null)
+                *pNeeded = heapCount;
+
+            if (data != null)
+            {
+                uint outputCount = Math.Min(count, heapCount);
+                DacpAllocData* output = (DacpAllocData*)data;
+                for (uint heapIndex = 0; heapIndex < outputCount; heapIndex++)
+                {
+                    GCHeapData heapData = serverMode
+                        ? gc.GetHeapData(serverHeaps[checked((int)heapIndex)])
+                        : gc.GetHeapData();
+
+                    for (int generation = 0; generation < GCConstants.DAC_NUMBERGENERATIONS; generation++)
+                    {
+                        long allocBytes = 0;
+                        long allocBytesLoh = 0;
+                        if (generation < heapData.GenerationTable.Count)
+                        {
+                            GCGenerationData generationData = heapData.GenerationTable[generation];
+                            allocBytes = generationData.AllocationBytes;
+                            allocBytesLoh = generationData.AllocationBytesLoh;
+                        }
+
+                        output[(heapIndex * GCConstants.DAC_NUMBERGENERATIONS) + (uint)generation] = new DacpAllocData
+                        {
+                            allocBytes = unchecked((ulong)allocBytes),
+                            allocBytesLoh = unchecked((ulong)allocBytesLoh),
+                        };
+                    }
+                }
+            }
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyImpl is not null)
+        {
+            uint neededLocal = 0;
+            byte* dataLocal = null;
+            if (data is not null)
+                dataLocal = stackalloc byte[checked((int)(Math.Max(1u, count) * (uint)sizeof(DacpAllocData) * GCConstants.DAC_NUMBERGENERATIONS))];
+            int hrLocal = _legacyImpl.GetHeapAllocData(count, dataLocal, &neededLocal);
+            Debug.ValidateHResult(hr, hrLocal);
+            Debug.Assert(pNeeded == null || *pNeeded == neededLocal);
+        }
+#endif
+
+        return hr;
     }
     int ISOSDacInterface.GetHeapAnalyzeData(ClrDataAddress addr, DacpGcHeapAnalyzeData* data)
     {

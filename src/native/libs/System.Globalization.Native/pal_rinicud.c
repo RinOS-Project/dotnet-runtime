@@ -1305,14 +1305,153 @@ static const char* product_region_three_letter(const char* region)
     return NULL;
 }
 
+typedef enum ProductDigitSet
+{
+    ProductDigitsLatin = 0,
+    ProductDigitsArabic,
+    ProductDigitsArabicExtended,
+    ProductDigitsDevanagari,
+    ProductDigitsThai,
+    ProductDigitsBengali,
+    ProductDigitsGujarati,
+    ProductDigitsGurmukhi,
+    ProductDigitsKannada,
+    ProductDigitsKhmer,
+    ProductDigitsLao,
+    ProductDigitsMalayalam,
+    ProductDigitsMyanmar,
+    ProductDigitsOriya,
+    ProductDigitsTelugu,
+    ProductDigitsTamil,
+    ProductDigitsTibetan,
+    ProductDigitsFullwidth,
+    ProductDigitsHanidec
+} ProductDigitSet;
+
+static int product_ascii_token_ieq(const char* token, size_t length,
+                                   const char* expected)
+{
+    size_t index;
+    if (!token || !expected || strlen(expected) != length) return 0;
+    for (index = 0u; index < length; ++index) {
+        char actual = token[index];
+        char wanted = expected[index];
+        if (actual >= 'A' && actual <= 'Z') actual = (char)(actual - 'A' + 'a');
+        if (wanted >= 'A' && wanted <= 'Z') wanted = (char)(wanted - 'A' + 'a');
+        if (actual != wanted) return 0;
+    }
+    return 1;
+}
+
+static int product_digit_set_from_token(const char* token, size_t length,
+                                        ProductDigitSet* digit_set)
+{
+    size_t index;
+    if (!token || !digit_set || length < 3u || length > 8u) return 0;
+    for (index = 0u; index < length; ++index) {
+        char ch = token[index];
+        if (!((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
+              (ch >= '0' && ch <= '9'))) return 0;
+    }
+    if (product_ascii_token_ieq(token, length, "latn")) *digit_set = ProductDigitsLatin;
+    else if (product_ascii_token_ieq(token, length, "arab")) *digit_set = ProductDigitsArabic;
+    else if (product_ascii_token_ieq(token, length, "arabext")) *digit_set = ProductDigitsArabicExtended;
+    else if (product_ascii_token_ieq(token, length, "deva")) *digit_set = ProductDigitsDevanagari;
+    else if (product_ascii_token_ieq(token, length, "thai")) *digit_set = ProductDigitsThai;
+    else if (product_ascii_token_ieq(token, length, "beng")) *digit_set = ProductDigitsBengali;
+    else if (product_ascii_token_ieq(token, length, "gujr")) *digit_set = ProductDigitsGujarati;
+    else if (product_ascii_token_ieq(token, length, "guru")) *digit_set = ProductDigitsGurmukhi;
+    else if (product_ascii_token_ieq(token, length, "knda")) *digit_set = ProductDigitsKannada;
+    else if (product_ascii_token_ieq(token, length, "khmr")) *digit_set = ProductDigitsKhmer;
+    else if (product_ascii_token_ieq(token, length, "laoo")) *digit_set = ProductDigitsLao;
+    else if (product_ascii_token_ieq(token, length, "mlym")) *digit_set = ProductDigitsMalayalam;
+    else if (product_ascii_token_ieq(token, length, "mymr")) *digit_set = ProductDigitsMyanmar;
+    else if (product_ascii_token_ieq(token, length, "orya")) *digit_set = ProductDigitsOriya;
+    else if (product_ascii_token_ieq(token, length, "telu")) *digit_set = ProductDigitsTelugu;
+    else if (product_ascii_token_ieq(token, length, "tamldec")) *digit_set = ProductDigitsTamil;
+    else if (product_ascii_token_ieq(token, length, "tibt")) *digit_set = ProductDigitsTibetan;
+    else if (product_ascii_token_ieq(token, length, "fullwide")) *digit_set = ProductDigitsFullwidth;
+    else if (product_ascii_token_ieq(token, length, "hanidec")) *digit_set = ProductDigitsHanidec;
+    else return 0;
+    return 1;
+}
+
+/* Keep the PAL's numbering-system validation aligned with LibUnicode.  An
+ * explicit but unsupported or malformed -u-nu-* request must not silently
+ * return the catalog default, because managed CultureInfo would otherwise
+ * observe a successful but incorrect NativeDigits value. */
+static int product_numbering_system_override(const char* locale_name,
+                                             ProductDigitSet* digit_set,
+                                             int* has_override)
+{
+    size_t length;
+    size_t position = 0u;
+    int in_unicode_extension = 0;
+    int expecting_numbering_value = 0;
+    int saw_numbering_key = 0;
+    if (!digit_set || !has_override) return 0;
+    *digit_set = ProductDigitsLatin;
+    *has_override = 0;
+    if (!locale_name) return 1;
+    length = strlen(locale_name);
+    while (position < length &&
+           (locale_name[position] == ' ' || locale_name[position] == '\t'))
+        ++position;
+    while (position < length && locale_name[position] != '.' &&
+           locale_name[position] != '@') {
+        size_t token_start = position;
+        size_t token_length;
+        while (position < length && locale_name[position] != '.' &&
+               locale_name[position] != '@' && locale_name[position] != '-' &&
+               locale_name[position] != '_')
+            ++position;
+        token_length = position - token_start;
+        if (token_length == 0u) {
+            ++position;
+            continue;
+        }
+        if (!in_unicode_extension) {
+            if (token_length == 1u &&
+                product_ascii_token_ieq(locale_name + token_start, token_length, "u"))
+                in_unicode_extension = 1;
+        } else if (expecting_numbering_value) {
+            if (!product_digit_set_from_token(locale_name + token_start,
+                                              token_length, digit_set))
+                return 0;
+            *has_override = 1;
+            expecting_numbering_value = 0;
+        } else if (token_length == 2u &&
+                   product_ascii_token_ieq(locale_name + token_start, token_length, "nu")) {
+            if (*has_override || saw_numbering_key) return 0;
+            saw_numbering_key = 1;
+            expecting_numbering_value = 1;
+        } else if (token_length == 1u) {
+            in_unicode_extension = 0;
+        }
+        if (position < length && (locale_name[position] == '-' ||
+                                  locale_name[position] == '_'))
+            ++position;
+    }
+    return !expecting_numbering_value;
+}
+
+static ProductDigitSet product_default_digit_set(const RinIcuDataLocaleRecord* record)
+{
+    if (!record) return ProductDigitsLatin;
+    if (strcmp(record->language, "fa") == 0) return ProductDigitsArabicExtended;
+    if (strcmp(record->script, "Arab") == 0) return ProductDigitsArabic;
+    if (strcmp(record->script, "Deva") == 0) return ProductDigitsDevanagari;
+    if (strcmp(record->script, "Thai") == 0) return ProductDigitsThai;
+    return ProductDigitsLatin;
+}
+
 /* LocaleString_Digits follows the ICU/.NET contract rather than returning a
  * display-ready number.  Each native digit is separated by U+FFFF so the
  * managed caller can preserve digits which occupy more than one UTF-16 code
- * unit.  The product catalog currently carries script, not a separate
- * numbering-system field, so scripts with an explicitly shipped digit set
- * select non-ASCII digits; fa-IR is additionally selected by language because
- * Persian digits differ from the Arabic script's default digits. */
-static const char* product_native_digits(const RinIcuDataLocaleRecord* record)
+ * unit.  The product catalog carries script defaults, while an explicit
+ * -u-nu-* extension selects the requested product digit set. */
+static const char* product_native_digits(const RinIcuDataLocaleRecord* record,
+                                         const char* locale_name)
 {
     static const char ascii_digits[] =
         "0" "\xEF\xBF\xBF" "1" "\xEF\xBF\xBF" "2" "\xEF\xBF\xBF"
@@ -1339,12 +1478,102 @@ static const char* product_native_digits(const RinIcuDataLocaleRecord* record)
         "๓" "\xEF\xBF\xBF" "๔" "\xEF\xBF\xBF" "๕" "\xEF\xBF\xBF"
         "๖" "\xEF\xBF\xBF" "๗" "\xEF\xBF\xBF" "๘" "\xEF\xBF\xBF"
         "๙";
-    if (!record) return NULL;
-    if (strcmp(record->language, "fa") == 0) return persian_digits;
-    if (strcmp(record->script, "Arab") == 0) return arabic_digits;
-    if (strcmp(record->script, "Deva") == 0) return devanagari_digits;
-    if (strcmp(record->script, "Thai") == 0) return thai_digits;
-    return ascii_digits;
+    static const char bengali_digits[] =
+        "০" "\xEF\xBF\xBF" "১" "\xEF\xBF\xBF" "২" "\xEF\xBF\xBF"
+        "৩" "\xEF\xBF\xBF" "৪" "\xEF\xBF\xBF" "৫" "\xEF\xBF\xBF"
+        "৬" "\xEF\xBF\xBF" "৭" "\xEF\xBF\xBF" "৮" "\xEF\xBF\xBF"
+        "৯";
+    static const char gujarati_digits[] =
+        "૦" "\xEF\xBF\xBF" "૧" "\xEF\xBF\xBF" "૨" "\xEF\xBF\xBF"
+        "૩" "\xEF\xBF\xBF" "૪" "\xEF\xBF\xBF" "૫" "\xEF\xBF\xBF"
+        "૬" "\xEF\xBF\xBF" "૭" "\xEF\xBF\xBF" "૮" "\xEF\xBF\xBF"
+        "૯";
+    static const char gurmukhi_digits[] =
+        "੦" "\xEF\xBF\xBF" "੧" "\xEF\xBF\xBF" "੨" "\xEF\xBF\xBF"
+        "੩" "\xEF\xBF\xBF" "੪" "\xEF\xBF\xBF" "੫" "\xEF\xBF\xBF"
+        "੬" "\xEF\xBF\xBF" "੭" "\xEF\xBF\xBF" "੮" "\xEF\xBF\xBF"
+        "੯";
+    static const char kannada_digits[] =
+        "೦" "\xEF\xBF\xBF" "೧" "\xEF\xBF\xBF" "೨" "\xEF\xBF\xBF"
+        "೩" "\xEF\xBF\xBF" "೪" "\xEF\xBF\xBF" "೫" "\xEF\xBF\xBF"
+        "೬" "\xEF\xBF\xBF" "೭" "\xEF\xBF\xBF" "೮" "\xEF\xBF\xBF"
+        "೯";
+    static const char khmer_digits[] =
+        "០" "\xEF\xBF\xBF" "១" "\xEF\xBF\xBF" "២" "\xEF\xBF\xBF"
+        "៣" "\xEF\xBF\xBF" "៤" "\xEF\xBF\xBF" "៥" "\xEF\xBF\xBF"
+        "៦" "\xEF\xBF\xBF" "៧" "\xEF\xBF\xBF" "៨" "\xEF\xBF\xBF"
+        "៩";
+    static const char lao_digits[] =
+        "໐" "\xEF\xBF\xBF" "໑" "\xEF\xBF\xBF" "໒" "\xEF\xBF\xBF"
+        "໓" "\xEF\xBF\xBF" "໔" "\xEF\xBF\xBF" "໕" "\xEF\xBF\xBF"
+        "໖" "\xEF\xBF\xBF" "໗" "\xEF\xBF\xBF" "໘" "\xEF\xBF\xBF"
+        "໙";
+    static const char malayalam_digits[] =
+        "൦" "\xEF\xBF\xBF" "൧" "\xEF\xBF\xBF" "൨" "\xEF\xBF\xBF"
+        "൩" "\xEF\xBF\xBF" "൪" "\xEF\xBF\xBF" "൫" "\xEF\xBF\xBF"
+        "൬" "\xEF\xBF\xBF" "൭" "\xEF\xBF\xBF" "൮" "\xEF\xBF\xBF"
+        "൯";
+    static const char myanmar_digits[] =
+        "၀" "\xEF\xBF\xBF" "၁" "\xEF\xBF\xBF" "၂" "\xEF\xBF\xBF"
+        "၃" "\xEF\xBF\xBF" "၄" "\xEF\xBF\xBF" "၅" "\xEF\xBF\xBF"
+        "၆" "\xEF\xBF\xBF" "၇" "\xEF\xBF\xBF" "၈" "\xEF\xBF\xBF"
+        "၉";
+    static const char oriya_digits[] =
+        "୦" "\xEF\xBF\xBF" "୧" "\xEF\xBF\xBF" "୨" "\xEF\xBF\xBF"
+        "୩" "\xEF\xBF\xBF" "୪" "\xEF\xBF\xBF" "୫" "\xEF\xBF\xBF"
+        "୬" "\xEF\xBF\xBF" "୭" "\xEF\xBF\xBF" "୮" "\xEF\xBF\xBF"
+        "୯";
+    static const char telugu_digits[] =
+        "౦" "\xEF\xBF\xBF" "౧" "\xEF\xBF\xBF" "౨" "\xEF\xBF\xBF"
+        "౩" "\xEF\xBF\xBF" "౪" "\xEF\xBF\xBF" "౫" "\xEF\xBF\xBF"
+        "౬" "\xEF\xBF\xBF" "౭" "\xEF\xBF\xBF" "౮" "\xEF\xBF\xBF"
+        "౯";
+    static const char tamil_digits[] =
+        "௦" "\xEF\xBF\xBF" "௧" "\xEF\xBF\xBF" "௨" "\xEF\xBF\xBF"
+        "௩" "\xEF\xBF\xBF" "௪" "\xEF\xBF\xBF" "௫" "\xEF\xBF\xBF"
+        "௬" "\xEF\xBF\xBF" "௭" "\xEF\xBF\xBF" "௮" "\xEF\xBF\xBF"
+        "௯";
+    static const char tibetan_digits[] =
+        "༠" "\xEF\xBF\xBF" "༡" "\xEF\xBF\xBF" "༢" "\xEF\xBF\xBF"
+        "༣" "\xEF\xBF\xBF" "༤" "\xEF\xBF\xBF" "༥" "\xEF\xBF\xBF"
+        "༦" "\xEF\xBF\xBF" "༧" "\xEF\xBF\xBF" "༨" "\xEF\xBF\xBF"
+        "༩";
+    static const char fullwidth_digits[] =
+        "０" "\xEF\xBF\xBF" "１" "\xEF\xBF\xBF" "２" "\xEF\xBF\xBF"
+        "３" "\xEF\xBF\xBF" "４" "\xEF\xBF\xBF" "５" "\xEF\xBF\xBF"
+        "６" "\xEF\xBF\xBF" "７" "\xEF\xBF\xBF" "８" "\xEF\xBF\xBF"
+        "９";
+    static const char hanidec_digits[] =
+        "〇" "\xEF\xBF\xBF" "一" "\xEF\xBF\xBF" "二" "\xEF\xBF\xBF"
+        "三" "\xEF\xBF\xBF" "四" "\xEF\xBF\xBF" "五" "\xEF\xBF\xBF"
+        "六" "\xEF\xBF\xBF" "七" "\xEF\xBF\xBF" "八" "\xEF\xBF\xBF"
+        "九";
+    ProductDigitSet digit_set;
+    int has_override;
+    if (!record || !product_numbering_system_override(locale_name, &digit_set, &has_override)) return NULL;
+    if (!has_override) digit_set = product_default_digit_set(record);
+    switch (digit_set) {
+        case ProductDigitsLatin: return ascii_digits;
+        case ProductDigitsArabic: return arabic_digits;
+        case ProductDigitsArabicExtended: return persian_digits;
+        case ProductDigitsDevanagari: return devanagari_digits;
+        case ProductDigitsThai: return thai_digits;
+        case ProductDigitsBengali: return bengali_digits;
+        case ProductDigitsGujarati: return gujarati_digits;
+        case ProductDigitsGurmukhi: return gurmukhi_digits;
+        case ProductDigitsKannada: return kannada_digits;
+        case ProductDigitsKhmer: return khmer_digits;
+        case ProductDigitsLao: return lao_digits;
+        case ProductDigitsMalayalam: return malayalam_digits;
+        case ProductDigitsMyanmar: return myanmar_digits;
+        case ProductDigitsOriya: return oriya_digits;
+        case ProductDigitsTelugu: return telugu_digits;
+        case ProductDigitsTamil: return tamil_digits;
+        case ProductDigitsTibetan: return tibetan_digits;
+        case ProductDigitsFullwidth: return fullwidth_digits;
+        case ProductDigitsHanidec: return hanidec_digits;
+        default: return NULL;
+    }
 }
 
 static int product_pattern_order(const char* pattern, const char* first_token,
@@ -2240,7 +2469,7 @@ int32_t GlobalizationNative_GetLocaleInfoString(const UChar* locale, LocaleStrin
                 }
                 break;
             case LocaleString_Digits:
-                field = product_native_digits(&record);
+                field = product_native_digits(&record, locale_name);
                 field_capacity = field ? strlen(field) + 1u : 0u;
                 break;
             case LocaleString_NaNSymbol: field = "NaN"; field_capacity = sizeof("NaN"); break;

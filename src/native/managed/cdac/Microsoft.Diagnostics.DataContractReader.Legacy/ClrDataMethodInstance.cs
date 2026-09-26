@@ -230,15 +230,62 @@ public sealed unsafe partial class ClrDataMethodInstance : IXCLRDataMethodInstan
     int IXCLRDataMethodInstance.GetFlags(uint* flags)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        try
+        {
+            if (flags is null)
+                throw new ArgumentNullException(nameof(flags));
 
-        return HResults.E_NOTIMPL;
+            *flags = MethodSignatureHelpers.GetMethodFlags(_target, _methodDesc);
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyImpl is not null)
+        {
+            uint flagsLocal = 0;
+            int hrLocal = _legacyImpl.GetFlags(&flagsLocal);
+            Debug.ValidateHResult(hr, hrLocal);
+            if (hr == HResults.S_OK)
+                Debug.Assert(*flags == flagsLocal, $"cDAC: {*flags:x}, DAC: {flagsLocal:x}");
+        }
+#endif
+
+        return hr;
     }
 
     int IXCLRDataMethodInstance.IsSameObject(IXCLRDataMethodInstance* method)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_FALSE;
+        try
+        {
+            if (method is not null
+                && ComWrappers.TryGetObject((nint)method, out object? obj)
+                && obj is ClrDataMethodInstance other)
+            {
+                hr = _appDomain == other._appDomain && _methodDesc.Address == other._methodDesc.Address
+                    ? HResults.S_OK
+                    : HResults.S_FALSE;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
 
-        return HResults.E_NOTIMPL;
+#if DEBUG
+        if (_legacyImpl is not null)
+        {
+            int hrLocal = _legacyImpl.IsSameObject(method);
+            Debug.Assert(hrLocal == hr, $"cDAC: {hr}, DAC: {hrLocal}");
+        }
+#endif
+
+        return hr;
     }
 
     int IXCLRDataMethodInstance.GetEnCVersion(uint* version)

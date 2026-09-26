@@ -2161,8 +2161,12 @@ internal partial struct RuntimeTypeSystem_1 : IRuntimeTypeSystem
         if (pCode == TargetCodePointer.Null)
         {
             TargetPointer lookupMTPtr = cannonMTPTr;
+            HashSet<TargetPointer> visitedMethodTables = [];
             while (lookupMTPtr != TargetPointer.Null)
             {
+                if (!visitedMethodTables.Add(lookupMTPtr))
+                    throw new InvalidOperationException("Cyclic parent type");
+
                 // if pCode is null, we iterate through the method descs in the MT.
                 ITypeHandle lookupMT = GetTypeHandle(lookupMTPtr);
                 foreach (MethodDescHandle mdh in GetIntroducedMethods(lookupMT))

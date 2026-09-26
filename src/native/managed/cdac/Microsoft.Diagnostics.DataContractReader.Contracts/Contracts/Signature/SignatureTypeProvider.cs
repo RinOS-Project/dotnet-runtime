@@ -44,7 +44,7 @@ public class SignatureTypeProvider<T> : IRuntimeSignatureTypeProvider<ITypeHandl
             MethodDescHandle methodContext = (MethodDescHandle)(object)context!;
             return _runtimeTypeSystem.GetGenericMethodInstantiation(methodContext)[index];
         }
-        throw new NotSupportedException();
+        throw new NotSupportedException($"Generic method context '{typeof(T)}' is not supported.");
     }
     public ITypeHandle? GetGenericTypeParameter(T context, int index)
     {

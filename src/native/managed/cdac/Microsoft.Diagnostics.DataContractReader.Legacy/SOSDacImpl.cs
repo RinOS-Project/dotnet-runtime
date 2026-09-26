@@ -1003,7 +1003,10 @@ public sealed unsafe partial class SOSDacImpl
     {
         using Lock.Scope scope = _apiLock.EnterScope();
 
-        return HResults.E_NOTIMPL;
+        // CoreCLR's Unix DAC cannot expose an HMODULE. Match request.cpp:
+        // reject a missing output pointer, otherwise report that the handle is
+        // unavailable rather than exposing an implementation-only stub result.
+        return phModule is null ? HResults.E_INVALIDARG : HResults.E_FAIL;
     }
     int ISOSDacInterface.GetDomainFromContext(ClrDataAddress context, ClrDataAddress* domain)
     {

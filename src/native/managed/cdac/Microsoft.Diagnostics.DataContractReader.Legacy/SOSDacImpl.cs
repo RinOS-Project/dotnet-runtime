@@ -2231,20 +2231,12 @@ public sealed unsafe partial class SOSDacImpl
             data->flags = (nuint)segmentData.Flags.Value;
             data->background_allocated = segmentData.BackgroundAllocated.ToClrDataAddress(_target);
 
-            // TODO: Compute highAllocMark - need to determine if this is the ephemeral segment
-            // and get the allocation mark from the appropriate heap data
-            // For now, use allocated as a fallback (similar to non-ephemeral segments in legacy code)
-            data->highAllocMark = data->allocated;
-
             GCHeapData heapData = gcIdentifiers.Contains(GCIdentifiers.Server) ? gc.GetHeapData(segmentData.Heap) : gc.GetHeapData();
-            if (seg.ToTargetPointer(_target) == heapData.EphemeralHeapSegment)
-            {
-                data->highAllocMark = heapData.AllocAllocated.ToClrDataAddress(_target);
-            }
-            else
-            {
-                data->highAllocMark = data->allocated;
-            }
+            // Match request.cpp: the ephemeral segment reports the heap's
+            // allocation mark; every other segment reports its allocated end.
+            data->highAllocMark = seg.ToTargetPointer(_target) == heapData.EphemeralHeapSegment
+                ? heapData.AllocAllocated.ToClrDataAddress(_target)
+                : data->allocated;
         }
         catch (System.Exception ex)
         {

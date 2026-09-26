@@ -101,7 +101,11 @@ public class SignatureTypeProvider<T> : IRuntimeSignatureTypeProvider<ITypeHandl
     }
 
     public ITypeHandle? GetTypeFromSpecification(MetadataReader reader, T context, TypeSpecificationHandle handle, byte rawTypeKind)
-        => throw new NotImplementedException();
+    {
+        BlobReader blobReader = reader.GetBlobReader(reader.GetTypeSpecification(handle).Signature);
+        RuntimeSignatureDecoder<ITypeHandle?, T> decoder = new(this, _target, reader, context);
+        return decoder.DecodeType(ref blobReader, allowTypeSpecifications: true);
+    }
 
     public ITypeHandle? GetInternalType(TargetPointer typeHandlePointer)
         => typeHandlePointer == TargetPointer.Null

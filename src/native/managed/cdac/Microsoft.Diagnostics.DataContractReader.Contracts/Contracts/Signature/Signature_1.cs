@@ -13,7 +13,6 @@ namespace Microsoft.Diagnostics.DataContractReader.Contracts;
 // as they are not needed for the current usage of ISignature.
 // GetModifiedType and GetPinnedType ignore pinning and custom modifiers.
 // GetTypeFromReference does not look up the type in another module.
-// GetTypeFromSpecification is unimplemented.
 // These can be completed as needed.
 internal sealed class Signature_1 : ISignature
 {

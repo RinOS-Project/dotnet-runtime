@@ -1451,6 +1451,18 @@ CDAC_TYPE_SIZE(sizeof(FaultingExceptionFrame))
 CDAC_TYPE_FIELD(FaultingExceptionFrame, EXTERN_TYPE(Context), TargetContext, cdac_data<FaultingExceptionFrame>::TargetContext)
 CDAC_TYPE_END(FaultingExceptionFrame)
 
+CDAC_TYPE_BEGIN(ValueClassInfo)
+CDAC_TYPE_SIZE(sizeof(ValueClassInfo))
+CDAC_TYPE_FIELD(ValueClassInfo, T_POINTER, Next, offsetof(ValueClassInfo, pNext))
+CDAC_TYPE_FIELD(ValueClassInfo, T_POINTER, MethodTable, offsetof(ValueClassInfo, pMT))
+CDAC_TYPE_FIELD(ValueClassInfo, T_POINTER, Data, offsetof(ValueClassInfo, pData))
+CDAC_TYPE_END(ValueClassInfo)
+
+CDAC_TYPE_BEGIN(ProtectValueClassFrame)
+CDAC_TYPE_SIZE(sizeof(ProtectValueClassFrame))
+CDAC_TYPE_FIELD(ProtectValueClassFrame, T_POINTER, ValueClassInfoPtr, cdac_data<ProtectValueClassFrame>::ValueClassInfoPtr)
+CDAC_TYPE_END(ProtectValueClassFrame)
+
 #if defined(TARGET_X86) && !defined(UNIX_X86_ABI)
 CDAC_TYPE_BEGIN(TailCallFrame)
 CDAC_TYPE_SIZE(sizeof(TailCallFrame))

@@ -1886,6 +1886,14 @@ public:
 private:
 
     ValueClassInfo *m_pVCInfo;
+
+    friend struct ::cdac_data<ProtectValueClassFrame>;
+};
+
+template<>
+struct cdac_data<ProtectValueClassFrame>
+{
+    static constexpr size_t ValueClassInfoPtr = offsetof(ProtectValueClassFrame, m_pVCInfo);
 };
 
 

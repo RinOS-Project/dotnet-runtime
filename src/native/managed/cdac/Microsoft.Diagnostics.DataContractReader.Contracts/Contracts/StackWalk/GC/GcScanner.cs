@@ -170,16 +170,86 @@ internal class GcScanner
             }
 
             case FrameType.HijackFrame:
-                // TODO(stackref): Implement HijackFrame scanning (X86 only with FEATURE_HIJACK)
+                // Native HijackFrame::GcScanRoots_Impl only has a return-value
+                // scanner on x86. On every other architecture (including the
+                // RinOS x86_64 target) it is a resumable frame and the normal
+                // top-frame GCInfo scan owns the roots.
                 break;
 
             case FrameType.ProtectValueClassFrame:
-                // TODO(stackref): Implement ProtectValueClassFrame scanning
+                ScanProtectValueClassFrame(frameAddress, scanContext);
                 break;
 
             default:
                 break;
         }
+    }
+
+    /// <summary>
+    /// Scans the ValueClassInfo chain protected by a native
+    /// ProtectValueClassFrame. This mirrors ReportPointersFromValueType in
+    /// siginfo.cpp: GCDesc offsets are relative to a boxed value's method-table
+    /// slot, so the unboxed data address is adjusted by one pointer.
+    /// </summary>
+    private void ScanProtectValueClassFrame(TargetPointer frameAddress, GcScanContext scanContext)
+    {
+        const int MaxValueClassInfoEntries = 1024;
+        Data.ProtectValueClassFrame frame = _target.ProcessedData.GetOrAdd<Data.ProtectValueClassFrame>(frameAddress);
+        IRuntimeTypeSystem rts = _target.Contracts.RuntimeTypeSystem;
+        TargetPointer current = frame.ValueClassInfoPtr;
+
+        for (int entry = 0; current != TargetPointer.Null && entry < MaxValueClassInfoEntries; entry++)
+        {
+            Data.ValueClassInfo valueClassInfo = _target.ProcessedData.GetOrAdd<Data.ValueClassInfo>(current);
+            current = valueClassInfo.Next;
+
+            if (valueClassInfo.MethodTable == TargetPointer.Null || valueClassInfo.Data == TargetPointer.Null)
+                continue;
+
+            try
+            {
+                ITypeHandle typeHandle = rts.GetTypeHandle(valueClassInfo.MethodTable);
+                if (!rts.ContainsGCPointers(typeHandle))
+                    continue;
+
+                // ByRefPointerOffsetsReporter also reports interior pointers for
+                // byref-like structs. That reporter is not represented by the
+                // current cDAC contract, so defer rather than misclassify them
+                // as ordinary object references.
+                if (rts.IsByRefLike(typeHandle))
+                {
+                    scanContext.RecordDeferredFrame(frameAddress);
+                    return;
+                }
+
+                foreach ((uint seriesOffset, uint seriesSize) in rts.GetGCDescSeries(typeHandle))
+                {
+                    if (seriesOffset < (uint)_target.PointerSize)
+                    {
+                        scanContext.RecordDeferredFrame(frameAddress);
+                        return;
+                    }
+
+                    TargetPointer slot = valueClassInfo.Data + (ulong)(seriesOffset - (uint)_target.PointerSize);
+                    for (uint offset = 0; offset < seriesSize; offset += (uint)_target.PointerSize)
+                    {
+                        if (seriesSize - offset < (uint)_target.PointerSize)
+                            break;
+                        scanContext.GCReportCallback(slot + offset, GcScanFlags.None);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // A corrupt method table or ValueClassInfo chain must not make
+                // the stack walk publish a partial root set.
+                scanContext.RecordDeferredFrame(frameAddress);
+                return;
+            }
+        }
+
+        if (current != TargetPointer.Null)
+            scanContext.RecordDeferredFrame(frameAddress);
     }
 
     /// <summary>

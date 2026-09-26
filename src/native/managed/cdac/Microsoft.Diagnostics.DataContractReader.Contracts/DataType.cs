@@ -187,6 +187,8 @@ public enum DataType
     FaultingExceptionFrame,
     HijackFrame,
     TailCallFrame,
+    ValueClassInfo,
+    ProtectValueClassFrame,
     StubDispatchFrame,
     ExternalMethodFrame,
     DynamicHelperFrame,

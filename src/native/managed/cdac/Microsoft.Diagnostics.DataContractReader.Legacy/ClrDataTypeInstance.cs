@@ -176,8 +176,36 @@ public sealed unsafe partial class ClrDataTypeInstance : IXCLRDataTypeInstance
     int IXCLRDataTypeInstance.GetModule(DacComNullableByRef<IXCLRDataModule> mod)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        int hrLocal = HResults.S_OK;
+        IXCLRDataModule? legacyModule = null;
 
-        return LegacyFallbackHelper.CanFallback() && _legacyImpl is not null ? _legacyImpl.GetModule(mod) : HResults.E_NOTIMPL;
+        if (_legacyImpl is not null && !mod.IsNullRef)
+        {
+            DacComNullableByRef<IXCLRDataModule> legacyModuleOut = new(isNullRef: false);
+            hrLocal = _legacyImpl.GetModule(legacyModuleOut);
+            legacyModule = legacyModuleOut.Interface;
+        }
+
+        try
+        {
+            if (mod.IsNullRef)
+                return HResults.S_OK;
+
+            TargetPointer module = _target.Contracts.RuntimeTypeSystem.GetModule(_typeHandle);
+            mod.Interface = new ClrDataModule(_target, module, legacyModule, _apiLock);
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyImpl is not null && !mod.IsNullRef)
+            Debug.ValidateHResult(hr, hrLocal);
+#endif
+
+        return hr;
     }
 
     int IXCLRDataTypeInstance.GetDefinition(DacComNullableByRef<IXCLRDataTypeDefinition> typeDefinition)
@@ -252,8 +280,22 @@ public sealed unsafe partial class ClrDataTypeInstance : IXCLRDataTypeInstance
     int IXCLRDataTypeInstance.GetFlags(uint* flags)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        if (flags is null)
+            return HResults.E_POINTER;
 
-        return LegacyFallbackHelper.CanFallback() && _legacyImpl is not null ? _legacyImpl.GetFlags(flags) : HResults.E_NOTIMPL;
+        *flags = 0; // CLRDATA_TYPE_DEFAULT
+
+#if DEBUG
+        if (_legacyImpl is not null)
+        {
+            uint flagsLocal = 0;
+            int hrLocal = _legacyImpl.GetFlags(&flagsLocal);
+            Debug.ValidateHResult(HResults.S_OK, hrLocal);
+            Debug.Assert(flagsLocal == *flags, $"cDAC: {*flags}, DAC: {flagsLocal}");
+        }
+#endif
+
+        return HResults.S_OK;
     }
 
     int IXCLRDataTypeInstance.IsSameObject(IXCLRDataTypeInstance? type)

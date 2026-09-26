@@ -202,7 +202,7 @@ namespace System.Net.Security
             connectionInfo.UpdateSslConnectionInfo(securityContext.SslContext);
         }
 
-        public static bool TryUpdateClintCertificate(
+        public static bool TryUpdateClientCertificate(
             SafeFreeCredentials? _1,
             SafeDeleteSslContext? _2,
             SslAuthenticationOptions _3)

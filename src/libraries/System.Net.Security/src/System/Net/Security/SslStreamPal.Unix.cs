@@ -174,7 +174,7 @@ namespace System.Net.Security
             connectionInfo.UpdateSslConnectionInfo((SafeSslHandle)securityContext);
         }
 
-        public static bool TryUpdateClintCertificate(
+        public static bool TryUpdateClientCertificate(
             SafeFreeCredentials? _,
             SafeDeleteSslContext? context,
             SslAuthenticationOptions sslAuthenticationOptions)
@@ -216,7 +216,7 @@ namespace System.Net.Security
                     }
 
                     // set the cert and continue
-                    TryUpdateClintCertificate(null, context, sslAuthenticationOptions);
+                    TryUpdateClientCertificate(null, context, sslAuthenticationOptions);
                     errorCode = Interop.OpenSsl.DoSslHandshake((SafeSslHandle)context, inputBuffer.Slice(consumed), out int c, ref token);
                     consumed += c;
                 }

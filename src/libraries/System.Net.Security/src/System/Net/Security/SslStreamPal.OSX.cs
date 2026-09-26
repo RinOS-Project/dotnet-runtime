@@ -322,7 +322,7 @@ namespace System.Net.Security
             connectionInfo.UpdateSslConnectionInfo(securityContext);
         }
 
-        public static bool TryUpdateClintCertificate(
+        public static bool TryUpdateClientCertificate(
             SafeFreeCredentials? _,
             SafeDeleteContext? context,
             SslAuthenticationOptions sslAuthenticationOptions)

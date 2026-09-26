@@ -553,7 +553,7 @@ namespace System.Net.Security
             {
                 UpdateCertificateContext(selectedCert);
 
-                if (SslStreamPal.TryUpdateClintCertificate(_credentialsHandle, _securityContext, _sslAuthenticationOptions))
+                if (SslStreamPal.TryUpdateClientCertificate(_credentialsHandle, _securityContext, _sslAuthenticationOptions))
                 {
                     // If the certificate was updated we do not need to deal with the credential handle.
                     return false;

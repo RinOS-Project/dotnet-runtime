@@ -206,7 +206,7 @@ namespace System.Net.Security
             connectionInfo.UpdateSslConnectionInfo(GetHandle(securityContext));
         }
 
-        public static bool TryUpdateClintCertificate(
+        public static bool TryUpdateClientCertificate(
             SafeFreeCredentials? _, SafeDeleteSslContext? context,
             SslAuthenticationOptions sslAuthenticationOptions)
         {
@@ -453,7 +453,7 @@ namespace System.Net.Security
                     ((created && sslAuthenticationOptions.CertificateContext is not null) ||
                      Interop.RinTls.ClientCertificateRequested(handle)))
                 {
-                    TryUpdateClintCertificate(null, handle, sslAuthenticationOptions);
+                    TryUpdateClientCertificate(null, handle, sslAuthenticationOptions);
                 }
                 int result;
                 if (Interop.RinTls.IsClosed(handle))

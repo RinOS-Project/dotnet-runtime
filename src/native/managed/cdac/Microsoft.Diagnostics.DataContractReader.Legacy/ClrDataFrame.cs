@@ -9,6 +9,7 @@ using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
+using System.Text;
 using System.Threading;
 using Microsoft.Diagnostics.DataContractReader.Contracts;
 using Microsoft.Diagnostics.DataContractReader.Contracts.StackWalkHelpers;
@@ -419,8 +420,55 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
         char* nameBuf)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
 
-        return LegacyFallbackHelper.CanFallback() && _legacyImpl is not null ? _legacyImpl.GetCodeName(flags, bufLen, nameLen, nameBuf) : HResults.E_NOTIMPL;
+        try
+        {
+            if (flags != 0)
+                throw new ArgumentException();
+
+            MethodDescHandle mdh = GetFrameMethodDesc(out _);
+            StringBuilder methodName = new();
+            TypeNameBuilder.AppendMethodInternal(
+                _target,
+                methodName,
+                mdh,
+                TypeNameFormat.FormatSignature |
+                TypeNameFormat.FormatNamespace |
+                TypeNameFormat.FormatFullInst);
+
+            OutputBufferHelpers.CopyStringToBuffer(nameBuf, bufLen, nameLen, methodName.ToString());
+            if (nameBuf is not null && bufLen < (uint)(methodName.Length + 1))
+                hr = HResults.S_FALSE;
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyImpl is not null)
+        {
+            uint nameLenLocal = 0;
+            char[] nameBufLocal = new char[bufLen > 0 ? bufLen : 1];
+            int hrLocal;
+            fixed (char* pNameBufLocal = nameBufLocal)
+            {
+                hrLocal = _legacyImpl.GetCodeName(flags, bufLen, &nameLenLocal, nameBuf is null ? null : pNameBufLocal);
+            }
+
+            Debug.ValidateHResult(hr, hrLocal, HResultValidationMode.AllowCdacSuccess);
+            if (nameLen is not null)
+                Debug.Assert(nameLenLocal == *nameLen, $"cDAC: {*nameLen:x}, DAC: {nameLenLocal:x}");
+            if (nameBuf is not null && bufLen >= nameLenLocal && hr >= 0 && hrLocal >= 0 && nameLenLocal > 0)
+            {
+                string dacName = new string(nameBufLocal, 0, (int)nameLenLocal - 1);
+                string cdacName = new string(nameBuf, 0, (int)nameLenLocal - 1);
+                Debug.Assert(dacName == cdacName, $"cDAC: {cdacName}, DAC: {dacName}");
+            }
+        }
+#endif
+        return hr;
     }
 
     int IXCLRDataFrame.GetMethodInstance(DacComNullableByRef<IXCLRDataMethodInstance> method)

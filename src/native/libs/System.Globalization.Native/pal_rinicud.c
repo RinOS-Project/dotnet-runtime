@@ -1399,7 +1399,7 @@ static int product_percent_positive_pattern(const RinIcuDataLocaleRecord* record
 static int product_first_day_of_week(const char* region)
 {
     static const char* sunday_regions[] = {
-        "BR", "CA", "CL", "CO", "HK", "ID", "IN", "JP", "KR", "MX", "MY", "NG", "PH", "PT", "SA", "SG", "TH", "TW", "US"
+        "AU", "BR", "CA", "CL", "CO", "HK", "ID", "IN", "JP", "KR", "MX", "MY", "NG", "NZ", "PH", "PT", "SA", "SG", "TH", "TW", "US", "ZA"
     };
     static const char* saturday_regions[] = {
         "IR"

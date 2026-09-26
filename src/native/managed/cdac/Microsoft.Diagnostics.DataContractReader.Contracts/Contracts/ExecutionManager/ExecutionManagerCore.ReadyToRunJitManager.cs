@@ -247,6 +247,9 @@ internal partial class ExecutionManagerCore<T> : IExecutionManager
                 // Funclets won't have a direct entry in the map of runtime function entry point to method desc.
                 // The funclet's address (and index) will be greater than that of the corresponding function, so
                 // we decrement the index to find the actual function / method desc for the funclet.
+                if (index == 0)
+                    throw new InvalidOperationException("Unable to find ReadyToRun method descriptor before index zero.");
+
                 index--;
                 methodDesc = GetMethodDescForRuntimeFunction(r2rInfo, imageBase, index);
             }

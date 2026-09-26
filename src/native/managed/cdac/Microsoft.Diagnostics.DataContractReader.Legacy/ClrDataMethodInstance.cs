@@ -75,7 +75,8 @@ public sealed unsafe partial class ClrDataMethodInstance : IXCLRDataMethodInstan
                     _target,
                     typeHandle,
                     legacyTypeInstance,
-                    _apiLock);
+                    _apiLock,
+                    _appDomain);
             }
         }
         catch (System.Exception ex)

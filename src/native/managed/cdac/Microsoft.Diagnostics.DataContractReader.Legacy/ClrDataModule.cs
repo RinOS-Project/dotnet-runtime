@@ -312,10 +312,12 @@ public sealed unsafe partial class ClrDataModule : ICustomQueryInterface, IXCLRD
     {
         public IEnumerator<uint> Enumerator { get; }
         public nuint LegacyHandle { get; set; }
+        public TargetPointer AppDomain { get; }
 
-        public EnumTypeInstances(IEnumerable<uint> tokens, nuint legacyHandle)
+        public EnumTypeInstances(IEnumerable<uint> tokens, TargetPointer appDomain, nuint legacyHandle)
         {
             Enumerator = tokens.GetEnumerator();
+            AppDomain = appDomain;
             LegacyHandle = legacyHandle;
         }
     }
@@ -556,8 +558,12 @@ public sealed unsafe partial class ClrDataModule : ICustomQueryInterface, IXCLRD
             Contracts.ModuleHandle moduleHandle = loader.GetModuleHandleFromModulePtr(_address);
             MetadataReader reader = _target.Contracts.EcmaMetadata.GetMetadata(moduleHandle)
                 ?? throw new InvalidOperationException("Module metadata is unavailable.");
+            TargetPointer appDomainAddress = appDomain is ClrDataAppDomain cda
+                ? cda.Address
+                : loader.GetAppDomain();
             EnumTypeInstances instances = new(
                 EnumerateLoadedTypeDefinitions(reader, loader, moduleHandle, fullName: null, flags: 0),
+                appDomainAddress,
                 (nuint)legacyHandle);
             *handle = (ulong)((IEnum<uint>)instances).GetHandle();
             legacyHandle = 0;
@@ -627,7 +633,12 @@ public sealed unsafe partial class ClrDataModule : ICustomQueryInterface, IXCLRD
                     throw new ArgumentException("Type definition is not loaded.");
 
                 ITypeHandle typeHandle = _target.Contracts.RuntimeTypeSystem.GetTypeHandle(methodTable);
-                typeInstance.Interface = new ClrDataTypeInstance(_target, typeHandle, legacyTypeInstance, _apiLock);
+                typeInstance.Interface = new ClrDataTypeInstance(
+                    _target,
+                    typeHandle,
+                    legacyTypeInstance,
+                    _apiLock,
+                    instances.AppDomain);
             }
             else
             {
@@ -828,8 +839,12 @@ public sealed unsafe partial class ClrDataModule : ICustomQueryInterface, IXCLRD
             Contracts.ModuleHandle moduleHandle = loader.GetModuleHandleFromModulePtr(_address);
             MetadataReader reader = _target.Contracts.EcmaMetadata.GetMetadata(moduleHandle)
                 ?? throw new InvalidOperationException("Module metadata is unavailable.");
+            TargetPointer appDomainAddress = appDomain is ClrDataAppDomain cda
+                ? cda.Address
+                : loader.GetAppDomain();
             EnumTypeInstances instances = new(
                 EnumerateLoadedTypeDefinitions(reader, loader, moduleHandle, new string(name), flags),
+                appDomainAddress,
                 (nuint)legacyHandle);
             *handle = (ulong)((IEnum<uint>)instances).GetHandle();
             legacyHandle = 0;
@@ -899,7 +914,12 @@ public sealed unsafe partial class ClrDataModule : ICustomQueryInterface, IXCLRD
                     throw new ArgumentException("Type definition is not loaded.");
 
                 ITypeHandle typeHandle = _target.Contracts.RuntimeTypeSystem.GetTypeHandle(methodTable);
-                type.Interface = new ClrDataTypeInstance(_target, typeHandle, legacyTypeInstance, _apiLock);
+                type.Interface = new ClrDataTypeInstance(
+                    _target,
+                    typeHandle,
+                    legacyTypeInstance,
+                    _apiLock,
+                    instances.AppDomain);
             }
             else
             {

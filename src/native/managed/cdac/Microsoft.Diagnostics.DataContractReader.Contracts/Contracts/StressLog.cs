@@ -150,6 +150,8 @@ internal sealed class StressLogTraversal(Target target, IStressMessageReader mes
         {
             currentPointer = currentChunkData.Buf;
         }
+        HashSet<TargetPointer> visitedReadChunks = [];
+        bool returnedToWriteChunk = false;
 
         while (true)
         {
@@ -169,6 +171,18 @@ internal sealed class StressLogTraversal(Target target, IStressMessageReader mes
                 do
                 {
                     currentReadChunk = currentChunkData.Next;
+                    if (currentReadChunk == TargetPointer.Null)
+                        throw new InvalidOperationException("Stress log chunk chain terminated unexpectedly");
+                    if (currentReadChunk == threadLog.CurrentWriteChunk)
+                    {
+                        if (returnedToWriteChunk)
+                            throw new InvalidOperationException("Cyclic stress log chunk chain");
+                        returnedToWriteChunk = true;
+                    }
+                    else if (!visitedReadChunks.Add(currentReadChunk))
+                    {
+                        throw new InvalidOperationException("Cyclic stress log chunk chain");
+                    }
                     currentChunkData = target.ProcessedData.GetOrAdd<Data.StressLogChunk>(currentReadChunk);
                 } while (!StressLogChunkValid(currentChunkData));
 

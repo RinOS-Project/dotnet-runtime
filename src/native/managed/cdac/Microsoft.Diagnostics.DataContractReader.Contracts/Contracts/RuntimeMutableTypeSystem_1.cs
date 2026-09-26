@@ -1,6 +1,7 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System;
 using System.Collections.Generic;
 using Microsoft.Diagnostics.DataContractReader.RuntimeTypeSystemHelpers;
 
@@ -74,8 +75,12 @@ internal readonly struct RuntimeMutableTypeSystem_1 : IRuntimeMutableTypeSystem
 
         Data.EnCEEClassData classData = _target.ProcessedData.GetOrAdd<Data.EnCEEClassData>(classDataPtr);
         TargetPointer node = staticFields ? classData.AddedStaticFields : classData.AddedInstanceFields;
+        HashSet<TargetPointer> visitedFields = [];
         while (node != TargetPointer.Null)
         {
+            if (!visitedFields.Add(node))
+                throw new InvalidOperationException("Cyclic EnC field chain");
+
             Data.EnCAddedFieldElement element = _target.ProcessedData.GetOrAdd<Data.EnCAddedFieldElement>(node);
             yield return element.FieldDesc;
             node = element.Next;
@@ -119,8 +124,12 @@ internal readonly struct RuntimeMutableTypeSystem_1 : IRuntimeMutableTypeSystem
 
         // Walk the linked list of EnCAddedField entries to find the matching FieldDesc
         TargetPointer entryPtr = encInfo.List;
+        HashSet<TargetPointer> visitedEntries = [];
         while (entryPtr != TargetPointer.Null)
         {
+            if (!visitedEntries.Add(entryPtr))
+                throw new InvalidOperationException("Cyclic EnC instance field chain");
+
             Data.EnCAddedField entry = _target.ProcessedData.GetOrAdd<Data.EnCAddedField>(entryPtr);
             if (entry.FieldDesc == encFieldDescPointer)
             {

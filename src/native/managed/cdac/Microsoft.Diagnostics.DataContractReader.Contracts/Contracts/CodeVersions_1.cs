@@ -83,8 +83,12 @@ internal readonly partial struct CodeVersions_1 : ICodeVersions
         {
             Data.ILCodeVersioningState ilState = _target.ProcessedData.GetOrAdd<Data.ILCodeVersioningState>(ilVersionStateAddress);
             TargetPointer nodePointer = ilState.FirstVersionNode;
+            HashSet<TargetPointer> visitedNodes = [];
             while (nodePointer != TargetPointer.Null)
             {
+                if (!visitedNodes.Add(nodePointer))
+                    throw new InvalidOperationException("Cyclic IL code version chain");
+
                 Data.ILCodeVersionNode current = _target.ProcessedData.GetOrAdd<Data.ILCodeVersionNode>(nodePointer);
                 yield return ILCodeVersionHandle.CreateExplicit(nodePointer);
                 nodePointer = current.Next;
@@ -264,8 +268,12 @@ internal readonly partial struct CodeVersions_1 : ICodeVersions
 
         // LinkedList stage of NativeCodeVersion::Next, heavily inlined
         TargetPointer currentAddress = versioningState.NativeCodeVersionNode;
+        HashSet<TargetPointer> visitedNodes = [];
         while (currentAddress != TargetPointer.Null)
         {
+            if (!visitedNodes.Add(currentAddress))
+                throw new InvalidOperationException("Cyclic native code version chain");
+
             Data.NativeCodeVersionNode current = _target.ProcessedData.GetOrAdd<Data.NativeCodeVersionNode>(currentAddress);
             if (predicate(current))
             {

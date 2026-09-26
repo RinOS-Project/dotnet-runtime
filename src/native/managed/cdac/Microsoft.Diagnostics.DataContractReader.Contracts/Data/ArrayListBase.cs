@@ -1,6 +1,7 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System;
 using System.Collections.Generic;
 
 namespace Microsoft.Diagnostics.DataContractReader.Data;
@@ -23,8 +24,12 @@ internal sealed partial class ArrayListBase : IData<ArrayListBase>
     {
         List<ArrayListBlock> blocks = [];
         TargetPointer next = FirstBlock;
+        HashSet<TargetPointer> visitedBlocks = [];
         while (next != TargetPointer.Null)
         {
+            if (!visitedBlocks.Add(next))
+                throw new InvalidOperationException("Cyclic ArrayList block chain");
+
             ArrayListBlock block = target.ProcessedData.GetOrAdd<ArrayListBlock>(next);
             blocks.Add(block);
             next = block.Next;

@@ -110,8 +110,12 @@ internal readonly struct BuiltInCOM_1 : IBuiltInCOM
         TargetPointer linkedWrapperTerminator = pointerSize == 8 ? TargetPointer.Max64Bit : TargetPointer.Max32Bit;
         bool isFirst = true;
         TargetPointer current = ccw;
+        HashSet<TargetPointer> visitedWrappers = [];
         while (current != TargetPointer.Null)
         {
+            if (!visitedWrappers.Add(current))
+                throw new InvalidOperationException("Cyclic COM wrapper chain");
+
             Data.ComCallWrapper wrapper = _target.ProcessedData.GetOrAdd<Data.ComCallWrapper>(current);
 
             for (int i = 0; i < wrapper.IPtrs.Length; i++)
@@ -211,16 +215,24 @@ internal readonly struct BuiltInCOM_1 : IBuiltInCOM
 
         Data.RCWCleanupList list = _target.ProcessedData.GetOrAdd<Data.RCWCleanupList>(listAddress);
         TargetPointer bucketPtr = list.FirstBucket;
+        HashSet<TargetPointer> visitedBuckets = [];
         while (bucketPtr != TargetPointer.Null)
         {
+            if (!visitedBuckets.Add(bucketPtr))
+                throw new InvalidOperationException("Cyclic RCW cleanup bucket chain");
+
             Data.RCW bucket = _target.ProcessedData.GetOrAdd<Data.RCW>(bucketPtr);
             bool isFreeThreaded = ((RCWFlags)bucket.Flags & RCWFlags.MarshalingTypeMask) == RCWFlags.MarshalingTypeFreeThreaded;
             TargetPointer ctxCookie = bucket.CtxCookie;
             TargetPointer staThread = GetSTAThread(bucket);
 
             TargetPointer rcwPtr = bucketPtr;
+            HashSet<TargetPointer> visitedRcw = [];
             while (rcwPtr != TargetPointer.Null)
             {
+                if (!visitedRcw.Add(rcwPtr))
+                    throw new InvalidOperationException("Cyclic RCW cleanup entry chain");
+
                 Data.RCW rcw = _target.ProcessedData.GetOrAdd<Data.RCW>(rcwPtr);
                 yield return new RCWCleanupInfo(rcwPtr, ctxCookie, staThread, isFreeThreaded);
                 rcwPtr = rcw.NextRCW;

@@ -96,7 +96,7 @@ public static class ConversionExtensions
         }
         else if (flags.HasFlag(CodePointerFlags.HasArm64PtrAuth))
         {
-            throw new NotImplementedException($"{nameof(ToAddress)}: ARM64 with pointer authentication");
+            throw new NotSupportedException($"{nameof(ToAddress)}: ARM64 pointer authentication is not supported.");
         }
         Debug.Assert(flags == default);
         return new TargetPointer(code.Value);

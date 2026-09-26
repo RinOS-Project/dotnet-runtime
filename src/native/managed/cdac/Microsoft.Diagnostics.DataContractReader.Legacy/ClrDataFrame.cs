@@ -627,7 +627,7 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
     {
         try
         {
-            MetadataReader mdReader = _target.Contracts.EcmaMetadata.GetMetadata(moduleHandle) ?? throw new NotImplementedException();
+            MetadataReader mdReader = _target.Contracts.EcmaMetadata.GetMetadata(moduleHandle) ?? throw new InvalidOperationException("Module metadata is unavailable.");
             uint token = _target.Contracts.RuntimeTypeSystem.GetMethodToken(mdh);
             MethodDefinition methodDef = mdReader.GetMethodDefinition(MetadataTokens.MethodDefinitionHandle((int)EcmaMetadataUtils.GetRowId(token)));
             FlagSignatureTypeProvider provider = new(_target, moduleHandle);
@@ -663,7 +663,7 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
     {
         try
         {
-            MetadataReader mdReader = _target.Contracts.EcmaMetadata.GetMetadata(moduleHandle) ?? throw new NotImplementedException();
+            MetadataReader mdReader = _target.Contracts.EcmaMetadata.GetMetadata(moduleHandle) ?? throw new InvalidOperationException("Module metadata is unavailable.");
             uint token = _target.Contracts.RuntimeTypeSystem.GetMethodToken(mdh);
             MethodDefinition methodDef = mdReader.GetMethodDefinition(MetadataTokens.MethodDefinitionHandle((int)EcmaMetadataUtils.GetRowId(token)));
             SignatureTypeProvider<MethodDescHandle> provider = new(_target, moduleHandle);

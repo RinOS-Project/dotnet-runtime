@@ -942,7 +942,7 @@ public sealed unsafe partial class ClrDataValue : IXCLRDataValue
         ITypeHandle enclosingType = rts.GetTypeHandle(rts.GetMTOfEnclosingClass(fieldDesc));
         TargetPointer module = rts.GetModule(enclosingType);
         Contracts.ModuleHandle moduleHandle = _target.Contracts.Loader.GetModuleHandleFromModulePtr(module);
-        MetadataReader metadata = _target.Contracts.EcmaMetadata.GetMetadata(moduleHandle) ?? throw new NotImplementedException();
+        MetadataReader metadata = _target.Contracts.EcmaMetadata.GetMetadata(moduleHandle) ?? throw new InvalidOperationException("Module metadata is unavailable.");
         uint token = rts.GetFieldDescMemberDef(fieldDesc);
         FieldDefinition definition = metadata.GetFieldDefinition(MetadataTokens.FieldDefinitionHandle((int)EcmaMetadataUtils.GetRowId(token)));
         return (metadata.GetString(definition.Name), token, definition, enclosingType);

@@ -3724,7 +3724,7 @@ public sealed unsafe partial class SOSDacImpl
             {
                 Contracts.ModuleFlags flags = contract.GetFlags(handle);
                 if (!flags.HasFlag(Contracts.ModuleFlags.ReflectionEmit))
-                    throw new NotImplementedException();
+                    throw new InvalidOperationException("Module path is unavailable for a non-reflection-emit module.");
             }
 
             OutputBufferHelpers.CopyStringToBuffer(fileName, count, pNeeded, path);

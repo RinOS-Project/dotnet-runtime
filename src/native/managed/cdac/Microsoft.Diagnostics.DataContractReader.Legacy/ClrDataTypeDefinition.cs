@@ -128,7 +128,7 @@ public sealed unsafe partial class ClrDataTypeDefinition : IXCLRDataTypeDefiniti
             if (_typeHandle is null)
             {
                 Contracts.ModuleHandle module = _target.Contracts.Loader.GetModuleHandleFromModulePtr(_module);
-                MetadataReader reader = _target.Contracts.EcmaMetadata.GetMetadata(module) ?? throw new NotImplementedException();
+                MetadataReader reader = _target.Contracts.EcmaMetadata.GetMetadata(module) ?? throw new InvalidOperationException("Module metadata is unavailable.");
                 TypeDefinitionHandle typeDefinitionHandle = MetadataTokens.TypeDefinitionHandle((int)EcmaMetadataUtils.GetRowId(_token));
                 TypeDefinition typeDefinition = reader.GetTypeDefinition(typeDefinitionHandle);
                 string typeName = reader.GetString(typeDefinition.Name);
@@ -234,7 +234,7 @@ public sealed unsafe partial class ClrDataTypeDefinition : IXCLRDataTypeDefiniti
                 throw new NullReferenceException();
 
             if (_typeHandle is null)
-                throw new NotImplementedException();
+                throw new InvalidOperationException("Type handle is unavailable.");
 
             *type = (uint)_target.Contracts.RuntimeTypeSystem.GetInternalCorElementType(_typeHandle);
         }

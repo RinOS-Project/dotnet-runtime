@@ -2727,7 +2727,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
             }
             else
             {
-                throw new NotImplementedException();
+                *pResult = Interop.BOOL.FALSE;
             }
         }
         catch (System.Exception ex)
@@ -3890,7 +3890,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
                 throw new ArgumentException("vmRuntimeThread cannot be null for thread static fields");
             if (!rts.IsFieldDescThreadStatic(fd))
             {
-                throw new NotImplementedException();
+                throw new ArgumentException("Field is not thread static.", nameof(vmField));
             }
             *pRetVal = rts.GetFieldDescThreadStaticAddress(fd, new TargetPointer(vmRuntimeThread)).Value;
         }

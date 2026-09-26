@@ -165,9 +165,13 @@ public struct TypeNameBuilder
 
         uint typeDefTokenOfOwner = runtimeTypeSystem.GetTypeDefToken(approxOwner);
         TargetPointer moduleOfOwner = runtimeTypeSystem.GetModule(approxOwner);
+        HashSet<TargetPointer> visitedTypes = [];
 
         do
         {
+            if (!visitedTypes.Add(possiblyDerivedType.Address))
+                throw new InvalidOperationException("Cyclic parent type");
+
             uint typeDefTokenOfPossiblyDerivedType = runtimeTypeSystem.GetTypeDefToken(possiblyDerivedType);
             TargetPointer moduleOfPossiblyDerivedType = runtimeTypeSystem.GetModule(possiblyDerivedType);
 
@@ -180,7 +184,6 @@ public struct TypeNameBuilder
             if (parentTypePointer.Value == 0)
                 throw new InvalidOperationException("Invalid parent type");
 
-            // TODO(cdac) - Consider adding infinite loop detection here
             possiblyDerivedType = runtimeTypeSystem.GetTypeHandle(parentTypePointer);
         } while (true);
     }

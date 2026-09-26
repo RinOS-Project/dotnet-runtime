@@ -536,6 +536,9 @@ public sealed unsafe partial class ClrDataModule : ICustomQueryInterface, IXCLRD
     int IXCLRDataModule.GetMethodDefinitionByToken(/*mdMethodDef*/ uint token, DacComNullableByRef<IXCLRDataMethodDefinition> methodDefinition)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        if ((token & EcmaMetadataUtils.TokenTypeMask) != (uint)EcmaMetadataUtils.TokenType.mdtMethodDef)
+            return HResults.E_INVALIDARG;
+
         int hr = HResults.S_OK;
         int hrLocal = HResults.S_OK;
         IXCLRDataMethodDefinition? legacyMethod = null;
@@ -543,15 +546,15 @@ public sealed unsafe partial class ClrDataModule : ICustomQueryInterface, IXCLRD
         {
             if (_legacyModule is not null)
             {
-                DacComNullableByRef<IXCLRDataMethodDefinition> legacyMethodOut = new(isNullRef: false);
+                DacComNullableByRef<IXCLRDataMethodDefinition> legacyMethodOut = new(isNullRef: methodDefinition.IsNullRef);
                 hrLocal = _legacyModule.GetMethodDefinitionByToken(token, legacyMethodOut);
                 legacyMethod = legacyMethodOut.Interface;
             }
 
-            if ((EcmaMetadataUtils.TokenType)(token & EcmaMetadataUtils.TokenTypeMask) != EcmaMetadataUtils.TokenType.mdtMethodDef)
-                throw new ArgumentException();
-
-            methodDefinition.Interface = new ClrDataMethodDefinition(_target, _address, token, legacyMethod, _apiLock);
+            if (!methodDefinition.IsNullRef)
+            {
+                methodDefinition.Interface = new ClrDataMethodDefinition(_target, _address, token, legacyMethod, _apiLock);
+            }
         }
         catch (System.Exception ex)
         {

@@ -153,6 +153,39 @@ static int ConnectRinOSUnix(const char* path)
 }
 #endif // TARGET_RINOS
 
+static void SetLastErrorForTransportErrno()
+{
+    DWORD error = ERROR_GEN_FAILURE;
+    switch (errno)
+    {
+        case EACCES:
+        case EPERM:
+            error = ERROR_ACCESS_DENIED;
+            break;
+        case EBADF:
+            error = ERROR_INVALID_HANDLE;
+            break;
+        case EINVAL:
+            error = ERROR_INVALID_PARAMETER;
+            break;
+        case ENOMEM:
+            error = ERROR_NOT_ENOUGH_MEMORY;
+            break;
+        case EOVERFLOW:
+            error = ERROR_ARITHMETIC_OVERFLOW;
+            break;
+        case EPIPE:
+            error = ERROR_BROKEN_PIPE;
+            break;
+        case EIO:
+            error = ERROR_WRITE_FAULT;
+            break;
+        default:
+            break;
+    }
+    SetLastError(error);
+}
+
 // Creates a server side of the pipe.
 // Id is used to create pipes names and uniquely identify the pipe on the machine.
 // true - success, false - failure (use GetLastError() for more details)
@@ -337,7 +370,6 @@ bool TwoWayPipe::WaitForConnection()
 
 // Reads data from pipe. Returns number of bytes read or a negative number in case of an error.
 // use GetLastError() for more details
-// UNIXTODO - mjm 9/6/15 - does not set last error on failure
 int TwoWayPipe::Read(void *buffer, DWORD bufferSize)
 {
     _ASSERTE(m_state == ServerConnected || m_state == ClientConnected);
@@ -345,6 +377,7 @@ int TwoWayPipe::Read(void *buffer, DWORD bufferSize)
     if (bufferSize > static_cast<DWORD>(INT_MAX))
     {
         errno = EOVERFLOW;
+        SetLastErrorForTransportErrno();
         return -1;
     }
 
@@ -356,7 +389,10 @@ int TwoWayPipe::Read(void *buffer, DWORD bufferSize)
     {
 #if defined(TARGET_RINOS)
         if (!RinOSDebugTransportPeerAuthorized(m_inboundPipe))
+        {
+            SetLastErrorForTransportErrno();
             return -1;
+        }
 #endif
         bytesRead = (int)read(m_inboundPipe, buffer, cb);
         if (bytesRead == -1 && errno == EINTR)
@@ -375,12 +411,17 @@ int TwoWayPipe::Read(void *buffer, DWORD bufferSize)
         cb -= bytesRead;
     }
 
-    return bytesRead == -1 ? -1 : totalBytesRead;
+    if (bytesRead == -1)
+    {
+        SetLastErrorForTransportErrno();
+        return -1;
+    }
+
+    return totalBytesRead;
 }
 
 // Writes data to pipe. Returns number of bytes written or a negative number in case of an error.
 // use GetLastError() for more details
-// UNIXTODO - mjm 9/6/15 - does not set last error on failure
 int TwoWayPipe::Write(const void *data, DWORD dataSize)
 {
     _ASSERTE(m_state == ServerConnected || m_state == ClientConnected);
@@ -388,6 +429,7 @@ int TwoWayPipe::Write(const void *data, DWORD dataSize)
     if (dataSize > static_cast<DWORD>(INT_MAX))
     {
         errno = EOVERFLOW;
+        SetLastErrorForTransportErrno();
         return -1;
     }
 
@@ -399,7 +441,10 @@ int TwoWayPipe::Write(const void *data, DWORD dataSize)
     {
 #if defined(TARGET_RINOS)
         if (!RinOSDebugTransportPeerAuthorized(m_outboundPipe))
+        {
+            SetLastErrorForTransportErrno();
             return -1;
+        }
         bytesWritten = (int)send(m_outboundPipe, data, cb, MSG_NOSIGNAL);
 #else
         bytesWritten = (int)write(m_outboundPipe, data, cb);
@@ -420,7 +465,13 @@ int TwoWayPipe::Write(const void *data, DWORD dataSize)
         cb -= bytesWritten;
     }
 
-    return bytesWritten == -1 ? -1 : totalBytesWritten;
+    if (bytesWritten == -1)
+    {
+        SetLastErrorForTransportErrno();
+        return -1;
+    }
+
+    return totalBytesWritten;
 }
 
 // Disconnect server or client side of the pipe.

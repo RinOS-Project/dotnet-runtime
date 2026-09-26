@@ -237,8 +237,38 @@ public sealed unsafe partial class ClrDataValue : IXCLRDataValue
     int IXCLRDataValue.SetBytes(uint bufLen, uint* dataSize, byte* buffer)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        try
+        {
+            if (_totalSize == 0)
+                throw new InvalidCastException(); // E_NOINTERFACE
 
-        return HResults.E_NOTIMPL;
+            if (dataSize is not null)
+                *dataSize = (uint)_totalSize;
+
+            if (bufLen < _totalSize)
+                throw Marshal.GetExceptionForHR(/*ERROR_BUFFER_OVERFLOW*/ CorDbgHResults.ERROR_BUFFER_OVERFLOW)!;
+
+            byte* src = buffer;
+            foreach (NativeVarLocation loc in _locations)
+            {
+                if (loc.IsRegisterValue)
+                {
+                    hr = HResults.E_NOTIMPL;
+                    break;
+                }
+
+                Span<byte> memBytes = new(src, (int)loc.Size);
+                _target.WriteBuffer(loc.AddressOrValue, memBytes);
+                src += loc.Size;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+        return hr;
     }
 
     int IXCLRDataValue.GetType(DacComNullableByRef<IXCLRDataTypeInstance> typeInstance)

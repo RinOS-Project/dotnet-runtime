@@ -435,22 +435,96 @@ public sealed unsafe partial class ClrDataMethodDefinition : IXCLRDataMethodDefi
     int IXCLRDataMethodDefinition.GetFlags(uint* flags)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        try
+        {
+            if (flags is null)
+                throw new ArgumentNullException(nameof(flags));
 
-        return HResults.E_NOTIMPL;
+            TargetPointer methodDesc = TryResolveMethodDesc();
+            *flags = methodDesc == TargetPointer.Null
+                ? 0
+                : MethodSignatureHelpers.GetMethodFlags(_target, new MethodDescHandle(methodDesc));
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyImpl is not null)
+        {
+            uint flagsLocal = 0;
+            int hrLocal = _legacyImpl.GetFlags(&flagsLocal);
+            Debug.ValidateHResult(hr, hrLocal);
+            if (hr == HResults.S_OK)
+                Debug.Assert(*flags == flagsLocal, $"cDAC: {*flags:x}, DAC: {flagsLocal:x}");
+        }
+#endif
+
+        return hr;
     }
 
     int IXCLRDataMethodDefinition.IsSameObject(IXCLRDataMethodDefinition? method)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_FALSE;
+        try
+        {
+            if (method is ClrDataMethodDefinition other)
+            {
+                TargetPointer methodDesc = TryResolveMethodDesc();
+                TargetPointer otherMethodDesc = other.TryResolveMethodDesc();
+                hr = methodDesc != TargetPointer.Null || otherMethodDesc != TargetPointer.Null
+                    ? (methodDesc == otherMethodDesc ? HResults.S_OK : HResults.S_FALSE)
+                    : (_module == other._module && _token == other._token ? HResults.S_OK : HResults.S_FALSE);
+            }
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
 
-        return HResults.E_NOTIMPL;
+#if DEBUG
+        if (_legacyImpl is not null)
+        {
+            int hrLocal = _legacyImpl.IsSameObject(method);
+            Debug.Assert(hrLocal == hr, $"cDAC: {hr}, DAC: {hrLocal}");
+        }
+#endif
+
+        return hr;
     }
 
     int IXCLRDataMethodDefinition.GetLatestEnCVersion(uint* version)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        try
+        {
+            if (version is null)
+                throw new ArgumentNullException(nameof(version));
 
-        return HResults.E_NOTIMPL;
+            // The native DAC currently reports no EnC version for definitions.
+            *version = 0;
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyImpl is not null)
+        {
+            uint versionLocal = 0;
+            int hrLocal = _legacyImpl.GetLatestEnCVersion(&versionLocal);
+            Debug.ValidateHResult(hr, hrLocal);
+            if (hr == HResults.S_OK)
+                Debug.Assert(*version == versionLocal, $"cDAC: {*version}, DAC: {versionLocal}");
+        }
+#endif
+
+        return hr;
     }
 
     int IXCLRDataMethodDefinition.StartEnumExtents(ulong* handle)

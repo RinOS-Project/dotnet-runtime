@@ -291,8 +291,32 @@ public sealed unsafe partial class ClrDataMethodInstance : IXCLRDataMethodInstan
     int IXCLRDataMethodInstance.GetEnCVersion(uint* version)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        try
+        {
+            if (version is null)
+                throw new ArgumentNullException(nameof(version));
 
-        return HResults.E_NOTIMPL;
+            // The native DAC currently reports no EnC version for instances.
+            *version = 0;
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyImpl is not null)
+        {
+            uint versionLocal = 0;
+            int hrLocal = _legacyImpl.GetEnCVersion(&versionLocal);
+            Debug.ValidateHResult(hr, hrLocal);
+            if (hr == HResults.S_OK)
+                Debug.Assert(*version == versionLocal, $"cDAC: {*version}, DAC: {versionLocal}");
+        }
+#endif
+
+        return hr;
     }
 
     int IXCLRDataMethodInstance.GetNumTypeArguments(uint* numTypeArgs)

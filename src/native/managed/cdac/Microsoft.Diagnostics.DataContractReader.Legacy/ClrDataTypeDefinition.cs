@@ -1015,8 +1015,12 @@ public sealed unsafe partial class ClrDataTypeDefinition : IXCLRDataTypeDefiniti
 
         List<ITypeHandle> types = [];
         ITypeHandle current = _typeHandle ?? throw new InvalidOperationException("Type handle is unavailable.");
+        HashSet<TargetPointer> visitedTypes = [];
         do
         {
+            if (!visitedTypes.Add(current.Address))
+                throw new InvalidOperationException("Cyclic parent type");
+
             types.Add(current);
             if (!includeParents)
                 break;

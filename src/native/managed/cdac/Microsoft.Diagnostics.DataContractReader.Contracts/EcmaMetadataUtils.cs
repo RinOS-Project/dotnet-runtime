@@ -161,8 +161,12 @@ public static class EcmaMetadataUtils
             return false;
 
         EntityHandle scope;
+        HashSet<TypeReferenceHandle> visitedTypeReferences = [];
         while (true)
         {
+            if (!visitedTypeReferences.Add(handle))
+                throw new InvalidOperationException("Cyclic type reference resolution scope");
+
             TypeReference typeRef = reader.GetTypeReference(handle);
             nameChain.Add((reader.GetString(typeRef.Namespace), reader.GetString(typeRef.Name)));
             scope = typeRef.ResolutionScope;

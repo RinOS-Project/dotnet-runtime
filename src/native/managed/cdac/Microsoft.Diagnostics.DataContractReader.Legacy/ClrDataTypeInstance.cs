@@ -415,8 +415,12 @@ public sealed unsafe partial class ClrDataTypeInstance : IXCLRDataTypeInstance
         IRuntimeTypeSystem rts = _target.Contracts.RuntimeTypeSystem;
         List<ITypeHandle> types = [];
         ITypeHandle current = _typeHandle;
+        HashSet<TargetPointer> visitedTypes = [];
         do
         {
+            if (!visitedTypes.Add(current.Address))
+                throw new InvalidOperationException("Cyclic parent type");
+
             types.Add(current);
             if ((flags & (uint)ClrDataValueFlag.IS_INHERITED) == 0)
                 break;

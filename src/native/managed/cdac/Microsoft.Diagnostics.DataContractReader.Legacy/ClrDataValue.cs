@@ -1053,8 +1053,12 @@ public sealed unsafe partial class ClrDataValue : IXCLRDataValue
         IRuntimeTypeSystem rts = _target.Contracts.RuntimeTypeSystem;
         List<ITypeHandle> types = [];
         ITypeHandle current = typeHandle;
+        HashSet<TargetPointer> visitedTypes = [];
         do
         {
+            if (!visitedTypes.Add(current.Address))
+                throw new InvalidOperationException("Cyclic parent type");
+
             types.Add(current);
             TargetPointer parent = includeParents ? rts.GetParentMethodTable(current) : TargetPointer.Null;
             if (parent == TargetPointer.Null)

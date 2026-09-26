@@ -493,6 +493,7 @@ internal sealed class EcmaMetadata_1(Target target) : IEcmaMetadata
         TargetPointer segData = head.SegData;
         uint dataSize = head.DataSize;
         TargetPointer nextSegment = head.NextSegment;
+        HashSet<TargetPointer> visitedSegments = [poolAddress];
 
         while (true)
         {
@@ -508,6 +509,10 @@ internal sealed class EcmaMetadata_1(Target target) : IEcmaMetadata
             if (nextSegment == TargetPointer.Null)
             {
                 break;
+            }
+            if (!visitedSegments.Add(nextSegment))
+            {
+                throw Marshal.GetExceptionForHR(CorDbgHResults.CLDB_E_FILE_CORRUPT)!;
             }
 
             Data.StgPoolSeg segment = target.ProcessedData.GetOrAdd<Data.StgPoolSeg>(nextSegment);

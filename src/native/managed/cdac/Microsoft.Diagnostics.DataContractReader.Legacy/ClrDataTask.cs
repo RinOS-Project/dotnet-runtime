@@ -233,7 +233,33 @@ public sealed unsafe partial class ClrDataTask : IXCLRDataTask
     {
         using Lock.Scope scope = _apiLock.EnterScope();
 
-        return HResults.E_NOTIMPL;
+        try
+        {
+            if (context is null || contextSize > int.MaxValue)
+                return HResults.E_INVALIDARG;
+
+            IPlatformAgnosticContext contextForPlatform = IPlatformAgnosticContext.GetContextForPlatform(_target);
+            Span<byte> contextBuffer = new(context, (int)contextSize);
+
+            // Match native CheckContextSizeForBuffer: the ContextFlags field is
+            // decoded from the caller's buffer before applying architecture-
+            // specific minimum sizes (including the x86 extended-register prefix).
+            contextForPlatform.FillFromBuffer(contextBuffer);
+            if (contextSize < contextForPlatform.GetContextSizeForFlags(contextForPlatform.RawContextFlags))
+                return HResults.E_INVALIDARG;
+
+            Contracts.ThreadData threadData = _target.Contracts.Thread.GetThreadData(_address);
+            if (threadData.OSId.Value == 0)
+                return HResults.E_INVALIDARG;
+
+            return _target.TrySetThreadContext(threadData.OSId.Value, contextBuffer)
+                ? HResults.S_OK
+                : HResults.E_FAIL;
+        }
+        catch (System.Exception ex)
+        {
+            return ex.HResult;
+        }
     }
 
     int IXCLRDataTask.GetCurrentExceptionState(DacComNullableByRef<IXCLRDataExceptionState> exception)

@@ -57,20 +57,19 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
             IStackWalk stackWalk = _target.Contracts.StackWalk;
             byte[] context = stackWalk.GetRawContext(_dataFrame);
 
-            // TODO(https://github.com/dotnet/runtime/issues/125791):
-            // Use contextFlags to compute the required size via ContextSizeForFlags
-            // (see native ClrDataFrame::GetContext in stack.cpp). Currently we always
-            // return the full platform context regardless of the requested flags.
+            IPlatformAgnosticContext contextForPlatform = IPlatformAgnosticContext.GetContextForPlatform(_target);
+            uint requiredSize = contextForPlatform.GetContextSizeForFlags(contextFlags);
             if (contextSize is not null)
-                *contextSize = (uint)context.Length;
+                *contextSize = requiredSize;
 
-            // Match native DAC behavior: fail when the buffer is too small,
-            // and on success copy the full context.
-            if (contextBufSize < (uint)context.Length)
+            // Match native DAC behavior: validate against the requested
+            // context shape, then copy only the available context prefix.
+            if (contextBufSize < requiredSize)
                 throw new ArgumentException();
 
-            if (contextBufSize > 0 && context.Length > 0)
-                Array.Copy(context, 0, contextBuf, 0, context.Length);
+            uint copySize = Math.Min((uint)context.Length, contextBufSize);
+            if (copySize > 0)
+                Array.Copy(context, 0, contextBuf, 0, (int)copySize);
         }
         catch (System.Exception ex)
         {

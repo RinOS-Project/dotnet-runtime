@@ -39,6 +39,14 @@ public struct X86Context : IPlatformContext
 
     public readonly uint Size => 0x2cc;
 
+    // Keep this in sync with coreclr/debug/inc/common.h::ContextSizeForFlags.
+    // The legacy DAC permits callers that do not request extended registers to
+    // provide only the context prefix preceding ExtendedRegisters.
+    public readonly uint GetContextSizeForFlags(uint contextFlags)
+        => (contextFlags & (uint)ContextFlagsValues.CONTEXT_EXTENDED_REGISTERS) == (uint)ContextFlagsValues.CONTEXT_EXTENDED_REGISTERS
+            ? Size
+            : 0xcc;
+
     public readonly uint ContextControlFlags => (uint)ContextFlagsValues.CONTEXT_CONTROL;
 
     public readonly uint FullContextFlags => (uint)ContextFlagsValues.CONTEXT_FULL;

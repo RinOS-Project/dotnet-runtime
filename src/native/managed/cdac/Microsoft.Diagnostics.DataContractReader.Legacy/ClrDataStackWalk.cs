@@ -86,23 +86,29 @@ public sealed unsafe partial class ClrDataStackWalk : IXCLRDataStackWalk
     {
         using Lock.Scope scope = _apiLock.EnterScope();
         int hr = HResults.S_OK;
+        IPlatformAgnosticContext contextForPlatform = IPlatformAgnosticContext.GetContextForPlatform(_target);
+        uint requiredSize = contextForPlatform.GetContextSizeForFlags(contextFlags);
 
-        if (_currentFrameIsValid)
+        if (contextSize is not null)
+        {
+            *contextSize = requiredSize;
+        }
+
+        // Native DAC validates the requested context shape before checking
+        // whether the current frame is valid.
+        if (contextBufSize < requiredSize)
+            hr = HResults.E_INVALIDARG;
+
+        if (hr == HResults.S_OK && _currentFrameIsValid)
         {
             IStackWalk sw = _target.Contracts.StackWalk;
             IStackDataFrameHandle dataFrame = _dataFrames.Current;
             byte[] context = sw.GetRawContext(dataFrame);
-            if (context.Length > contextBufSize)
-                hr = HResults.E_INVALIDARG;
-
-            if (contextSize is not null)
-            {
-                *contextSize = (uint)context.Length;
-            }
-
-            context.CopyTo(contextBuf);
+            uint copySize = Math.Min((uint)context.Length, contextBufSize);
+            if (copySize > 0)
+                Array.Copy(context, 0, contextBuf, 0, (int)copySize);
         }
-        else
+        else if (hr == HResults.S_OK)
         {
             hr = HResults.S_FALSE;
         }

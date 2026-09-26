@@ -763,8 +763,9 @@ internal class ARM64Unwinder(Target target)
                     return false;
                 }
 
-                // TODO-PAC: Enable processing PAC-enabled return address
-                // context.Lr &= 0x0000FFFFFFFFFFFF;
+                // PAC stripping/validation is not implemented. Do not report a
+                // successfully unwound frame with an authenticated LR we cannot decode.
+                status = false;
 
                 //
                 // TODO: Implement support for UnwindFlags RTL_VIRTUAL_UNWIND2_VALIDATE_PAC.

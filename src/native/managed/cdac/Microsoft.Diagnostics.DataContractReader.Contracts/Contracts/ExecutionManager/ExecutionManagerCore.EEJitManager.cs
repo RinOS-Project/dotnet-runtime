@@ -170,11 +170,14 @@ internal partial class ExecutionManagerCore<T> : IExecutionManager
             List<TargetPointer> entries = [];
 
             TargetCodePointer current = new(heapListNode.EndAddress.Value);
+            HashSet<TargetPointer> visitedCodeStarts = [];
             while (true)
             {
                 TargetPointer codeStart = _nibbleMap.FindMethodCode(heapListNode, current);
                 if (codeStart == TargetPointer.Null)
                     break;
+                if (!visitedCodeStarts.Add(codeStart))
+                    throw new InvalidOperationException("Cyclic code start lookup");
 
                 // The real code header pointer is stored immediately before the code start.
                 TargetPointer codeHeaderIndirect = codeStart - (ulong)Target.PointerSize;

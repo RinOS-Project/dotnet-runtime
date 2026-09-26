@@ -54,8 +54,12 @@ internal readonly partial struct SHash_1 : ISHash
         uint hash = shashTable.Traits!.Hash(key);
         uint index = hash % shashTable.TableSize;
         uint increment = 0;
+        HashSet<uint> visitedIndices = [];
         while (true)
         {
+            if (!visitedIndices.Add(index))
+                throw new InvalidOperationException("Cyclic SHash probe sequence");
+
             TEntry current = shashTable.Entries![(int)index];
             if (shashTable.Traits.IsNull(current))
                 return null;
@@ -64,7 +68,11 @@ internal readonly partial struct SHash_1 : ISHash
                 return current;
 
             if (increment == 0)
+            {
+                if (shashTable.TableSize <= 1)
+                    return null;
                 increment = (hash % (shashTable.TableSize - 1)) + 1;
+            }
 
             index += increment;
             if (index >= shashTable.TableSize)

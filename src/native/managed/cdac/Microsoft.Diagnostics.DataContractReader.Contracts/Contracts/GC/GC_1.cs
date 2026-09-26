@@ -343,8 +343,12 @@ internal struct GC_1 : IGC
             GCType.Server => _target.Read<uint>(_target.ReadGlobalPointer(Constants.Globals.TotalCpuCount)),
             _ => 0 // unknown
         };
+        HashSet<TargetPointer> visitedHandleTableMaps = [];
         while (handleTableMap != TargetPointer.Null)
         {
+            if (!visitedHandleTableMaps.Add(handleTableMap))
+                throw new InvalidOperationException("Cyclic handle table map chain");
+
             Data.HandleTableMap handleTableData = _target.ProcessedData.GetOrAdd<Data.HandleTableMap>(handleTableMap);
             foreach (TargetPointer bucketPtr in handleTableData.BucketsPtr)
             {
@@ -364,8 +368,12 @@ internal struct GC_1 : IGC
                     foreach (HandleType type in typesList)
                     {
                         TargetPointer segmentPtr = handleTable.SegmentList;
+                        HashSet<TargetPointer> visitedSegments = [];
                         do
                         {
+                            if (!visitedSegments.Add(segmentPtr))
+                                throw new InvalidOperationException("Cyclic handle table segment chain");
+
                             Data.TableSegment tableSegment = _target.ProcessedData.GetOrAdd<Data.TableSegment>(segmentPtr);
                             segmentPtr = tableSegment.NextSegment;
                             GetHandlesForSegment(tableSegment, type, handles);

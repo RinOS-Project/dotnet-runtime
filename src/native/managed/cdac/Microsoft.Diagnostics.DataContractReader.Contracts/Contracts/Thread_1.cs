@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Collections.Generic;
 using Microsoft.Diagnostics.DataContractReader.Contracts.StackWalkHelpers;
 
 namespace Microsoft.Diagnostics.DataContractReader.Contracts;
@@ -253,8 +254,12 @@ internal readonly struct Thread_1 : IThread
         if (threadLocalStaticBase == TargetPointer.Null)
         {
             TargetPointer inFlightData = threadLocalData.InFlightData;
+            HashSet<TargetPointer> visitedInFlightData = [];
             while (inFlightData != TargetPointer.Null)
             {
+                if (!visitedInFlightData.Add(inFlightData))
+                    throw new InvalidOperationException("Cyclic in-flight TLS chain");
+
                 Data.InflightTLSData inFlightTLSData = _target.ProcessedData.GetOrAdd<Data.InflightTLSData>(inFlightData);
                 if (inFlightTLSData.TlsIndex.TLSIndexRawIndex == tlsIndex.TLSIndexRawIndex)
                 {

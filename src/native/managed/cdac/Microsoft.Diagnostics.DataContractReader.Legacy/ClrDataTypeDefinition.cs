@@ -309,8 +309,32 @@ public sealed unsafe partial class ClrDataTypeDefinition : IXCLRDataTypeDefiniti
     int IXCLRDataTypeDefinition.IsSameObject(IXCLRDataTypeDefinition? type)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_FALSE;
+        try
+        {
+            if (type is ClrDataTypeDefinition other)
+            {
+                hr = _typeHandle is null
+                    ? (_module == other._module && _token == other._token ? HResults.S_OK : HResults.S_FALSE)
+                    : (other._typeHandle is not null && _typeHandle.Address == other._typeHandle.Address
+                        ? HResults.S_OK
+                        : HResults.S_FALSE);
+            }
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
 
-        return LegacyFallbackHelper.CanFallback() && _legacyImpl is not null ? _legacyImpl.IsSameObject(type) : HResults.E_NOTIMPL;
+#if DEBUG
+        if (_legacyImpl is not null)
+        {
+            int hrLocal = _legacyImpl.IsSameObject(type);
+            Debug.Assert(hrLocal == hr, $"cDAC: {hr}, DAC: {hrLocal}");
+        }
+#endif
+
+        return hr;
     }
 
     int IXCLRDataTypeDefinition.Request(uint reqCode, uint inBufferSize, byte* inBuffer, uint outBufferSize, byte* outBuffer)

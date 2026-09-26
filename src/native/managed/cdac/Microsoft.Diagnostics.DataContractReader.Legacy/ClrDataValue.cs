@@ -468,7 +468,7 @@ public sealed unsafe partial class ClrDataValue : IXCLRDataValue
     {
         using Lock.Scope scope = _apiLock.EnterScope();
 
-        return HResults.E_NOTIMPL;
+        return GetFieldByTokenCore(null, token, field, bufLen, nameLen, nameBuf);
     }
 
     int IXCLRDataValue.GetAssociatedValue(DacComNullableByRef<IXCLRDataValue> assocValue)
@@ -926,6 +926,87 @@ public sealed unsafe partial class ClrDataValue : IXCLRDataValue
         }
     }
 
+    private int GetFieldByTokenCore(
+        IXCLRDataModule? tokenScope,
+        uint token,
+        DacComNullableByRef<IXCLRDataValue> field,
+        uint bufLen,
+        uint* nameLen,
+        char* nameBuf)
+    {
+        int hr = HResults.E_INVALIDARG;
+        int hrLocal = HResults.S_OK;
+        IXCLRDataValue? legacyField = null;
+        uint legacyNameLen = 0;
+        char[] legacyNameBuf = new char[bufLen > 0 ? bufLen : 1];
+
+        try
+        {
+            if (_legacyImpl is not null)
+            {
+                DacComNullableByRef<IXCLRDataValue> legacyFieldOut = new(isNullRef: field.IsNullRef);
+                fixed (char* legacyNameBufPtr = legacyNameBuf)
+                {
+                    hrLocal = tokenScope is null
+                        ? _legacyImpl.GetFieldByToken(token, legacyFieldOut, bufLen, &legacyNameLen, nameBuf is null ? null : legacyNameBufPtr)
+                        : _legacyImpl.GetFieldByToken2(tokenScope, token, legacyFieldOut, bufLen, &legacyNameLen, nameBuf is null ? null : legacyNameBufPtr);
+                }
+                if (hrLocal >= 0)
+                    legacyField = legacyFieldOut.Interface;
+            }
+
+            TargetPointer tokenScopeAddress = TargetPointer.Null;
+            bool hasTokenScope = tokenScope is not null;
+            if (hasTokenScope)
+            {
+                if (tokenScope is not ClrDataModule module)
+                    throw new ArgumentException(nameof(tokenScope));
+
+                tokenScopeAddress = module.Address;
+            }
+
+            foreach (FieldEntry entry in GetFields((uint)ClrDataValueFlag.ALL_FIELDS, null))
+            {
+                (string fieldName, uint fieldToken, FieldDefinition fieldDefinition, ITypeHandle enclosingType) =
+                    GetFieldMetadata(entry.FieldDesc);
+                TargetPointer fieldModule = _target.Contracts.RuntimeTypeSystem.GetModule(enclosingType);
+                if (fieldToken != token || (hasTokenScope && fieldModule != tokenScopeAddress))
+                    continue;
+
+                OutputBufferHelpers.CopyStringToBuffer(nameBuf, bufLen, nameLen, fieldName);
+                if (nameBuf is not null && bufLen != 0 && bufLen < fieldName.Length + 1)
+                {
+                    hr = CorDbgHResults.ERROR_INSUFFICIENT_BUFFER;
+                }
+                else
+                {
+                    if (!field.IsNullRef)
+                        field.Interface = CreateFieldValue(entry, fieldDefinition, enclosingType, legacyField);
+                    hr = HResults.S_OK;
+                }
+                break;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyImpl is not null)
+        {
+            Debug.ValidateHResult(hr, hrLocal, HResultValidationMode.AllowCdacSuccess);
+            if (hr >= 0 && hrLocal >= 0)
+            {
+                Debug.Assert(nameLen is null || *nameLen == legacyNameLen);
+                Debug.Assert(nameBuf is null || new ReadOnlySpan<char>(nameBuf, checked((int)legacyNameLen)).SequenceEqual(legacyNameBuf.AsSpan(0, checked((int)legacyNameLen))));
+            }
+        }
+#endif
+
+        return hr;
+    }
+
     private List<FieldEntry> GetFields(uint flags, IXCLRDataTypeInstance? fromType)
     {
         bool includeParents = (flags & (uint)ClrDataValueFlag.IS_INHERITED) != 0;
@@ -1155,7 +1236,7 @@ public sealed unsafe partial class ClrDataValue : IXCLRDataValue
     {
         using Lock.Scope scope = _apiLock.EnterScope();
 
-        return HResults.E_NOTIMPL;
+        return GetFieldByTokenCore(tokenScope, token, field, bufLen, nameLen, nameBuf);
     }
 
     int IXCLRDataValue.GetNumLocations(uint* numLocs)

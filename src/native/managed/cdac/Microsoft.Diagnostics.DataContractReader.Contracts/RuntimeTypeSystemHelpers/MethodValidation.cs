@@ -19,13 +19,16 @@ internal sealed class MethodValidation
         bool SlotIsVtableSlot(TargetPointer methodTablePointer, uint slot);
     }
 
-    private sealed class NIEMethodTableQueries : IMethodTableQueries
+    // MethodValidation is also used while RuntimeTypeSystem_1 is being wired up.
+    // Until the real query provider is installed, validation must fail closed rather
+    // than turning an invalid method descriptor into an implementation exception.
+    private sealed class UnconfiguredMethodTableQueries : IMethodTableQueries
     {
-        public TargetPointer GetAddressOfMethodTableSlot(TargetPointer methodTablePointer, uint slot) =>  throw new NotImplementedException();
+        public TargetPointer GetAddressOfMethodTableSlot(TargetPointer methodTablePointer, uint slot) => TargetPointer.Null;
 
-        public bool SlotIsVtableSlot(TargetPointer methodTablePointer, uint slot) => throw new NotImplementedException();
+        public bool SlotIsVtableSlot(TargetPointer methodTablePointer, uint slot) => false;
 
-        internal static NIEMethodTableQueries s_Instance = new NIEMethodTableQueries();
+        internal static UnconfiguredMethodTableQueries s_Instance = new UnconfiguredMethodTableQueries();
     }
 
     private readonly Target _target;
@@ -38,7 +41,7 @@ internal sealed class MethodValidation
     {
         _target = target;
         _methodDescAlignment = methodDescAlignment;
-        _methodTableQueries = NIEMethodTableQueries.s_Instance;
+        _methodTableQueries = UnconfiguredMethodTableQueries.s_Instance;
     }
 
     internal void SetMethodTableQueries(IMethodTableQueries methodTableQueries)

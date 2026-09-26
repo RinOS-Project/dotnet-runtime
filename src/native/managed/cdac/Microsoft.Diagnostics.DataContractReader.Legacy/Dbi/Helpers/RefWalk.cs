@@ -133,8 +133,12 @@ internal sealed class RefWalk : IEnum<DacGcReference>
 
         ThreadStoreData threadStore = threadContract.GetThreadStoreData();
         TargetPointer threadAddr = threadStore.FirstThread;
+        HashSet<TargetPointer> visitedThreads = [];
         while (threadAddr != TargetPointer.Null)
         {
+            if (!visitedThreads.Add(threadAddr))
+                throw new InvalidOperationException("Cyclic thread store chain");
+
             ThreadData threadData = threadContract.GetThreadData(threadAddr);
 
             foreach (StackReferenceData stackRef in stackWalkContract.WalkStackReferences(threadData, true))

@@ -318,7 +318,8 @@ public sealed unsafe partial class ClrDataValue : IXCLRDataValue
     {
         using Lock.Scope scope = _apiLock.EnterScope();
 
-        return HResults.E_NOTIMPL;
+        // Native DAC keeps this obsolete API explicitly unavailable.
+        return HResults.E_UNEXPECTED;
     }
 
     int IXCLRDataValue.GetFieldByIndex(
@@ -331,7 +332,8 @@ public sealed unsafe partial class ClrDataValue : IXCLRDataValue
     {
         using Lock.Scope scope = _apiLock.EnterScope();
 
-        return HResults.E_NOTIMPL;
+        // Native DAC keeps this obsolete API explicitly unavailable.
+        return HResults.E_UNEXPECTED;
     }
 
     int IXCLRDataValue.Request(uint reqCode, uint inBufferSize, byte* inBuffer, uint outBufferSize, byte* outBuffer)

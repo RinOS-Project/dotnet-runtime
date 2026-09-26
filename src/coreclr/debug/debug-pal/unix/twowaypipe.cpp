@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #if defined(TARGET_RINOS)
 #include <rin/abi.h>
+#include <rin/net/socket_abi.h>
 #include <rin_account_compat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -58,6 +59,24 @@ static bool RinOSDebugTransportAuthorized()
     // and stale-PID connections, while this product capability is the explicit
     // authorization boundary for managed runtime control.
     return (credentials.capabilities & RIN_CAP_DEBUGGING) != 0u;
+}
+
+static bool RinOSDebugTransportPeerAuthorized(int descriptor)
+{
+    rin_unix_peer_identity_v1 peer = {};
+    socklen_t length = sizeof(peer);
+    if (descriptor < 0 ||
+        getsockopt(descriptor, SOL_SOCKET, SO_RIN_UNIX_PEER_IDENTITY,
+                   &peer, &length) != 0 ||
+        length != sizeof(peer) ||
+        !rin_unix_peer_identity_valid(&peer) ||
+        (peer.capabilities & RIN_CAP_DEBUGGING) == 0u)
+    {
+        errno = EACCES;
+        return false;
+    }
+
+    return true;
 }
 
 static int CreateRinOSUnixServer(const char* path)
@@ -121,6 +140,11 @@ static int ConnectRinOSUnix(const char* path)
                          sizeof(address));
     } while (result != 0 && errno == EINTR);
     if (result != 0)
+    {
+        close(descriptor);
+        return -1;
+    }
+    if (!RinOSDebugTransportPeerAuthorized(descriptor))
     {
         close(descriptor);
         return -1;
@@ -262,6 +286,11 @@ bool TwoWayPipe::WaitForConnection()
         close(inbound);
         return false;
     }
+    if (!RinOSDebugTransportPeerAuthorized(inbound))
+    {
+        close(inbound);
+        return false;
+    }
     int outbound;
     do
     {
@@ -273,6 +302,12 @@ bool TwoWayPipe::WaitForConnection()
         return false;
     }
     if (fcntl(outbound, F_SETFD, FD_CLOEXEC) != 0)
+    {
+        close(inbound);
+        close(outbound);
+        return false;
+    }
+    if (!RinOSDebugTransportPeerAuthorized(outbound))
     {
         close(inbound);
         close(outbound);

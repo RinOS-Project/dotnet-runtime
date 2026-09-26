@@ -97,22 +97,124 @@ public sealed unsafe partial class SOSDacImpl : IXCLRDataProcess, IXCLRDataProce
     int IXCLRDataProcess.StartEnumTasks(ulong* handle)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        int hrLocal = HResults.S_OK;
+        ulong legacyHandle = 0;
 
-        return HResults.E_NOTIMPL;
+        try
+        {
+            if (handle is null)
+                throw new ArgumentNullException(nameof(handle));
+
+            *handle = 0;
+            if (_legacyProcess is not null)
+                hrLocal = _legacyProcess.StartEnumTasks(&legacyHandle);
+
+            TargetPointer firstThread = _target.Contracts.Thread.GetThreadStoreData().FirstThread;
+            if (firstThread == TargetPointer.Null)
+            {
+                hr = HResults.S_FALSE;
+            }
+            else
+            {
+                ProcessEnum<TargetPointer> tasks = new(EnumerateThreadPointers(), (nuint)legacyHandle);
+                *handle = (ulong)((IEnum<TargetPointer>)tasks).GetHandle();
+                legacyHandle = 0;
+            }
+        }
+        catch (Exception ex)
+        {
+            hr = ex.HResult;
+        }
+        finally
+        {
+            if (_legacyProcess is not null && legacyHandle != 0)
+                _legacyProcess.EndEnumTasks(legacyHandle);
+        }
+
+#if DEBUG
+        if (_legacyProcess is not null)
+            Debug.Assert(hr == hrLocal, $"cDAC: {hr:x}, DAC: {hrLocal:x}");
+#endif
+        return hr;
     }
 
     int IXCLRDataProcess.EnumTask(ulong* handle, DacComNullableByRef<IXCLRDataTask> task)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        int hrLocal = HResults.S_OK;
 
-        return HResults.E_NOTIMPL;
+        try
+        {
+            if (handle is null)
+                throw new ArgumentNullException(nameof(handle));
+            if (*handle == 0)
+                return HResults.S_FALSE;
+            if (task.IsNullRef)
+                throw new NullReferenceException();
+
+            GCHandle gcHandle = GCHandle.FromIntPtr((IntPtr)(*handle));
+            if (gcHandle.Target is not ProcessEnum<TargetPointer> tasks)
+                throw new ArgumentException();
+
+            IXCLRDataTask? legacyTask = null;
+            if (_legacyProcess is not null)
+            {
+                ulong legacyHandle = (ulong)tasks.LegacyHandle;
+                DacComNullableByRef<IXCLRDataTask> legacyTaskOut = new(isNullRef: false);
+                hrLocal = _legacyProcess.EnumTask(&legacyHandle, legacyTaskOut);
+                legacyTask = legacyTaskOut.Interface;
+                tasks.LegacyHandle = (nuint)legacyHandle;
+            }
+
+            if (tasks.Enumerator.MoveNext())
+            {
+                task.Interface = new ClrDataTask(tasks.Enumerator.Current, _target, legacyTask, _apiLock);
+            }
+            else
+            {
+                hr = HResults.S_FALSE;
+            }
+        }
+        catch (Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyProcess is not null)
+            Debug.Assert(hr == hrLocal, $"cDAC: {hr:x}, DAC: {hrLocal:x}");
+#endif
+        return hr;
     }
 
     int IXCLRDataProcess.EndEnumTasks(ulong handle)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        if (handle == 0)
+            return HResults.S_OK;
 
-        return HResults.E_NOTIMPL;
+        ProcessEnum<TargetPointer> tasks;
+        try
+        {
+            GCHandle gcHandle = GCHandle.FromIntPtr((IntPtr)handle);
+            if (gcHandle.Target is not ProcessEnum<TargetPointer> tasksLocal)
+                throw new ArgumentException();
+
+            tasks = tasksLocal;
+            ((IEnum<TargetPointer>)tasks).Dispose();
+            gcHandle.Free();
+        }
+        catch (Exception ex)
+        {
+            return ex.HResult;
+        }
+
+        if (_legacyProcess is not null && tasks.LegacyHandle != 0)
+            return _legacyProcess.EndEnumTasks((ulong)tasks.LegacyHandle);
+
+        return HResults.S_OK;
     }
 
     int IXCLRDataProcess.GetTaskByOSThreadID(uint osThreadID, DacComNullableByRef<IXCLRDataTask> task)
@@ -191,15 +293,53 @@ public sealed unsafe partial class SOSDacImpl : IXCLRDataProcess, IXCLRDataProce
     int IXCLRDataProcess.GetFlags(uint* flags)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
 
-        return HResults.E_NOTIMPL;
+        try
+        {
+            if (flags is null)
+                throw new ArgumentNullException(nameof(flags));
+
+            // CLRDATA_PROCESS_DEFAULT = 0. CoreCLR's native DAC reserves the
+            // remaining flags for runtime modes it does not expose through cDAC.
+            *flags = 0;
+        }
+        catch (Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyProcess is not null)
+        {
+            uint flagsLocal = 0;
+            int hrLocal = _legacyProcess.GetFlags(&flagsLocal);
+            Debug.ValidateHResult(hr, hrLocal);
+            if (hr >= 0)
+                Debug.Assert(*flags == flagsLocal, $"cDAC: {*flags:x}, DAC: {flagsLocal:x}");
+        }
+#endif
+        return hr;
     }
 
     int IXCLRDataProcess.IsSameObject(IXCLRDataProcess* process)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        try
+        {
+            if (process is null
+                || !ComWrappers.TryGetObject((nint)process, out object? obj)
+                || obj is not SOSDacImpl other)
+            {
+                return HResults.S_FALSE;
+            }
 
-        return HResults.E_NOTIMPL;
+            return ReferenceEquals(_target, other._target) ? HResults.S_OK : HResults.S_FALSE;
+        }
+        catch (Exception ex)
+        {
+            return ex.HResult;
+        }
     }
 
     int IXCLRDataProcess.GetManagedObject(DacComNullableByRef<IXCLRDataValue> value)
@@ -416,6 +556,19 @@ public sealed unsafe partial class SOSDacImpl : IXCLRDataProcess, IXCLRDataProce
         {
             Enumerator = values.GetEnumerator();
             LegacyHandle = legacyHandle;
+        }
+    }
+
+    private IEnumerable<TargetPointer> EnumerateThreadPointers()
+    {
+        IThread threadContract = _target.Contracts.Thread;
+        TargetPointer thread = threadContract.GetThreadStoreData().FirstThread;
+        HashSet<TargetPointer> visited = [];
+
+        while (thread != TargetPointer.Null && visited.Add(thread))
+        {
+            yield return thread;
+            thread = threadContract.GetThreadData(thread).NextThread;
         }
     }
 

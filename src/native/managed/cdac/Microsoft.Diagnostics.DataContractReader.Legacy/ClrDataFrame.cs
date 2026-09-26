@@ -490,8 +490,51 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
     int IXCLRDataFrame2.GetExactGenericArgsToken(DacComNullableByRef<IXCLRDataValue> genericToken)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
 
-        return HResults.E_NOTIMPL;
+        int hrLegacy = HResults.S_OK;
+        IXCLRDataValue? legacyValue = null;
+        if (_legacyImpl is IXCLRDataFrame2 legacyFrame2)
+        {
+            DacComNullableByRef<IXCLRDataValue> legacyTokenOut = new(isNullRef: false);
+            hrLegacy = legacyFrame2.GetExactGenericArgsToken(legacyTokenOut);
+            if (hrLegacy >= 0)
+                legacyValue = legacyTokenOut.Interface;
+        }
+
+        try
+        {
+            MethodDescHandle mdh = GetFrameMethodDesc(out Contracts.ModuleHandle moduleHandle);
+
+            // CoreCLR's ValueFromDebugInfo uses the local-signature slot reserved for
+            // ICorDebugInfo::TYPECTXT_ILNUM (-3), not an ordinary user local.
+            if (GetLocalSignatureReader(mdh, moduleHandle, out _) is null)
+                throw Marshal.GetExceptionForHR(HResults.E_FAIL)!;
+
+            if (!genericToken.IsNullRef)
+            {
+                genericToken.Interface = CreateValueFromDebugInfo(
+                    default,
+                    isArg: false,
+                    sigIndex: 1,
+                    varInfoSlot: unchecked((uint)-3),
+                    legacyValue,
+                    mdh,
+                    moduleHandle);
+            }
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyImpl is IXCLRDataFrame2)
+        {
+            Debug.ValidateHResult(hr, hrLegacy, HResultValidationMode.AllowCdacSuccess);
+        }
+#endif
+        return hr;
     }
 
     // ========== Metadata resolution helpers ==========

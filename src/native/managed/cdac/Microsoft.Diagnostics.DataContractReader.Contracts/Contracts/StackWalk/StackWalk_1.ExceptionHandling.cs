@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
 using Microsoft.Diagnostics.DataContractReader.Contracts.StackWalkHelpers;
@@ -78,8 +79,12 @@ internal partial class StackWalk_1 : IStackWalk
         }
 
         TargetPointer pExInfo = GetCurrentExceptionTracker(handle);
+        HashSet<TargetPointer> seenExceptionTrackers = [];
         while (pExInfo != TargetPointer.Null)
         {
+            if (!seenExceptionTrackers.Add(pExInfo))
+                throw new InvalidOperationException("Cyclic exception tracker chain");
+
             Data.ExceptionInfo exInfo = _target.ProcessedData.GetOrAdd<Data.ExceptionInfo>(pExInfo);
             pExInfo = exInfo.PreviousNestedInfo;
 
@@ -209,8 +214,12 @@ internal partial class StackWalk_1 : IStackWalk
         }
 
         TargetPointer pExInfo = GetCurrentExceptionTracker(handle);
+        HashSet<TargetPointer> seenExceptionTrackers = [];
         while (pExInfo != TargetPointer.Null)
         {
+            if (!seenExceptionTrackers.Add(pExInfo))
+                throw new InvalidOperationException("Cyclic exception tracker chain");
+
             Data.ExceptionInfo exceptionInfo = _target.ProcessedData.GetOrAdd<Data.ExceptionInfo>(pExInfo);
             pExInfo = exceptionInfo.PreviousNestedInfo;
 

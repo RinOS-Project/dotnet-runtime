@@ -239,7 +239,7 @@ internal class GcScanner
                     }
                 }
             }
-            catch (Exception)
+            catch (System.Exception)
             {
                 // A corrupt method table or ValueClassInfo chain must not make
                 // the stack walk publish a partial root set.

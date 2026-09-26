@@ -389,8 +389,7 @@ internal struct GC_1 : IGC
     List<HandleData> IGC.GetHandlesForGeneration(HandleType[] types, uint generation)
     {
         IGC gc = this;
-        if (generation > gc.GetMaxGeneration())
-            throw new ArgumentOutOfRangeException(nameof(generation));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(generation, gc.GetMaxGeneration(), nameof(generation));
 
         List<HandleData> handles = gc.GetHandles(types);
         if (handles.Count == 0)
@@ -402,7 +401,7 @@ internal struct GC_1 : IGC
         {
             uint heapCount = gc.GetGCHeapCount();
             TargetPointer[] heapPointers = gc.GetGCHeaps().Take(checked((int)heapCount)).ToArray();
-            heaps = heapPointers.Select(heap => gc.GetHeapData(heap)).ToList();
+            heaps = heapPointers.Select(gc.GetHeapData).ToList();
         }
         else
         {
@@ -739,25 +738,20 @@ internal struct GC_1 : IGC
 
     private HandleData CreateHandleData(TargetPointer handleAddress, byte uBlock, uint intraBlockIndex, Data.TableSegment tableSegment, HandleType type)
     {
-        HandleData handleData = default;
-        handleData.Handle = handleAddress;
-        handleData.Object = _target.ReadPointer(handleAddress);
-        handleData.Type = GetInternalHandleType(type);
-        handleData.StrongReference = IsStrongReference(type);
+        TargetPointer objectAddress = _target.ReadPointer(handleAddress);
+        TargetPointer secondary = TargetPointer.Null;
+        bool strongReference = IsStrongReference(type);
+        uint refCount = 0;
         if (HasSecondary(type))
         {
             byte blockIndex = tableSegment.RgUserData[uBlock];
             if (blockIndex == _blockInvalid)
-                handleData.Secondary = 0;
+                secondary = TargetPointer.Null;
             else
             {
                 uint offset = blockIndex * _handlesPerBlock + intraBlockIndex;
-                handleData.Secondary = _target.ReadPointer(tableSegment.RgValue + offset * (uint)_target.PointerSize);
+                secondary = _target.ReadPointer(tableSegment.RgValue + offset * (uint)_target.PointerSize);
             }
-        }
-        else
-        {
-            handleData.Secondary = 0;
         }
 
         if (_target.Contracts.FeatureFlags.IsEnabled(RuntimeFeature.COMInterop) && IsRefCounted(type))
@@ -769,12 +763,20 @@ internal struct GC_1 : IGC
             {
                 IBuiltInCOM builtInCOM = _target.Contracts.BuiltInCOM;
                 SimpleComCallWrapperData sccwData = builtInCOM.GetSimpleComCallWrapperData(ccw);
-                handleData.RefCount = (uint)sccwData.RefCount;
-                handleData.StrongReference = handleData.StrongReference || (handleData.RefCount > 0 && !sccwData.IsHandleWeak);
+                refCount = (uint)sccwData.RefCount;
+                strongReference = strongReference || (refCount > 0 && !sccwData.IsHandleWeak);
             }
         }
 
-        return handleData;
+        return new HandleData(
+            handleAddress,
+            secondary,
+            GetInternalHandleType(type),
+            strongReference,
+            refCount)
+        {
+            Object = objectAddress,
+        };
     }
 
     IReadOnlyList<GCMemoryRegionData> IGC.GetHandleTableMemoryRegions()

@@ -325,7 +325,6 @@ internal sealed partial class ExecutionManagerCore<T> : IExecutionManager
         {
             uint extendedHeader = _target.Read<uint>(unwindCodes);
             epilogScopes = extendedHeader & 0xffff;
-            unwindWords = (extendedHeader >> 16) & 0xff;
             unwindCodes += sizeof(uint);
         }
 

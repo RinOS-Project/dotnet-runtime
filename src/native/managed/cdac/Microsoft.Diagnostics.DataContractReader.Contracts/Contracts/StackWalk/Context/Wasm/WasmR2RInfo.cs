@@ -1,6 +1,8 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System;
+using System.Collections.Generic;
 using Microsoft.Diagnostics.DataContractReader.ExecutionManagerHelpers;
 
 namespace Microsoft.Diagnostics.DataContractReader.Contracts.StackWalkHelpers.Wasm;
@@ -36,8 +38,12 @@ internal sealed class WasmR2RInfo : IWasmR2RInfo
         // The global holds the address of the s_pFunctionTableIndexRangeList slot (a pointer-to-
         // pointer); dereference it once to obtain the actual list head.
         TargetPointer current = _target.ReadPointer(listHeadSlot.Value);
+        HashSet<TargetPointer> visitedSections = [];
         while (current != TargetPointer.Null)
         {
+            if (!visitedSections.Add(current))
+                throw new InvalidOperationException("Cyclic function table range section chain");
+
             Data.FunctionTableIndexRangeSection section = _target.ProcessedData.GetOrAdd<Data.FunctionTableIndexRangeSection>(current);
             if (functionTableIndex >= section.MinFunctionTableIndex &&
                 functionTableIndex < section.MinFunctionTableIndex + section.NumRuntimeFunctions)

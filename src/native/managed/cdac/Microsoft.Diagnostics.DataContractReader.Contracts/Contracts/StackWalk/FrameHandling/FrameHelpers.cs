@@ -419,12 +419,16 @@ internal sealed class FrameHelpers
 
         Data.InterpMethodContextFrame frame = _target.ProcessedData.GetOrAdd<Data.InterpMethodContextFrame>(hintPtr);
         TargetPointer currentPtr = hintPtr;
+        HashSet<TargetPointer> visitedFrames = [hintPtr];
 
         if (frame.Ip != TargetPointer.Null)
         {
             // Active frame — seek upward via NextPtr while next frame is also active
             while (frame.NextPtr != TargetPointer.Null)
             {
+                if (!visitedFrames.Add(frame.NextPtr))
+                    throw new InvalidOperationException("Cyclic interpreter context frame chain");
+
                 Data.InterpMethodContextFrame next = _target.ProcessedData.GetOrAdd<Data.InterpMethodContextFrame>(frame.NextPtr);
                 if (next.Ip == TargetPointer.Null)
                     break;
@@ -437,6 +441,9 @@ internal sealed class FrameHelpers
             // Inactive frame — seek downward via ParentPtr to find first active frame
             while (frame.ParentPtr != TargetPointer.Null && frame.Ip == TargetPointer.Null)
             {
+                if (!visitedFrames.Add(frame.ParentPtr))
+                    throw new InvalidOperationException("Cyclic interpreter context frame chain");
+
                 currentPtr = frame.ParentPtr;
                 frame = _target.ProcessedData.GetOrAdd<Data.InterpMethodContextFrame>(currentPtr);
             }
@@ -456,8 +463,12 @@ internal sealed class FrameHelpers
     {
         Data.InterpreterFrame interpFrame = _target.ProcessedData.GetOrAdd<Data.InterpreterFrame>(frameAddress);
         TargetPointer interpMethodFramePtr = ResolveTopInterpMethodContextFrame(interpFrame);
+        HashSet<TargetPointer> visitedFrames = [];
         while (interpMethodFramePtr != TargetPointer.Null)
         {
+            if (!visitedFrames.Add(interpMethodFramePtr))
+                throw new InvalidOperationException("Cyclic interpreter context frame chain");
+
             Data.InterpMethodContextFrame contextFrame = _target.ProcessedData.GetOrAdd<Data.InterpMethodContextFrame>(interpMethodFramePtr);
             if (contextFrame.Ip != TargetPointer.Null)
                 yield return interpMethodFramePtr;

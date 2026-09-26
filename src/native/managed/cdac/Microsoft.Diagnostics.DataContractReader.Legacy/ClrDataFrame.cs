@@ -516,8 +516,43 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
         byte* outBuffer)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
 
-        return LegacyFallbackHelper.CanFallback() && _legacyImpl is not null ? _legacyImpl.Request(reqCode, inBufferSize, inBuffer, outBufferSize, outBuffer) : HResults.E_NOTIMPL;
+        try
+        {
+            if (reqCode != (uint)CLRDataGeneralRequest.CLRDATA_REQUEST_REVISION
+                || inBufferSize != 0
+                || inBuffer is not null
+                || outBufferSize != sizeof(uint)
+                || outBuffer is null)
+            {
+                return HResults.E_INVALIDARG;
+            }
+
+            *(uint*)outBuffer = 1;
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyImpl is not null)
+        {
+            uint revisionLocal = 0;
+            int hrLocal = _legacyImpl.Request(
+                reqCode,
+                inBufferSize,
+                inBuffer,
+                outBufferSize,
+                outBuffer is null ? null : (byte*)&revisionLocal);
+            Debug.ValidateHResult(hr, hrLocal);
+            if (hr == HResults.S_OK)
+                Debug.Assert(*(uint*)outBuffer == revisionLocal);
+        }
+#endif
+
+        return hr;
     }
 
     int IXCLRDataFrame.GetNumTypeArguments(uint* numTypeArgs)

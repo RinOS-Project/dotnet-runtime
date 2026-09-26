@@ -51,7 +51,43 @@ public sealed unsafe partial class ClrDataMethodInstance : IXCLRDataMethodInstan
     {
         using Lock.Scope scope = _apiLock.EnterScope();
 
-        return HResults.E_NOTIMPL;
+        int hr = HResults.S_OK;
+        int hrLocal = HResults.S_OK;
+        IXCLRDataTypeInstance? legacyTypeInstance = null;
+
+        try
+        {
+            if (LegacyFallbackHelper.CanFallback() && _legacyImpl is not null)
+            {
+                DacComNullableByRef<IXCLRDataTypeInstance> legacyTypeInstanceOut = new(isNullRef: typeInstance.IsNullRef);
+                hrLocal = _legacyImpl.GetTypeInstance(legacyTypeInstanceOut);
+                legacyTypeInstance = legacyTypeInstanceOut.Interface;
+            }
+
+            if (_appDomain == TargetPointer.Null)
+                throw Marshal.GetExceptionForHR(CorDbgHResults.E_UNEXPECTED)!;
+
+            IRuntimeTypeSystem rts = _target.Contracts.RuntimeTypeSystem;
+            ITypeHandle typeHandle = rts.GetTypeHandle(rts.GetMethodTable(_methodDesc));
+            if (!typeInstance.IsNullRef)
+            {
+                typeInstance.Interface = new ClrDataTypeInstance(
+                    _target,
+                    typeHandle,
+                    legacyTypeInstance,
+                    _apiLock);
+            }
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyImpl is not null)
+            Debug.ValidateHResult(hr, hrLocal);
+#endif
+        return hr;
     }
 
     int IXCLRDataMethodInstance.GetDefinition(DacComNullableByRef<IXCLRDataMethodDefinition> methodDefinition)

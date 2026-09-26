@@ -515,8 +515,12 @@ public sealed unsafe partial class ClrDataModule : ICustomQueryInterface, IXCLRD
         IRuntimeTypeSystem rts = _target.Contracts.RuntimeTypeSystem;
         List<ITypeHandle> types = [];
         ITypeHandle current = rts.GetTypeHandle(methodTable);
+        HashSet<TargetPointer> visitedTypes = [];
         do
         {
+            if (!visitedTypes.Add(current.Address))
+                throw new InvalidOperationException("Cyclic parent type");
+
             types.Add(current);
             TargetPointer parent = rts.GetParentMethodTable(current);
             if (parent == TargetPointer.Null)

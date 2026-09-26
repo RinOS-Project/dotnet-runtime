@@ -26,6 +26,7 @@ Param(
   [string[]]$fsanitize,
   [switch]$bootstrap,
   [switch]$useBoostrap,
+  [ValidateSet("true","false")][string]$nodeReuse,
   [switch]$clrinterpreter,
   [ValidateSet("true","false")][string]$dynamiccodecompiled,
   [Parameter(ValueFromRemainingArguments=$true)][String[]]$properties
@@ -70,6 +71,7 @@ function Get-Help() {
   Write-Host "  -vs                            Open the solution with Visual Studio using the locally acquired SDK."
   Write-Host "                                 Path or any project or solution name is accepted."
   Write-Host "                                 (Example: -vs Microsoft.CSharp or -vs CoreCLR.sln)"
+  Write-Host "  -nodeReuse <value>             Set MSBuild node reuse ('true' or 'false')."
   Write-Host ""
 
   Write-Host "Actions (defaults to -restore -build):"
@@ -381,6 +383,7 @@ foreach ($argument in $PSBoundParameters.Keys)
     "arch"                   {}
     "fsanitize"              { $arguments += " /p:EnableNativeSanitizers=$($PSBoundParameters[$argument])"}
     "useBootstrap"           { $arguments += " /p:UseBootstrap=$($PSBoundParameters[$argument])" }
+    "nodeReuse"              { $arguments += " -nodeReuse $($PSBoundParameters[$argument])" }
     "clrinterpreter"         { $arguments += " /p:FeatureInterpreter=true" }
     "dynamiccodecompiled"    {}
     default                  { $arguments += " /p:$argument=$($PSBoundParameters[$argument])" }

@@ -231,6 +231,10 @@ public sealed unsafe partial class ClrDataAppDomain : IXCLRDataAppDomain
     {
         using Lock.Scope scope = _apiLock.EnterScope();
 
-        return HResults.E_NOTIMPL;
+        // CoreCLR's native DAC does not expose an AppDomain request payload;
+        // unsupported request codes are invalid arguments, not an absent
+        // implementation. Keep the HRESULT parity without pretending to
+        // have handled the request.
+        return HResults.E_INVALIDARG;
     }
 }

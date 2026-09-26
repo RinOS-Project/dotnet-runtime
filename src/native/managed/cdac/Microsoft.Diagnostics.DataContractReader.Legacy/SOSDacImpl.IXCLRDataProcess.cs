@@ -224,8 +224,12 @@ public sealed unsafe partial class SOSDacImpl : IXCLRDataProcess, IXCLRDataProce
         Contracts.IThread contract = _target.Contracts.Thread;
         TargetPointer thread = contract.GetThreadStoreData().FirstThread;
         TargetPointer matchingThread = TargetPointer.Null;
+        HashSet<TargetPointer> visitedThreads = [];
         while (thread != TargetPointer.Null)
         {
+            if (!visitedThreads.Add(thread))
+                return HResults.E_FAIL;
+
             Contracts.ThreadData threadData = contract.GetThreadData(thread);
             if (threadData.OSId.Value == osThreadID)
             {

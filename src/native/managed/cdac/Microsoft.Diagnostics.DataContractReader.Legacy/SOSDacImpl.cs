@@ -4314,8 +4314,12 @@ public sealed unsafe partial class SOSDacImpl
 
             ThreadStoreData threadStore = threadContract.GetThreadStoreData();
             TargetPointer threadAddr = threadStore.FirstThread;
+            HashSet<TargetPointer> visitedThreads = [];
             while (threadAddr != TargetPointer.Null)
             {
+                if (!visitedThreads.Add(threadAddr))
+                    throw new InvalidOperationException("Cyclic thread store chain");
+
                 ThreadData td = threadContract.GetThreadData(threadAddr);
                 if (td.OSId.Value == (ulong)osThreadID)
                 {

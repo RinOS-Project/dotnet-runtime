@@ -1030,8 +1030,12 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
             Contracts.IThread threadContract = _target.Contracts.Thread;
             Contracts.ThreadStoreData threadStore = threadContract.GetThreadStoreData();
             TargetPointer currentThread = threadStore.FirstThread;
+            HashSet<TargetPointer> visitedThreads = [];
             while (currentThread != TargetPointer.Null)
             {
+                if (!visitedThreads.Add(currentThread))
+                    throw new InvalidOperationException("Cyclic thread store chain");
+
                 Contracts.ThreadData threadData = threadContract.GetThreadData(currentThread);
                 // Match native: skip stopped and unstarted threads
                 if ((threadData.State & (Contracts.ThreadState.Stopped | Contracts.ThreadState.Unstarted)) == 0)
@@ -4204,9 +4208,13 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
             TargetPointer objectAddress = new TargetPointer(vmObject);
             TargetPointer parentMT = _target.Contracts.Object.GetMethodTableAddress(objectAddress);
             TargetPointer exceptionMT = rts.GetWellKnownMethodTable(WellKnownMethodTable.Exception);
+            HashSet<TargetPointer> visitedTypes = [];
 
             while (parentMT != TargetPointer.Null)
             {
+                if (!visitedTypes.Add(parentMT))
+                    throw new InvalidOperationException("Cyclic parent type");
+
                 if (parentMT == exceptionMT)
                 {
                     *pResult = Interop.BOOL.TRUE;

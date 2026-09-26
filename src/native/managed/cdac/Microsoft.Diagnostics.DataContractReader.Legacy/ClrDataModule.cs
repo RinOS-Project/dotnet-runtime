@@ -241,6 +241,65 @@ public sealed unsafe partial class ClrDataModule : ICustomQueryInterface, IXCLRD
         }
     }
 
+    private sealed class EnumTypeDefinitions : IEnum<uint>
+    {
+        public IEnumerator<uint> Enumerator { get; }
+        public nuint LegacyHandle { get; set; }
+
+        public EnumTypeDefinitions(MetadataReader reader, nuint legacyHandle)
+        {
+            Enumerator = reader.TypeDefinitions
+                .Select(handle => (uint)MetadataTokens.GetToken(handle))
+                .GetEnumerator();
+            LegacyHandle = legacyHandle;
+        }
+    }
+
+    private sealed class EnumTypeDefinitionsByName : IEnum<uint>
+    {
+        private readonly MetadataReader _reader;
+        private readonly uint _flags;
+        public IEnumerator<uint> Enumerator { get; private set; } = Enumerable.Empty<uint>().GetEnumerator();
+        public nuint LegacyHandle { get; set; }
+
+        public EnumTypeDefinitionsByName(MetadataReader reader, uint flags, nuint legacyHandle)
+        {
+            _reader = reader;
+            _flags = flags;
+            LegacyHandle = legacyHandle;
+        }
+
+        public void Start(string fullName)
+        {
+            StringComparison comparison = (_flags & (uint)CLRDataByNameFlag.CLRDATA_BYNAME_CASE_INSENSITIVE) != 0
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+
+            Enumerator = _reader.TypeDefinitions
+                .Where(handle => string.Equals(GetTypeName(_reader, handle), fullName, comparison))
+                .Select(handle => (uint)MetadataTokens.GetToken(handle))
+                .GetEnumerator();
+        }
+
+        private static string GetTypeName(MetadataReader reader, TypeDefinitionHandle handle)
+        {
+            TypeDefinition typeDefinition = reader.GetTypeDefinition(handle);
+            string name = reader.GetString(typeDefinition.Name);
+            TypeDefinition topLevelType = typeDefinition;
+            TypeDefinitionHandle declaringType = typeDefinition.GetDeclaringType();
+            while (!declaringType.IsNil)
+            {
+                TypeDefinition enclosing = reader.GetTypeDefinition(declaringType);
+                name = $"{reader.GetString(enclosing.Name)}+{name}";
+                topLevelType = enclosing;
+                declaringType = enclosing.GetDeclaringType();
+            }
+
+            string typeNamespace = reader.GetString(topLevelType.Namespace);
+            return string.IsNullOrEmpty(typeNamespace) ? name : $"{typeNamespace}.{name}";
+        }
+    }
+
     int IXCLRDataModule.StartEnumAssemblies(ulong* handle)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
@@ -263,20 +322,129 @@ public sealed unsafe partial class ClrDataModule : ICustomQueryInterface, IXCLRD
     int IXCLRDataModule.StartEnumTypeDefinitions(ulong* handle)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        int hrLocal = HResults.S_OK;
+        ulong legacyHandle = 0;
 
-        return LegacyFallbackHelper.CanFallback() && _legacyModule is not null ? _legacyModule.StartEnumTypeDefinitions(handle) : HResults.E_NOTIMPL;
+        try
+        {
+            if (handle is null)
+                throw new ArgumentNullException(nameof(handle));
+
+            *handle = 0;
+            if (_legacyModule is not null)
+                hrLocal = _legacyModule.StartEnumTypeDefinitions(&legacyHandle);
+
+            ILoader loader = _target.Contracts.Loader;
+            Contracts.ModuleHandle moduleHandle = loader.GetModuleHandleFromModulePtr(_address);
+            MetadataReader reader = _target.Contracts.EcmaMetadata.GetMetadata(moduleHandle)
+                ?? throw new InvalidOperationException("Module metadata is unavailable.");
+            EnumTypeDefinitions definitions = new(reader, (nuint)legacyHandle);
+            *handle = (ulong)((IEnum<uint>)definitions).GetHandle();
+            legacyHandle = 0;
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+        finally
+        {
+            if (_legacyModule is not null && legacyHandle != 0)
+                _legacyModule.EndEnumTypeDefinitions(legacyHandle);
+        }
+
+#if DEBUG
+        if (_legacyModule is not null)
+            Debug.ValidateHResult(hr, hrLocal);
+#endif
+        return hr;
     }
     int IXCLRDataModule.EnumTypeDefinition(ulong* handle, DacComNullableByRef<IXCLRDataTypeDefinition> typeDefinition)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        int hrLocal = HResults.S_OK;
+        EnumTypeDefinitions definitions;
+        try
+        {
+            if (handle is null)
+                throw new ArgumentNullException(nameof(handle));
+            if (*handle == 0)
+                return HResults.S_FALSE;
+            if (typeDefinition.IsNullRef)
+                throw new NullReferenceException();
+            GCHandle gcHandle = GCHandle.FromIntPtr((IntPtr)(*handle));
+            if (gcHandle.Target is not EnumTypeDefinitions definitionsLocal)
+                throw new ArgumentException();
+            definitions = definitionsLocal;
+        }
+        catch (System.Exception ex)
+        {
+            return ex.HResult;
+        }
 
-        return LegacyFallbackHelper.CanFallback() && _legacyModule is not null ? _legacyModule.EnumTypeDefinition(handle, typeDefinition) : HResults.E_NOTIMPL;
+        IXCLRDataTypeDefinition? legacyTypeDefinition = null;
+        if (_legacyModule is not null)
+        {
+            ulong legacyHandle = definitions.LegacyHandle;
+            DacComNullableByRef<IXCLRDataTypeDefinition> legacyTypeDefinitionOut = new(isNullRef: false);
+            hrLocal = _legacyModule.EnumTypeDefinition(&legacyHandle, legacyTypeDefinitionOut);
+            legacyTypeDefinition = legacyTypeDefinitionOut.Interface;
+            definitions.LegacyHandle = (nuint)legacyHandle;
+        }
+
+        try
+        {
+            if (definitions.Enumerator.MoveNext())
+            {
+                typeDefinition.Interface = new ClrDataTypeDefinition(
+                    _target,
+                    _address,
+                    definitions.Enumerator.Current,
+                    typeHandle: null,
+                    legacyTypeDefinition,
+                    _apiLock);
+            }
+            else
+            {
+                hr = HResults.S_FALSE;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyModule is not null)
+            Debug.ValidateHResult(hr, hrLocal);
+#endif
+        return hr;
     }
     int IXCLRDataModule.EndEnumTypeDefinitions(ulong handle)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        if (handle == 0)
+            return HResults.S_OK;
 
-        return LegacyFallbackHelper.CanFallback() && _legacyModule is not null ? _legacyModule.EndEnumTypeDefinitions(handle) : HResults.E_NOTIMPL;
+        EnumTypeDefinitions definitions;
+        try
+        {
+            GCHandle gcHandle = GCHandle.FromIntPtr((IntPtr)handle);
+            if (gcHandle.Target is not EnumTypeDefinitions definitionsLocal)
+                throw new ArgumentException();
+            definitions = definitionsLocal;
+            ((IEnum<uint>)definitions).Dispose();
+            gcHandle.Free();
+        }
+        catch (System.Exception ex)
+        {
+            return ex.HResult;
+        }
+
+        if (_legacyModule is not null && definitions.LegacyHandle != 0)
+            return _legacyModule.EndEnumTypeDefinitions(definitions.LegacyHandle);
+        return HResults.S_OK;
     }
 
     int IXCLRDataModule.StartEnumTypeInstances(IXCLRDataAppDomain? appDomain, ulong* handle)
@@ -301,20 +469,134 @@ public sealed unsafe partial class ClrDataModule : ICustomQueryInterface, IXCLRD
     int IXCLRDataModule.StartEnumTypeDefinitionsByName(char* name, uint flags, ulong* handle)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        int hrLocal = HResults.S_OK;
+        ulong legacyHandle = 0;
 
-        return HResults.E_NOTIMPL;
+        try
+        {
+            if (handle is null)
+                throw new ArgumentNullException(nameof(handle));
+
+            *handle = 0;
+            if (_legacyModule is not null)
+                hrLocal = _legacyModule.StartEnumTypeDefinitionsByName(name, flags, &legacyHandle);
+            if (name is null || *name == '\0')
+                throw new ArgumentException();
+            if ((flags & ~((uint)CLRDataByNameFlag.CLRDATA_BYNAME_CASE_SENSITIVE | (uint)CLRDataByNameFlag.CLRDATA_BYNAME_CASE_INSENSITIVE)) != 0)
+                throw new ArgumentException();
+
+            ILoader loader = _target.Contracts.Loader;
+            Contracts.ModuleHandle moduleHandle = loader.GetModuleHandleFromModulePtr(_address);
+            MetadataReader reader = _target.Contracts.EcmaMetadata.GetMetadata(moduleHandle)
+                ?? throw new InvalidOperationException("Module metadata is unavailable.");
+            EnumTypeDefinitionsByName definitions = new(reader, flags, (nuint)legacyHandle);
+            definitions.Start(new string(name));
+            *handle = (ulong)((IEnum<uint>)definitions).GetHandle();
+            legacyHandle = 0;
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+        finally
+        {
+            if (_legacyModule is not null && legacyHandle != 0)
+                _legacyModule.EndEnumTypeDefinitionsByName(legacyHandle);
+        }
+
+#if DEBUG
+        if (_legacyModule is not null)
+            Debug.ValidateHResult(hr, hrLocal);
+#endif
+        return hr;
     }
     int IXCLRDataModule.EnumTypeDefinitionByName(ulong* handle, DacComNullableByRef<IXCLRDataTypeDefinition> type)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        int hrLocal = HResults.S_OK;
+        EnumTypeDefinitionsByName definitions;
+        try
+        {
+            if (handle is null)
+                throw new ArgumentNullException(nameof(handle));
+            if (*handle == 0)
+                return HResults.S_FALSE;
+            if (type.IsNullRef)
+                throw new NullReferenceException();
+            GCHandle gcHandle = GCHandle.FromIntPtr((IntPtr)(*handle));
+            if (gcHandle.Target is not EnumTypeDefinitionsByName definitionsLocal)
+                throw new ArgumentException();
+            definitions = definitionsLocal;
+        }
+        catch (System.Exception ex)
+        {
+            return ex.HResult;
+        }
 
-        return HResults.E_NOTIMPL;
+        IXCLRDataTypeDefinition? legacyTypeDefinition = null;
+        if (_legacyModule is not null)
+        {
+            ulong legacyHandle = definitions.LegacyHandle;
+            DacComNullableByRef<IXCLRDataTypeDefinition> legacyTypeDefinitionOut = new(isNullRef: false);
+            hrLocal = _legacyModule.EnumTypeDefinitionByName(&legacyHandle, legacyTypeDefinitionOut);
+            legacyTypeDefinition = legacyTypeDefinitionOut.Interface;
+            definitions.LegacyHandle = (nuint)legacyHandle;
+        }
+
+        try
+        {
+            if (definitions.Enumerator.MoveNext())
+            {
+                type.Interface = new ClrDataTypeDefinition(
+                    _target,
+                    _address,
+                    definitions.Enumerator.Current,
+                    typeHandle: null,
+                    legacyTypeDefinition,
+                    _apiLock);
+            }
+            else
+            {
+                hr = HResults.S_FALSE;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyModule is not null)
+            Debug.ValidateHResult(hr, hrLocal);
+#endif
+        return hr;
     }
     int IXCLRDataModule.EndEnumTypeDefinitionsByName(ulong handle)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        if (handle == 0)
+            return HResults.S_OK;
 
-        return HResults.E_NOTIMPL;
+        EnumTypeDefinitionsByName definitions;
+        try
+        {
+            GCHandle gcHandle = GCHandle.FromIntPtr((IntPtr)handle);
+            if (gcHandle.Target is not EnumTypeDefinitionsByName definitionsLocal)
+                throw new ArgumentException();
+            definitions = definitionsLocal;
+            ((IEnum<uint>)definitions).Dispose();
+            gcHandle.Free();
+        }
+        catch (System.Exception ex)
+        {
+            return ex.HResult;
+        }
+
+        if (_legacyModule is not null && definitions.LegacyHandle != 0)
+            return _legacyModule.EndEnumTypeDefinitionsByName(definitions.LegacyHandle);
+        return HResults.S_OK;
     }
 
     int IXCLRDataModule.StartEnumTypeInstancesByName(char* name, uint flags, IXCLRDataAppDomain? appDomain, ulong* handle)

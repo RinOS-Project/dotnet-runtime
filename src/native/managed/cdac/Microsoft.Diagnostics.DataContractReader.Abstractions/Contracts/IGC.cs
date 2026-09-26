@@ -36,7 +36,12 @@ public record struct HandleData(
     TargetPointer Secondary,
     uint Type,
     bool StrongReference,
-    uint RefCount);
+    uint RefCount)
+{
+    // Required by the native GetHandleEnumForGC generation filter. Keep this
+    // out of the positional constructor for source compatibility.
+    public TargetPointer Object { get; init; }
+}
 
 public readonly struct GCHeapData
 {
@@ -159,6 +164,7 @@ public interface IGC : IContract
     // server variant
     GCOomData GetOomData(TargetPointer heapAddress) => throw new NotImplementedException();
     List<HandleData> GetHandles(HandleType[] types) => throw new NotImplementedException();
+    List<HandleData> GetHandlesForGeneration(HandleType[] types, uint generation) => throw new NotImplementedException();
     HandleType[] GetSupportedHandleTypes() => throw new NotImplementedException();
     HandleType[] GetHandleTypes(uint[] types) => throw new NotImplementedException();
     TargetNUInt GetHandleExtraInfo(TargetPointer handle) => throw new NotImplementedException();

@@ -1707,18 +1707,25 @@ public sealed unsafe partial class SOSDacImpl
         private readonly ISOSHandleEnum? _legacyHandleEnum;
         private uint _index;
 
-        public SOSHandleEnum(Target target, HandleType[] types, ISOSHandleEnum? legacyHandleEnum, Lock apiLock)
+        public SOSHandleEnum(
+            Target target,
+            HandleType[] types,
+            ISOSHandleEnum? legacyHandleEnum,
+            Lock apiLock,
+            uint? generation = null)
         {
             _apiLock = apiLock;
             _target = target;
             _legacyHandleEnum = legacyHandleEnum;
-            _handles = GetHandles(types);
+            _handles = GetHandles(types, generation);
         }
 
-        private SOSHandleData[] GetHandles(HandleType[] types)
+        private SOSHandleData[] GetHandles(HandleType[] types, uint? generation)
         {
             IGC gc = _target.Contracts.GC;
-            List<HandleData> handles = gc.GetHandles(types);
+            List<HandleData> handles = generation.HasValue
+                ? gc.GetHandlesForGeneration(types, generation.Value)
+                : gc.GetHandles(types);
 
             TargetPointer appDomain = _target.Contracts.Loader.GetAppDomain();
             ClrDataAddress appDomainClrAddress = appDomain.ToClrDataAddress(_target);
@@ -1967,8 +1974,46 @@ public sealed unsafe partial class SOSDacImpl
     int ISOSDacInterface.GetHandleEnumForGC(uint gen, DacComNullableByRef<ISOSHandleEnum> ppHandleEnum)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        try
+        {
+            IGC gc = _target.Contracts.GC;
+            if (gen > gc.GetMaxGeneration())
+                throw new ArgumentOutOfRangeException(nameof(gen));
 
-        return HResults.E_NOTIMPL;
+            List<HandleType> handleTypes =
+            [
+                HandleType.WeakShort,
+                HandleType.WeakLong,
+                HandleType.Strong,
+                HandleType.Pinned,
+                HandleType.Dependent,
+            ];
+            if (gc.GetSupportedHandleTypes().Contains(HandleType.RefCounted))
+                handleTypes.Add(HandleType.RefCounted);
+
+            ISOSHandleEnum? legacyHandleEnum = null;
+#if DEBUG
+            if (_legacyImpl is not null)
+            {
+                DacComNullableByRef<ISOSHandleEnum> legacyOut = new(isNullRef: false);
+                int hrLocal = _legacyImpl.GetHandleEnumForGC(gen, legacyOut);
+                Debug.ValidateHResult(hr, hrLocal);
+                legacyHandleEnum = legacyOut.Interface;
+            }
+#endif
+            ppHandleEnum.Interface = new SOSHandleEnum(
+                _target,
+                handleTypes.ToArray(),
+                legacyHandleEnum,
+                _apiLock,
+                gen);
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+        return hr;
     }
     int ISOSDacInterface.GetHandleEnumForTypes([In, MarshalUsing(CountElementName = "count")] uint[] types, uint count, DacComNullableByRef<ISOSHandleEnum> ppHandleEnum)
     {

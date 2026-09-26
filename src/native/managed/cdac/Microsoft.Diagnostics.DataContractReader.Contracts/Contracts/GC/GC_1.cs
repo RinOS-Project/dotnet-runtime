@@ -378,6 +378,93 @@ internal struct GC_1 : IGC
         return handles;
     }
 
+    List<HandleData> IGC.GetHandlesForGeneration(HandleType[] types, uint generation)
+    {
+        IGC gc = this;
+        if (generation > gc.GetMaxGeneration())
+            throw new ArgumentOutOfRangeException(nameof(generation));
+
+        List<HandleData> handles = gc.GetHandles(types);
+        if (handles.Count == 0)
+            return handles;
+
+        bool serverMode = gc.GetGCIdentifiers().Contains(GCIdentifiers.Server);
+        List<GCHeapData> heaps;
+        if (serverMode)
+        {
+            uint heapCount = gc.GetGCHeapCount();
+            TargetPointer[] heapPointers = gc.GetGCHeaps().Take(checked((int)heapCount)).ToArray();
+            heaps = heapPointers.Select(heap => gc.GetHeapData(heap)).ToList();
+        }
+        else
+        {
+            heaps = [gc.GetHeapData()];
+        }
+
+        List<HandleData> filtered = new(handles.Count);
+        foreach (HandleData handle in handles)
+        {
+            if (handle.Object == TargetPointer.Null)
+                continue;
+
+            foreach (GCHeapData heap in heaps)
+            {
+                if (IsObjectInGeneration(gc, heap, handle.Object, generation))
+                {
+                    filtered.Add(handle);
+                    break;
+                }
+            }
+        }
+
+        return filtered;
+    }
+
+    private static bool IsObjectInGeneration(IGC gc, GCHeapData heap, TargetPointer address, uint generation)
+    {
+        foreach (GCHeapSegmentInfo segment in gc.EnumerateHeapSegments(heap))
+        {
+            if (address.Value < segment.Start.Value || address.Value >= segment.End.Value)
+                continue;
+
+            return segment.Generation switch
+            {
+                GCSegmentClassification.Gen0 => generation == 0,
+                GCSegmentClassification.Gen1 => generation == 1,
+                GCSegmentClassification.Gen2 => generation == 2,
+                GCSegmentClassification.Ephemeral => IsEphemeralObjectInGeneration(heap, segment, address, generation),
+                _ => false,
+            };
+        }
+
+        return false;
+    }
+
+    private static bool IsEphemeralObjectInGeneration(
+        GCHeapData heap,
+        GCHeapSegmentInfo segment,
+        TargetPointer address,
+        uint generation)
+    {
+        // In segments GC the ephemeral segment contains gen2, gen1, and gen0
+        // in ascending address order. These are the same boundaries used by
+        // the native DAC's heap diagnostics.
+        if (heap.GenerationTable.Count < 3)
+            return false;
+
+        TargetPointer gen0Start = heap.GenerationTable[0].AllocationStart;
+        TargetPointer gen1Start = heap.GenerationTable[1].AllocationStart;
+        TargetPointer gen0End = heap.AllocAllocated;
+
+        return generation switch
+        {
+            0 => address.Value >= gen0Start.Value && address.Value < gen0End.Value,
+            1 => address.Value >= gen1Start.Value && address.Value < gen0Start.Value,
+            2 => address.Value >= segment.Start.Value && address.Value < gen1Start.Value,
+            _ => false,
+        };
+    }
+
     IEnumerable<GCHeapSegmentInfo> IGC.EnumerateHeapSegments(GCHeapData heapData)
     {
         // The generation table is laid out as gen0, gen1, gen2, LOH, POH (plus optional extras).
@@ -646,6 +733,7 @@ internal struct GC_1 : IGC
     {
         HandleData handleData = default;
         handleData.Handle = handleAddress;
+        handleData.Object = _target.ReadPointer(handleAddress);
         handleData.Type = GetInternalHandleType(type);
         handleData.StrongReference = IsStrongReference(type);
         if (HasSecondary(type))

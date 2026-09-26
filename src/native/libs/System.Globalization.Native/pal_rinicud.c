@@ -2901,6 +2901,10 @@ static char* idna_normalize_casefold(const char* source, size_t source_length)
             free(input);
             return NULL;
         }
+        /* UTS #46 treats the ideographic and halfwidth ideographic full stop
+         * as label separators.  NFKC already maps U+FF0E, but it preserves
+         * U+3002 and U+FF61, so normalize those two forms before folding. */
+        if (codepoint == 0x3002u) codepoint = 0x002Eu;
         mapped_length = rin_unicode_casefold_full(codepoint, mapped);
         for (mapped_index = 0u; mapped_index < mapped_length; ++mapped_index) {
             if (!append_utf8(folded, folded_capacity, &folded_length, mapped[mapped_index])) {
@@ -2997,7 +3001,8 @@ static int idna_to_ascii_utf8(const char* source, size_t source_length, uint32_t
         } else {
             size_t i;
             for (i = 0u; i < codepoint_count; ++i) {
-                if (!idna_codepoint_allowed(codepoints[i])) {
+                if (!idna_codepoint_allowed(codepoints[i]) ||
+                    (i == 0u && rin_unicode_is_combining(codepoints[i]))) {
                     free(codepoints);
                     free(normalized);
                     return 0;
@@ -3062,6 +3067,7 @@ static int idna_to_unicode_utf8(const char* source, size_t source_length, uint32
                                       label_end - label_start - 4u,
                                       decoded, sizeof(decoded) / sizeof(decoded[0]),
                                       &decoded_length)) return 0;
+            if (decoded_length == 0u || rin_unicode_is_combining(decoded[0])) return 0;
             for (i = 0u; i < decoded_length; ++i) {
                 if (!idna_codepoint_allowed(decoded[i]) ||
                     !append_utf8(output, output_capacity, &output_offset, decoded[i])) return 0;

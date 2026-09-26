@@ -40,8 +40,53 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
     int IXCLRDataFrame.GetFrameType(uint* simpleType, uint* detailedType)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        try
+        {
+            // Keep the frame classification identical to ClrDataStackWalk's
+            // RawGetFrameType/managed equivalent. The native DAC captures this
+            // classification when it creates ClrDataFrame; cDAC retains the
+            // corresponding state in the frame handle.
+            if (simpleType is not null)
+            {
+                *simpleType = _dataFrame.State switch
+                {
+                    StackWalkState.Frameless => (uint)CLRDataSimpleFrameType.CLRDATA_SIMPFRAME_MANAGED_METHOD,
+                    StackWalkState.Frame or StackWalkState.SkippedFrame => (uint)CLRDataSimpleFrameType.CLRDATA_SIMPFRAME_RUNTIME_UNMANAGED_CODE,
+                    _ => (uint)CLRDataSimpleFrameType.CLRDATA_SIMPFRAME_UNRECOGNIZED,
+                };
+            }
 
-        return HResults.E_NOTIMPL;
+            if (detailedType is not null)
+            {
+                *detailedType = _dataFrame.IsExceptionFrame
+                    ? (uint)CLRDataDetailedFrameType.CLRDATA_DETFRAME_EXCEPTION_FILTER
+                    : (uint)CLRDataDetailedFrameType.CLRDATA_DETFRAME_UNRECOGNIZED;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyImpl is not null)
+        {
+            uint simpleTypeLocal = 0;
+            uint detailedTypeLocal = 0;
+            int hrLocal = _legacyImpl.GetFrameType(&simpleTypeLocal, &detailedTypeLocal);
+            Debug.ValidateHResult(hr, hrLocal);
+            if (hr == HResults.S_OK)
+            {
+                if (simpleType is not null)
+                    Debug.Assert(*simpleType == simpleTypeLocal, $"cDAC: {*simpleType:x}, DAC: {simpleTypeLocal:x}");
+                if (detailedType is not null)
+                    Debug.Assert(*detailedType == detailedTypeLocal, $"cDAC: {*detailedType:x}, DAC: {detailedTypeLocal:x}");
+            }
+        }
+#endif
+
+        return hr;
     }
 
     int IXCLRDataFrame.GetContext(

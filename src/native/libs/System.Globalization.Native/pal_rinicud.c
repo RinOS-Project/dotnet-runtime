@@ -1236,7 +1236,9 @@ static int product_locale_language_id(const char* locale_id)
         {"sv-SE", 0x041d}, {"fi-FI", 0x040b}, {"da-DK", 0x0406},
         {"cs-CZ", 0x0405}, {"hu-HU", 0x040e}, {"ro-RO", 0x0418},
         {"ar-SA", 0x0401}, {"fa-IR", 0x0429}, {"he-IL", 0x040d}, {"hi-IN", 0x0439}, {"th-TH", 0x041e},
-        {"id-ID", 0x0421}, {"vi-VN", 0x042a}
+        {"id-ID", 0x0421}, {"vi-VN", 0x042a},
+        {"en-IE", 0x1809}, {"en-SG", 0x1009}, {"en-PH", 0x3409},
+        {"fr-CH", 0x100c}, {"de-LU", 0x1407}, {"es-CL", 0x340a}, {"it-CH", 0x0810}
     };
     size_t index;
     if (!locale_id || locale_id[0] == '\0') return 0;
@@ -1277,15 +1279,15 @@ static const char* product_language_three_letter(const char* language)
 static const char* product_region_three_letter(const char* region)
 {
     static const RinLocaleCode codes[] = {
-        { "BR", "BRA" }, { "CN", "CHN" }, { "CZ", "CZE" },
+        { "BR", "BRA" }, { "CH", "CHE" }, { "CL", "CHL" }, { "CN", "CHN" }, { "CZ", "CZE" },
         { "DE", "DEU" }, { "DK", "DNK" }, { "ES", "ESP" },
-        { "FI", "FIN" }, { "FR", "FRA" }, { "GB", "GBR" },
+        { "FI", "FIN" }, { "FR", "FRA" }, { "GB", "GBR" }, { "IE", "IRL" },
         { "HU", "HUN" }, { "ID", "IDN" }, { "IL", "ISR" }, { "IN", "IND" },
-        { "IT", "ITA" }, { "JP", "JPN" }, { "KR", "KOR" },
+        { "IT", "ITA" }, { "JP", "JPN" }, { "KR", "KOR" }, { "LU", "LUX" },
         { "MX", "MEX" }, { "NL", "NLD" }, { "PL", "POL" },
-        { "PT", "PRT" }, { "RO", "ROU" }, { "RU", "RUS" },
+        { "PH", "PHL" }, { "PT", "PRT" }, { "RO", "ROU" }, { "RU", "RUS" },
         { "IR", "IRN" },
-        { "SA", "SAU" }, { "SE", "SWE" }, { "TH", "THA" },
+        { "SA", "SAU" }, { "SE", "SWE" }, { "SG", "SGP" }, { "TH", "THA" },
         { "TR", "TUR" }, { "TW", "TWN" }, { "UA", "UKR" },
         { "US", "USA" }, { "VN", "VNM" }
     };
@@ -1391,7 +1393,7 @@ static int product_percent_positive_pattern(const RinIcuDataLocaleRecord* record
 static int product_first_day_of_week(const char* region)
 {
     static const char* sunday_regions[] = {
-        "BR", "CA", "ID", "IN", "JP", "KR", "MX", "PT", "SA", "TH", "TW", "US"
+        "BR", "CA", "CL", "ID", "IN", "JP", "KR", "MX", "PH", "PT", "SA", "SG", "TH", "TW", "US"
     };
     static const char* saturday_regions[] = {
         "IR"

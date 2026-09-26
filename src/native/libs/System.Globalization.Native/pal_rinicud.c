@@ -2888,14 +2888,29 @@ static int idna_append_unicode_label(const char* label, size_t length, int use_s
     return 1;
 }
 
-static char* idna_normalize_casefold(const char* source, size_t source_length)
+static size_t idna_lowercase(uint32_t codepoint, uint32_t output[3])
+{
+    /* UTS #46 applies lowercase mapping, not Unicode full case-folding.
+     * In particular, LATIN CAPITAL LETTER SHARP S must remain U+00DF so it
+     * can be encoded as an IDNA2008 PVALID code point instead of becoming
+     * the transitional-looking ASCII sequence "ss". */
+    if (codepoint == 0x0130u) {
+        output[0] = 0x0069u;
+        output[1] = 0x0307u;
+        return 2u;
+    }
+    output[0] = rin_unicode_tolower(codepoint);
+    return 1u;
+}
+
+static char* idna_normalize_case(const char* source, size_t source_length)
 {
     char* input;
     char* normalized;
-    char* folded;
+    char* mapped_output;
     size_t normalized_length;
-    size_t folded_capacity;
-    size_t folded_length = 0u;
+    size_t mapped_capacity;
+    size_t mapped_length_total = 0u;
     size_t offset = 0u;
     if (!source || source_length > RIN_IDNA_MAX_NAME - 1u) return NULL;
     input = (char*)malloc(source_length + 1u);
@@ -2919,9 +2934,9 @@ static char* idna_normalize_casefold(const char* source, size_t source_length)
         free(input);
         return NULL;
     }
-    folded_capacity = normalized_length * 2u + 1u;
-    folded = (char*)malloc(folded_capacity);
-    if (!folded) {
+    mapped_capacity = normalized_length * 2u + 1u;
+    mapped_output = (char*)malloc(mapped_capacity);
+    if (!mapped_output) {
         free(normalized);
         free(input);
         return NULL;
@@ -2934,19 +2949,20 @@ static char* idna_normalize_casefold(const char* source, size_t source_length)
         size_t mapped_index;
         if (rin_unicode_decode_utf8(normalized + offset, normalized_length - offset,
                                     &codepoint, &consumed) != RIN_UNICODE_OK || consumed == 0u) {
-            free(folded);
+            free(mapped_output);
             free(normalized);
             free(input);
             return NULL;
         }
         /* UTS #46 treats the ideographic and halfwidth ideographic full stop
          * as label separators.  NFKC already maps U+FF0E, but it preserves
-         * U+3002 and U+FF61, so normalize those two forms before folding. */
+         * U+3002 and U+FF61, so normalize those two forms before lowercase
+         * mapping. */
         if (codepoint == 0x3002u) codepoint = 0x002Eu;
-        mapped_length = rin_unicode_casefold_full(codepoint, mapped);
+        mapped_length = idna_lowercase(codepoint, mapped);
         for (mapped_index = 0u; mapped_index < mapped_length; ++mapped_index) {
-            if (!append_utf8(folded, folded_capacity, &folded_length, mapped[mapped_index])) {
-                free(folded);
+            if (!append_utf8(mapped_output, mapped_capacity, &mapped_length_total, mapped[mapped_index])) {
+                free(mapped_output);
                 free(normalized);
                 free(input);
                 return NULL;
@@ -2954,17 +2970,17 @@ static char* idna_normalize_casefold(const char* source, size_t source_length)
         }
         offset += consumed;
     }
-    folded[folded_length] = '\0';
+    mapped_output[mapped_length_total] = '\0';
     free(normalized);
     free(input);
-    return folded;
+    return mapped_output;
 }
 
 static int idna_to_ascii_utf8(const char* source, size_t source_length, uint32_t flags,
                               char* output, size_t output_capacity,
                               size_t* output_length)
 {
-    char* normalized = idna_normalize_casefold(source, source_length);
+    char* normalized = idna_normalize_case(source, source_length);
     size_t source_offset = 0u;
     size_t output_offset = 0u;
     int use_std3 = (flags & RIN_IDNA_USE_STD3_ASCII_RULES) != 0u;
@@ -3130,7 +3146,7 @@ static int idna_to_unicode_utf8(const char* source, size_t source_length, uint32
                                 char* output, size_t output_capacity,
                                 size_t* output_length)
 {
-    char* normalized = idna_normalize_casefold(source, source_length);
+    char* normalized = idna_normalize_case(source, source_length);
     int result;
     if (!normalized) return 0;
     result = idna_to_unicode_normalized_utf8(normalized, strlen(normalized), flags,

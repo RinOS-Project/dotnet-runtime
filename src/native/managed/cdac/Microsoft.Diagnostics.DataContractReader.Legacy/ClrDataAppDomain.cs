@@ -34,8 +34,35 @@ public sealed unsafe partial class ClrDataAppDomain : IXCLRDataAppDomain
     int IXCLRDataAppDomain.GetProcess(DacComNullableByRef<IXCLRDataProcess> process)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        int hrLocal = HResults.S_OK;
+        IXCLRDataProcess? legacyProcess = null;
 
-        return HResults.E_NOTIMPL;
+        if (_legacyImpl is not null)
+        {
+            DacComNullableByRef<IXCLRDataProcess> legacyProcessOut = new(isNullRef: false);
+            hrLocal = _legacyImpl.GetProcess(legacyProcessOut);
+            legacyProcess = legacyProcessOut.Interface;
+        }
+
+        try
+        {
+            // SOSDacImpl is the cDAC IXCLRDataProcess implementation. Keep a
+            // legacy process object, when present, so DEBUG parity checks and
+            // fallback-only process calls continue to use the original DAC.
+            process.Interface = new SOSDacImpl(_target, legacyProcess, _apiLock);
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyImpl is not null)
+            Debug.ValidateHResult(hr, hrLocal);
+#endif
+
+        return hr;
     }
 
     int IXCLRDataAppDomain.GetName(uint bufLen, uint* nameLen, char* name)

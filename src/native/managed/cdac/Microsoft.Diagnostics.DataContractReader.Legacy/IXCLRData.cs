@@ -496,7 +496,7 @@ public unsafe partial interface IXCLRDataFrame2
 public unsafe partial interface IXCLRDataTask
 {
     [PreserveSig]
-    int GetProcess(/*IXCLRDataProcess*/ void** process);
+    int GetProcess(DacComNullableByRef<IXCLRDataProcess> process);
 
     [PreserveSig]
     int GetCurrentAppDomain(DacComNullableByRef<IXCLRDataAppDomain> appDomain);

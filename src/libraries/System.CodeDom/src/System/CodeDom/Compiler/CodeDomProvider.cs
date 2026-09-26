@@ -168,7 +168,7 @@ namespace System.CodeDom.Compiler
 
         public virtual void GenerateCodeFromMember(CodeTypeMember member, TextWriter writer, CodeGeneratorOptions options)
         {
-            throw new NotImplementedException(SR.NotSupported_CodeDomAPI);
+            throw new NotSupportedException(SR.NotSupported_CodeDomAPI);
         }
 
         public virtual CodeCompileUnit Parse(TextReader codeStream) =>
@@ -180,7 +180,7 @@ namespace System.CodeDom.Compiler
             ICodeCompiler compiler = CreateCompiler();
             if (compiler == null)
             {
-                throw new NotImplementedException(SR.NotSupported_CodeDomAPI);
+                throw new NotSupportedException(SR.NotSupported_CodeDomAPI);
             }
             return compiler;
         }
@@ -190,7 +190,7 @@ namespace System.CodeDom.Compiler
             ICodeGenerator generator = CreateGenerator();
             if (generator == null)
             {
-                throw new NotImplementedException(SR.NotSupported_CodeDomAPI);
+                throw new NotSupportedException(SR.NotSupported_CodeDomAPI);
             }
             return generator;
         }
@@ -200,7 +200,7 @@ namespace System.CodeDom.Compiler
             ICodeParser parser = CreateParser();
             if (parser == null)
             {
-                throw new NotImplementedException(SR.NotSupported_CodeDomAPI);
+                throw new NotSupportedException(SR.NotSupported_CodeDomAPI);
             }
             return parser;
         }

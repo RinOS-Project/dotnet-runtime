@@ -266,11 +266,70 @@ internal sealed partial class ExecutionManagerCore<T> : IExecutionManager
 
         Data.RuntimeFunction runtimeFunction = _target.ProcessedData.GetOrAdd<Data.RuntimeFunction>(runtimeFunctionPtr);
 
-        // TODO(cdac): EXCEPTION_DATA_SUPPORTS_FUNCTION_FRAGMENTS, implement iterating over fragments until finding
-        // non-fragment RuntimeFunction
+        TargetPointer funcletStartAddress = range.Data.RangeBegin + runtimeFunction.BeginAddress;
+        if (SupportsFunctionFragments())
+        {
+            uint runtimeFunctionSize = Data.RuntimeFunction.GetSize(_target);
+            while (IsFunctionFragment(range.Data.RangeBegin, runtimeFunction))
+            {
+                // Function fragments are adjacent entries in the runtime-function
+                // table. The native DAC guarantees that a fragment has a host
+                // record before it, so walk back until the phantom prolog bit is
+                // gone and use that entry's begin address.
+                runtimeFunctionPtr = new TargetPointer(runtimeFunctionPtr.Value - runtimeFunctionSize);
+                runtimeFunction = _target.ProcessedData.GetOrAdd<Data.RuntimeFunction>(runtimeFunctionPtr);
+                funcletStartAddress = range.Data.RangeBegin + runtimeFunction.BeginAddress;
+            }
+        }
 
         return CodePointerUtils.AddressFromCodePointer(
-            new TargetCodePointer(range.Data.RangeBegin + runtimeFunction.BeginAddress), _target);
+            new TargetCodePointer(funcletStartAddress), _target);
+    }
+
+    private bool SupportsFunctionFragments()
+        => _target.Contracts.RuntimeInfo.GetTargetArchitecture() is
+            RuntimeInfoArchitecture.Arm or
+            RuntimeInfoArchitecture.Arm64 or
+            RuntimeInfoArchitecture.LoongArch64 or
+            RuntimeInfoArchitecture.RiscV64;
+
+    private bool IsFunctionFragment(TargetPointer imageBase, Data.RuntimeFunction runtimeFunction)
+    {
+        // Native IsFunctionFragment only handles RVA-based unwind data. Packed
+        // unwind encodings do not have a phantom-prolog marker to inspect.
+        if ((runtimeFunction.UnwindData & 3) != 0)
+            return false;
+
+        TargetPointer unwindInfo = imageBase + runtimeFunction.UnwindData;
+        uint unwindHeader = _target.Read<uint>(unwindInfo);
+
+        // Versions other than the current unwind format have no cDAC fragment
+        // interpretation. Treat them as host records rather than guessing.
+        if (((unwindHeader >> 18) & 3) != 0)
+            return false;
+
+        if (_target.Contracts.RuntimeInfo.GetTargetArchitecture() == RuntimeInfoArchitecture.Arm)
+            return ((unwindHeader >> 22) & 1) != 0;
+
+        uint epilogScopes = (unwindHeader >> 22) & 0x1f;
+        uint unwindWords = unwindHeader >> 27;
+        TargetPointer unwindCodes = unwindInfo + sizeof(uint);
+
+        // ARM64, LoongArch64, and RISC-V64 use an extended header when both
+        // counts in the first header are zero.
+        if (unwindWords == 0 && epilogScopes == 0)
+        {
+            uint extendedHeader = _target.Read<uint>(unwindCodes);
+            epilogScopes = extendedHeader & 0xffff;
+            unwindWords = (extendedHeader >> 16) & 0xff;
+            unwindCodes += sizeof(uint);
+        }
+
+        // With E=0, epilog scopes precede the unwind-code words.
+        if ((unwindHeader & (1u << 21)) == 0)
+            unwindCodes += epilogScopes * sizeof(uint);
+
+        return (_target.Read<uint>(unwindCodes) & 0xff) == 0xe5;
     }
 
     void IExecutionManager.GetMethodRegionInfo(CodeBlockHandle codeInfoHandle, out uint hotSize, out TargetPointer coldStart, out uint coldSize)

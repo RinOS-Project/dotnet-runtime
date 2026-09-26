@@ -1227,10 +1227,13 @@ static int product_locale_language_id(const char* locale_id)
         int value;
     };
     static const struct LocaleIdEntry entries[] = {
-        {"en-US", 0x0409}, {"en-GB", 0x0809}, {"en-IN", 0x4009}, {"ja-JP", 0x0411},
+        {"en-US", 0x0409}, {"en-GB", 0x0809}, {"en-IN", 0x4009},
+        {"en-AU", 0x0c09}, {"en-CA", 0x1009}, {"en-NZ", 0x1409}, {"en-ZA", 0x1c09},
+        {"ja-JP", 0x0411},
         {"zh-CN", 0x0804}, {"zh-TW", 0x0404}, {"ko-KR", 0x0412},
-        {"fr-FR", 0x040c}, {"fr-BE", 0x080c}, {"de-DE", 0x0407}, {"de-AT", 0x0c07}, {"es-ES", 0x0c0a},
-        {"es-MX", 0x080a}, {"es-US", 0x540a}, {"it-IT", 0x0410}, {"pt-BR", 0x0416},
+        {"fr-FR", 0x040c}, {"fr-BE", 0x080c}, {"fr-CA", 0x0c0c},
+        {"de-DE", 0x0407}, {"de-AT", 0x0c07}, {"de-CH", 0x0807}, {"es-ES", 0x0c0a},
+        {"es-MX", 0x080a}, {"es-US", 0x540a}, {"es-AR", 0x2c0a}, {"it-IT", 0x0410}, {"pt-BR", 0x0416},
         {"pt-PT", 0x0816}, {"ru-RU", 0x0419}, {"uk-UA", 0x0422},
         {"tr-TR", 0x041f}, {"pl-PL", 0x0415}, {"nl-NL", 0x0413},
         {"sv-SE", 0x041d}, {"fi-FI", 0x040b}, {"da-DK", 0x0406},
@@ -1281,7 +1284,8 @@ static const char* product_language_three_letter(const char* language)
 static const char* product_region_three_letter(const char* region)
 {
     static const RinLocaleCode codes[] = {
-        { "BE", "BEL" }, { "BR", "BRA" }, { "CH", "CHE" }, { "CL", "CHL" }, { "CN", "CHN" }, { "CO", "COL" }, { "CZ", "CZE" },
+        { "AR", "ARG" }, { "AT", "AUT" }, { "AU", "AUS" }, { "BE", "BEL" }, { "BR", "BRA" }, { "CA", "CAN" },
+        { "CH", "CHE" }, { "CL", "CHL" }, { "CN", "CHN" }, { "CO", "COL" }, { "CZ", "CZE" },
         { "DE", "DEU" }, { "DK", "DNK" }, { "ES", "ESP" },
         { "FI", "FIN" }, { "FR", "FRA" }, { "GB", "GBR" }, { "HK", "HKG" }, { "IE", "IRL" },
         { "HU", "HUN" }, { "ID", "IDN" }, { "IL", "ISR" }, { "IN", "IND" },
@@ -1291,7 +1295,7 @@ static const char* product_region_three_letter(const char* region)
         { "IR", "IRN" },
         { "SA", "SAU" }, { "SE", "SWE" }, { "SG", "SGP" }, { "TH", "THA" },
         { "TR", "TUR" }, { "TW", "TWN" }, { "UA", "UKR" },
-        { "US", "USA" }, { "VN", "VNM" }
+        { "US", "USA" }, { "VN", "VNM" }, { "NZ", "NZL" }, { "ZA", "ZAF" }
     };
     size_t index;
     if (!region || region[0] == '\0') return NULL;

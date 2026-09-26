@@ -53,8 +53,12 @@ internal sealed class StressLogTraversal(Target target, IStressMessageReader mes
     public IEnumerable<ThreadStressLogData> GetThreadStressLogs(TargetPointer Logs)
     {
         TargetPointer currentPointer = Logs;
+        HashSet<TargetPointer> visitedThreads = [];
         while (currentPointer != TargetPointer.Null)
         {
+            if (!visitedThreads.Add(currentPointer))
+                throw new InvalidOperationException("Cyclic stress log thread chain");
+
             Data.ThreadStressLog threadStressLog = target.ProcessedData.GetOrAdd<Data.ThreadStressLog>(currentPointer);
 
             if (threadStressLog.ChunkListHead == TargetPointer.Null)

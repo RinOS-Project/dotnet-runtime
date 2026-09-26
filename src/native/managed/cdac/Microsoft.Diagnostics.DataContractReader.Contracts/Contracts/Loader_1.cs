@@ -581,8 +581,12 @@ internal readonly struct Loader_1 : ILoader
     private IEnumerable<(TargetPointer, uint)> IterateModuleLookupMap(TargetPointer table, uint index, Delegate iterator)
     {
         bool doneIterating;
+        HashSet<TargetPointer> visitedTables = [];
         do
         {
+            if (!visitedTables.Add(table))
+                throw new InvalidOperationException("Cyclic module lookup map chain");
+
             Data.ModuleLookupMap lookupMap = _target.ProcessedData.GetOrAdd<Data.ModuleLookupMap>(table);
             if (index < lookupMap.Count)
             {

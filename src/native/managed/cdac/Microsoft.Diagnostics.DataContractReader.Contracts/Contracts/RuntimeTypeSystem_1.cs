@@ -2069,8 +2069,12 @@ internal partial struct RuntimeTypeSystem_1 : IRuntimeTypeSystem
         EEClass eeClass = GetClassData(typeHandle);
 
         TargetPointer chunkAddr = eeClass.MethodDescChunk;
+        HashSet<TargetPointer> visitedChunks = [];
         while (chunkAddr != TargetPointer.Null)
         {
+            if (!visitedChunks.Add(chunkAddr))
+                throw new InvalidOperationException("Cyclic method descriptor chunk chain");
+
             MethodDescChunk chunk = _target.ProcessedData.GetOrAdd<MethodDescChunk>(chunkAddr);
             TargetPointer methodDescPtr = chunk.FirstMethodDesc;
             // chunk.Count is the number of MethodDescs in the chunk - 1

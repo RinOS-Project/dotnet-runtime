@@ -549,8 +549,12 @@ internal sealed partial class ExecutionManagerCore<T> : IExecutionManager
     {
         TargetPointer heapListAddress = ((IExecutionManager)this).GetEEJitManagerInfo().HeapListAddress;
         TargetPointer nodeAddr = heapListAddress;
+        HashSet<TargetPointer> visitedNodes = [];
         while (nodeAddr != TargetPointer.Null)
         {
+            if (!visitedNodes.Add(nodeAddr))
+                throw new InvalidOperationException("Cyclic code heap chain");
+
             Data.CodeHeapListNode node = _target.ProcessedData.GetOrAdd<Data.CodeHeapListNode>(nodeAddr);
             yield return GetCodeHeapInfo(node.Heap);
             nodeAddr = node.Next;
@@ -578,8 +582,12 @@ internal sealed partial class ExecutionManagerCore<T> : IExecutionManager
         Data.EEJitManager jitManager = _target.ProcessedData.GetOrAdd<Data.EEJitManager>(jitManagerAddress);
 
         TargetPointer nodeAddr = jitManager.AllCodeHeaps;
+        HashSet<TargetPointer> visitedNodes = [];
         while (nodeAddr != TargetPointer.Null)
         {
+            if (!visitedNodes.Add(nodeAddr))
+                throw new InvalidOperationException("Cyclic dynamic code heap chain");
+
             Data.CodeHeapListNode node = _target.ProcessedData.GetOrAdd<Data.CodeHeapListNode>(nodeAddr);
 
             // HeapList::GetModuleBase - the personality routine on 64-bit targets when set,

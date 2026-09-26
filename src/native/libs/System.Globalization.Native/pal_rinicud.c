@@ -2850,6 +2850,44 @@ static int idna_label_is_ace(const char* label, size_t length)
     return 1;
 }
 
+static int idna_append_unicode_label(const char* label, size_t length, int use_std3,
+                                     char* output, size_t output_capacity,
+                                     size_t* output_length)
+{
+    size_t offset = 0u;
+    size_t count = 0u;
+    uint32_t first = 0u;
+    int all_ascii = 1;
+    if (!label || length == 0u || !output || !output_length) return 0;
+    while (offset < length) {
+        uint32_t codepoint;
+        size_t consumed = 0u;
+        if (rin_unicode_decode_utf8(label + offset, length - offset,
+                                    &codepoint, &consumed) != RIN_UNICODE_OK ||
+            consumed == 0u) return 0;
+        if (count == 0u) first = codepoint;
+        if (codepoint >= 0x80u) all_ascii = 0;
+        offset += consumed;
+        ++count;
+    }
+    if (count == 0u || rin_unicode_is_combining(first)) return 0;
+    if (all_ascii) {
+        return idna_ascii_label_valid(label, length, use_std3) &&
+               idna_append(output, output_capacity, output_length, label, length);
+    }
+    offset = 0u;
+    while (offset < length) {
+        uint32_t codepoint;
+        size_t consumed = 0u;
+        if (rin_unicode_decode_utf8(label + offset, length - offset,
+                                    &codepoint, &consumed) != RIN_UNICODE_OK ||
+            consumed == 0u || !idna_codepoint_allowed(codepoint) ||
+            !append_utf8(output, output_capacity, output_length, codepoint)) return 0;
+        offset += consumed;
+    }
+    return 1;
+}
+
 static char* idna_normalize_casefold(const char* source, size_t source_length)
 {
     char* input;
@@ -3042,9 +3080,10 @@ static int idna_to_ascii_utf8(const char* source, size_t source_length, uint32_t
     return 1;
 }
 
-static int idna_to_unicode_utf8(const char* source, size_t source_length, uint32_t flags,
-                                char* output, size_t output_capacity,
-                                size_t* output_length)
+static int idna_to_unicode_normalized_utf8(const char* source, size_t source_length,
+                                           uint32_t flags, char* output,
+                                           size_t output_capacity,
+                                           size_t* output_length)
 {
     size_t source_offset = 0u;
     size_t output_offset = 0u;
@@ -3073,12 +3112,9 @@ static int idna_to_unicode_utf8(const char* source, size_t source_length, uint32
                     !append_utf8(output, output_capacity, &output_offset, decoded[i])) return 0;
             }
         } else {
-            size_t i;
-            if (!idna_ascii_label_valid(source + label_start, label_end - label_start, use_std3)) return 0;
-            for (i = label_start; i < label_end; ++i) {
-                char lower = (char)rin_unicode_tolower((uint32_t)(unsigned char)source[i]);
-                if (!idna_append(output, output_capacity, &output_offset, &lower, 1u)) return 0;
-            }
+            if (!idna_append_unicode_label(source + label_start,
+                                           label_end - label_start, use_std3,
+                                           output, output_capacity, &output_offset)) return 0;
         }
         if (label_end == source_length) break;
         if (!idna_append(output, output_capacity, &output_offset, ".", 1u)) return 0;
@@ -3088,6 +3124,19 @@ static int idna_to_unicode_utf8(const char* source, size_t source_length, uint32
     if (output_offset == 0u) return 0;
     *output_length = output_offset;
     return 1;
+}
+
+static int idna_to_unicode_utf8(const char* source, size_t source_length, uint32_t flags,
+                                char* output, size_t output_capacity,
+                                size_t* output_length)
+{
+    char* normalized = idna_normalize_casefold(source, source_length);
+    int result;
+    if (!normalized) return 0;
+    result = idna_to_unicode_normalized_utf8(normalized, strlen(normalized), flags,
+                                             output, output_capacity, output_length);
+    free(normalized);
+    return result;
 }
 
 static int32_t idna_copy_result(const char* value, size_t length,

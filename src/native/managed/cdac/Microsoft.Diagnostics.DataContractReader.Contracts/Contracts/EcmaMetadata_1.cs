@@ -140,7 +140,7 @@ internal sealed class EcmaMetadata_1(Target target) : IEcmaMetadata
                 return MetadataReaderProvider.FromMetadataImage(ImmutableCollectionsMarshal.AsImmutableArray(data));
             }
             default:
-                throw new NotImplementedException();
+                throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown metadata availability type.");
         }
     }
 

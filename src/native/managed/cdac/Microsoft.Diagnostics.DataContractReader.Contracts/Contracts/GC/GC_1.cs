@@ -75,7 +75,8 @@ internal struct GC_1 : IGC
 
     uint IGC.GetGCHeapCount()
     {
-        switch (GetGCType())
+        GCType gcType = GetGCType();
+        switch (gcType)
         {
             case GCType.Workstation:
                 return WRK_HEAP_COUNT; // Workstation GC has a single heap
@@ -83,7 +84,7 @@ internal struct GC_1 : IGC
                 TargetPointer pNumHeaps = _target.ReadGlobalPointer(Constants.Globals.NumHeaps);
                 return (uint)_target.Read<int>(pNumHeaps);
             default:
-                throw new NotImplementedException("Unknown GC type");
+                throw new InvalidOperationException($"Unknown GC type: {gcType}.");
         }
     }
 

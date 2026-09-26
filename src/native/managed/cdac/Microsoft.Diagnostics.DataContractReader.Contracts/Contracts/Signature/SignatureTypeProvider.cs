@@ -61,7 +61,7 @@ public class SignatureTypeProvider<T> : IRuntimeSignatureTypeProvider<ITypeHandl
             ITypeHandle declaringType = _runtimeTypeSystem.GetTypeHandle(_runtimeTypeSystem.GetMethodTable(methodContext));
             return _runtimeTypeSystem.GetInstantiation(declaringType)[index];
         }
-        throw new NotImplementedException();
+        throw new NotSupportedException($"Generic type context '{typeof(T)}' is not supported.");
     }
     public ITypeHandle? GetModifiedType(ITypeHandle? modifier, ITypeHandle? unmodifiedType, bool isRequired)
         => unmodifiedType;

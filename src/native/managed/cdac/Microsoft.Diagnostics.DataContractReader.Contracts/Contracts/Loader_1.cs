@@ -705,7 +705,7 @@ internal readonly struct Loader_1 : ILoader
         IEcmaMetadata ecmaMetadataContract = _target.Contracts.EcmaMetadata;
         MetadataReader? mdReader = ecmaMetadataContract.GetMetadata(handle);
         if (mdReader == null)
-            throw new NotImplementedException();
+            throw new InvalidOperationException("Module metadata is unavailable.");
         MethodDefinition methodDef = mdReader.GetMethodDefinition(MetadataTokens.MethodDefinitionHandle(token));
         return methodDef.RelativeVirtualAddress;
     }

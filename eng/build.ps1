@@ -383,7 +383,10 @@ foreach ($argument in $PSBoundParameters.Keys)
     "arch"                   {}
     "fsanitize"              { $arguments += " /p:EnableNativeSanitizers=$($PSBoundParameters[$argument])"}
     "useBootstrap"           { $arguments += " /p:UseBootstrap=$($PSBoundParameters[$argument])" }
-    "nodeReuse"              { $arguments += " -nodeReuse $($PSBoundParameters[$argument])" }
+    "nodeReuse"              {
+      $nodeReuseValue = if ($PSBoundParameters[$argument] -eq "true") { '$true' } else { '$false' }
+      $arguments += " -nodeReuse $nodeReuseValue"
+    }
     "clrinterpreter"         { $arguments += " /p:FeatureInterpreter=true" }
     "dynamiccodecompiled"    {}
     default                  { $arguments += " /p:$argument=$($PSBoundParameters[$argument])" }

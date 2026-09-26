@@ -1049,8 +1049,90 @@ uint32_t PalGetEnvironmentVariable(const char * name, char * buffer, uint32_t si
 
 uint16_t PalCaptureStackBackTrace(uint32_t arg1, uint32_t arg2, void* arg3, uint32_t* arg4)
 {
+#if defined(TARGET_RINOS) && defined(HOST_AMD64)
+    // RinOS does not expose a hosted execinfo/backtrace ABI.  The target
+    // toolchain keeps frame pointers, so use the product pthread stack-info
+    // contract to bound a conservative frame-chain walk instead of reading
+    // arbitrary addresses.  This path is used by the NativeAOT stress log;
+    // it is deliberately fail-closed when the stack metadata is unavailable
+    // or a frame is malformed.
+    if (arg3 == nullptr || arg4 == nullptr || arg2 == 0)
+    {
+        return 0;
+    }
+
+    pthread_attr_t attributes;
+    if (pthread_getattr_np(pthread_self(), &attributes) != 0)
+    {
+        return 0;
+    }
+
+    void* stackAddress = nullptr;
+    size_t stackSize = 0;
+    int stackResult = pthread_attr_getstack(&attributes, &stackAddress, &stackSize);
+    int destroyResult = pthread_attr_destroy(&attributes);
+    if (stackResult != 0 || destroyResult != 0 || stackAddress == nullptr ||
+        stackSize < (2 * sizeof(uintptr_t)) ||
+        stackSize > (SIZE_MAX - (uintptr_t)stackAddress))
+    {
+        return 0;
+    }
+
+    const uintptr_t stackBegin = (uintptr_t)stackAddress;
+    const uintptr_t stackEnd = stackBegin + stackSize;
+    const uintptr_t firstFrame = (uintptr_t)__builtin_frame_address(0);
+    const uintptr_t lastReadableFrame = stackEnd - (2 * sizeof(uintptr_t));
+    if (firstFrame < stackBegin || firstFrame > lastReadableFrame ||
+        (firstFrame & (sizeof(uintptr_t) - 1)) != 0)
+    {
+        return 0;
+    }
+
+    void** frames = (void**)arg3;
+    uint32_t frameLimit = arg2 > UINT16_MAX ? UINT16_MAX : arg2;
+    uint32_t frameCount = 0;
+    uint32_t backTraceHash = 0;
+    uintptr_t frame = firstFrame;
+
+    while (frameCount < frameLimit)
+    {
+        if (frame < stackBegin || frame > lastReadableFrame ||
+            (frame & (sizeof(uintptr_t) - 1)) != 0)
+        {
+            break;
+        }
+
+        const uintptr_t nextFrame = ((const uintptr_t*)frame)[0];
+        const uintptr_t returnAddress = ((const uintptr_t*)frame)[1];
+        if (returnAddress == 0)
+        {
+            break;
+        }
+
+        if (arg1 != 0)
+        {
+            --arg1;
+        }
+        else
+        {
+            frames[frameCount++] = (void*)returnAddress;
+            backTraceHash = (backTraceHash * 33u) ^
+                (uint32_t)returnAddress ^ (uint32_t)(returnAddress >> 32);
+        }
+
+        if (nextFrame <= frame || nextFrame > lastReadableFrame)
+        {
+            break;
+        }
+        frame = nextFrame;
+    }
+
+    *arg4 = backTraceHash;
+    return (uint16_t)frameCount;
+#else
     // UNIXTODO: Implement this function
     return 0;
+#endif
 }
 
 #ifdef FEATURE_HIJACK

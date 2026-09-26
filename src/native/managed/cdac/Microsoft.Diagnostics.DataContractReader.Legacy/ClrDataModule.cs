@@ -339,8 +339,49 @@ public sealed unsafe partial class ClrDataModule : ICustomQueryInterface, IXCLRD
     int IXCLRDataModule.GetTypeDefinitionByToken(/*mdTypeDef*/ uint token, DacComNullableByRef<IXCLRDataTypeDefinition> typeDefinition)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        if ((token & EcmaMetadataUtils.TokenTypeMask) != (uint)EcmaMetadataUtils.TokenType.mdtTypeDef)
+            return HResults.E_INVALIDARG;
 
-        return HResults.E_NOTIMPL;
+        int hr = HResults.S_OK;
+        int hrLocal = HResults.S_OK;
+        IXCLRDataTypeDefinition? legacyTypeDefinition = null;
+        if (_legacyModule is not null)
+        {
+            DacComNullableByRef<IXCLRDataTypeDefinition> legacyTypeDefinitionOut = new(isNullRef: false);
+            hrLocal = _legacyModule.GetTypeDefinitionByToken(token, legacyTypeDefinitionOut);
+            legacyTypeDefinition = legacyTypeDefinitionOut.Interface;
+        }
+
+        try
+        {
+            Contracts.ModuleHandle moduleHandle = _target.Contracts.Loader.GetModuleHandleFromModulePtr(_address);
+            MetadataReader reader = _target.Contracts.EcmaMetadata.GetMetadata(moduleHandle)
+                ?? throw new InvalidOperationException("Module metadata is unavailable.");
+            TypeDefinitionHandle typeDefinitionHandle = MetadataTokens.TypeDefinitionHandle(
+                (int)EcmaMetadataUtils.GetRowId(token));
+            _ = reader.GetTypeDefinition(typeDefinitionHandle);
+
+            if (!typeDefinition.IsNullRef)
+            {
+                typeDefinition.Interface = new ClrDataTypeDefinition(
+                    _target,
+                    _address,
+                    token,
+                    typeHandle: null,
+                    legacyTypeDefinition,
+                    _apiLock);
+            }
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyModule is not null)
+            Debug.ValidateHResult(hr, hrLocal);
+#endif
+        return hr;
     }
 
     int IXCLRDataModule.StartEnumMethodDefinitionsByName(char* name, uint flags, ulong* handle)

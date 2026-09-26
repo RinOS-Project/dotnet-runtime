@@ -760,7 +760,7 @@ namespace System.Net.Security
                     new RinTlsException(error)),
                 _ => new SecurityStatusPal(
                     SecurityStatusPalErrorCode.InternalError,
-                    new RinTlsException(Interop.RinTls.GetError(handle)))
+                    new RinTlsException(error))
             };
         }
 

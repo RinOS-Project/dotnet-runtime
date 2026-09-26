@@ -1286,8 +1286,12 @@ internal partial struct RuntimeTypeSystem_1 : IRuntimeTypeSystem
     private ITypeHandle GetRootTypeParam(ITypeHandle typeHandle)
     {
         ITypeHandle current = typeHandle;
+        HashSet<TargetPointer> visitedTypes = [];
         while (HasTypeParam(current))
         {
+            if (!visitedTypes.Add(current.Address))
+                throw new InvalidOperationException("Cyclic type parameter");
+
             current = GetTypeParam(current);
         }
         return current;

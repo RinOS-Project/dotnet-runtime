@@ -366,6 +366,39 @@ public sealed unsafe partial class ClrDataStackWalk : IXCLRDataStackWalk
     {
         using Lock.Scope scope = _apiLock.EnterScope();
 
-        return HResults.E_NOTIMPL;
+        int hr = HResults.S_OK;
+        try
+        {
+            const uint supportedFlags = (uint)CLRDataStackSetContextFlag.CLRDATA_STACK_SET_CURRENT_CONTEXT;
+            if ((flags & ~supportedFlags) != 0
+                || context is null
+                || contextSize > (uint)context.Length
+                || contextSize > int.MaxValue)
+            {
+                throw new ArgumentException("Invalid stack-walk context.");
+            }
+
+            IPlatformAgnosticContext contextForPlatform = IPlatformAgnosticContext.GetContextForPlatform(_target);
+            int contextLength = checked((int)contextSize);
+            contextForPlatform.FillFromBuffer(context.AsSpan(0, contextLength));
+            if (contextSize < contextForPlatform.GetContextSizeForFlags(contextForPlatform.RawContextFlags))
+                throw new ArgumentException("Stack-walk context is smaller than its context flags require.");
+
+            Reseed(context.AsSpan(0, contextLength).ToArray(), (flags & supportedFlags) != 0);
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+        if (_legacyImpl is not null)
+        {
+            int hrLocal = _legacyImpl.SetContext2(flags, contextSize, context);
+#if DEBUG
+            Debug.ValidateHResult(hr, hrLocal);
+#endif
+        }
+
+        return hr;
     }
 }

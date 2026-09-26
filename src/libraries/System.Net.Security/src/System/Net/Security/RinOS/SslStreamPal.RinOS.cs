@@ -159,7 +159,15 @@ namespace System.Net.Security
             {
                 RinSslHandle handle = GetHandle(securityContext);
                 int result = Interop.RinTls.Decrypt(handle, encrypted, destination,
-                                                    out _, out bytesWritten);
+                                                    out int consumed, out bytesWritten);
+                if (result == 0 && consumed != encrypted.Length)
+                {
+                    return new SecurityStatusPal(
+                        SecurityStatusPalErrorCode.InternalError,
+                        new RinTlsException(-1,
+                            "RinTLS did not consume the encrypted TLS frame."));
+                }
+
                 return MapNativeError(result, handle);
             }
             catch (Exception ex)

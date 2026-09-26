@@ -589,22 +589,120 @@ public sealed unsafe partial class SOSDacImpl : IXCLRDataProcess, IXCLRDataProce
     int IXCLRDataProcess.StartEnumAssemblies(ulong* handle)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        int hrLocal = HResults.S_OK;
+        ulong legacyHandle = 0;
 
-        return HResults.E_NOTIMPL;
+        try
+        {
+            if (handle is null)
+                throw new ArgumentNullException(nameof(handle));
+
+            *handle = 0;
+            if (_legacyProcess is not null)
+                hrLocal = _legacyProcess.StartEnumAssemblies(&legacyHandle);
+
+            ILoader loader = _target.Contracts.Loader;
+            IEnumerable<Contracts.ModuleHandle> modules = loader.GetModuleHandles(
+                loader.GetAppDomain(),
+                AssemblyIterationFlags.IncludeLoaded | AssemblyIterationFlags.IncludeExecution);
+            IEnumerable<TargetPointer> assemblies = modules.Select(loader.GetAssembly).Distinct();
+            ProcessEnum<TargetPointer> assemblyEnum = new(assemblies, (nuint)legacyHandle);
+            *handle = (ulong)((IEnum<TargetPointer>)assemblyEnum).GetHandle();
+            legacyHandle = 0;
+        }
+        catch (Exception ex)
+        {
+            hr = ex.HResult;
+        }
+        finally
+        {
+            if (_legacyProcess is not null && legacyHandle != 0)
+                _legacyProcess.EndEnumAssemblies(legacyHandle);
+        }
+
+#if DEBUG
+        if (_legacyProcess is not null)
+            Debug.Assert(hr == hrLocal, $"cDAC: {hr:x}, DAC: {hrLocal:x}");
+#endif
+        return hr;
     }
 
     int IXCLRDataProcess.EnumAssembly(ulong* handle, DacComNullableByRef<IXCLRDataAssembly> assembly)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        int hrLocal = HResults.S_OK;
+        try
+        {
+            if (handle is null)
+                throw new ArgumentNullException(nameof(handle));
+            if (*handle == 0)
+                return HResults.S_FALSE;
+            if (assembly.IsNullRef)
+                throw new NullReferenceException();
 
-        return HResults.E_NOTIMPL;
+            GCHandle gcHandle = GCHandle.FromIntPtr((IntPtr)(*handle));
+            if (gcHandle.Target is not ProcessEnum<TargetPointer> assemblies)
+                throw new ArgumentException();
+
+            IXCLRDataAssembly? legacyAssembly = null;
+            if (_legacyProcess is not null)
+            {
+                ulong legacyHandle = (ulong)assemblies.LegacyHandle;
+                DacComNullableByRef<IXCLRDataAssembly> legacyAssemblyOut = new(isNullRef: false);
+                hrLocal = _legacyProcess.EnumAssembly(&legacyHandle, legacyAssemblyOut);
+                legacyAssembly = legacyAssemblyOut.Interface;
+                assemblies.LegacyHandle = (nuint)legacyHandle;
+            }
+
+            if (assemblies.Enumerator.MoveNext())
+            {
+                assembly.Interface = new ClrDataAssembly(_target, assemblies.Enumerator.Current, legacyAssembly, _apiLock);
+            }
+            else
+            {
+                hr = HResults.S_FALSE;
+            }
+        }
+        catch (Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyProcess is not null)
+            Debug.Assert(hr == hrLocal, $"cDAC: {hr:x}, DAC: {hrLocal:x}");
+#endif
+        return hr;
     }
 
     int IXCLRDataProcess.EndEnumAssemblies(ulong handle)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        if (handle == 0)
+            return HResults.S_OK;
 
-        return HResults.E_NOTIMPL;
+        ProcessEnum<TargetPointer> assemblies;
+        try
+        {
+            GCHandle gcHandle = GCHandle.FromIntPtr((IntPtr)handle);
+            if (gcHandle.Target is not ProcessEnum<TargetPointer> assembliesLocal)
+                throw new ArgumentException();
+
+            assemblies = assembliesLocal;
+            ((IEnum<TargetPointer>)assemblies).Dispose();
+            gcHandle.Free();
+        }
+        catch (Exception ex)
+        {
+            return ex.HResult;
+        }
+
+        if (_legacyProcess is not null && assemblies.LegacyHandle != 0)
+            return _legacyProcess.EndEnumAssemblies((ulong)assemblies.LegacyHandle);
+
+        return HResults.S_OK;
     }
 
     int IXCLRDataProcess.StartEnumModules(ulong* handle)

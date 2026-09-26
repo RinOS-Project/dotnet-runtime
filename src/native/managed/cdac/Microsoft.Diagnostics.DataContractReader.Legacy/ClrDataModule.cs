@@ -391,23 +391,137 @@ public sealed unsafe partial class ClrDataModule : ICustomQueryInterface, IXCLRD
         }
     }
 
+    private sealed class AssemblyEnum : IEnum<Contracts.ModuleHandle>
+    {
+        public IEnumerator<Contracts.ModuleHandle> Enumerator { get; }
+        public nuint LegacyHandle { get; set; }
+
+        public AssemblyEnum(IEnumerable<Contracts.ModuleHandle> modules, nuint legacyHandle)
+        {
+            Enumerator = modules.GetEnumerator();
+            LegacyHandle = legacyHandle;
+        }
+    }
+
     int IXCLRDataModule.StartEnumAssemblies(ulong* handle)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        int hrLocal = HResults.S_OK;
+        ulong legacyHandle = 0;
 
-        return HResults.E_NOTIMPL;
+        try
+        {
+            if (handle is null)
+                throw new ArgumentNullException(nameof(handle));
+
+            *handle = 0;
+            if (_legacyModule is not null)
+                hrLocal = _legacyModule.StartEnumAssemblies(&legacyHandle);
+
+            Contracts.ILoader loader = _target.Contracts.Loader;
+            IEnumerable<Contracts.ModuleHandle> modules = loader.GetModuleHandles(
+                loader.GetAppDomain(),
+                AssemblyIterationFlags.IncludeLoaded | AssemblyIterationFlags.IncludeExecution);
+            AssemblyEnum assemblies = new(modules, (nuint)legacyHandle);
+            *handle = (ulong)((IEnum<Contracts.ModuleHandle>)assemblies).GetHandle();
+            legacyHandle = 0;
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+        finally
+        {
+            if (_legacyModule is not null && legacyHandle != 0)
+                _legacyModule.EndEnumAssemblies(legacyHandle);
+        }
+
+#if DEBUG
+        if (_legacyModule is not null)
+            Debug.Assert(hr == hrLocal, $"cDAC: {hr:x}, DAC: {hrLocal:x}");
+#endif
+        return hr;
     }
     int IXCLRDataModule.EnumAssembly(ulong* handle, DacComNullableByRef<IXCLRDataAssembly> assembly)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        int hrLocal = HResults.S_OK;
+        try
+        {
+            if (handle is null)
+                throw new ArgumentNullException(nameof(handle));
+            if (*handle == 0)
+                return HResults.S_FALSE;
+            if (assembly.IsNullRef)
+                throw new NullReferenceException();
 
-        return HResults.E_NOTIMPL;
+            GCHandle gcHandle = GCHandle.FromIntPtr((IntPtr)(*handle));
+            if (gcHandle.Target is not AssemblyEnum assemblies)
+                throw new ArgumentException();
+
+            IXCLRDataAssembly? legacyAssembly = null;
+            if (_legacyModule is not null)
+            {
+                ulong legacyHandle = (ulong)assemblies.LegacyHandle;
+                DacComNullableByRef<IXCLRDataAssembly> legacyAssemblyOut = new(isNullRef: false);
+                hrLocal = _legacyModule.EnumAssembly(&legacyHandle, legacyAssemblyOut);
+                legacyAssembly = legacyAssemblyOut.Interface;
+                assemblies.LegacyHandle = (nuint)legacyHandle;
+            }
+
+            Contracts.ILoader loader = _target.Contracts.Loader;
+            while (assemblies.Enumerator.MoveNext())
+            {
+                Contracts.ModuleHandle module = assemblies.Enumerator.Current;
+                if (loader.GetModule(module) != _address)
+                    continue;
+
+                TargetPointer assemblyAddress = loader.GetAssembly(module);
+                assembly.Interface = new ClrDataAssembly(_target, assemblyAddress, legacyAssembly, _apiLock);
+                return HResults.S_OK;
+            }
+
+            hr = HResults.S_FALSE;
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyModule is not null)
+            Debug.Assert(hr == hrLocal, $"cDAC: {hr:x}, DAC: {hrLocal:x}");
+#endif
+        return hr;
     }
     int IXCLRDataModule.EndEnumAssemblies(ulong handle)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        if (handle == 0)
+            return HResults.S_OK;
 
-        return HResults.E_NOTIMPL;
+        AssemblyEnum assemblies;
+        try
+        {
+            GCHandle gcHandle = GCHandle.FromIntPtr((IntPtr)handle);
+            if (gcHandle.Target is not AssemblyEnum assembliesLocal)
+                throw new ArgumentException();
+
+            assemblies = assembliesLocal;
+            ((IEnum<Contracts.ModuleHandle>)assemblies).Dispose();
+            gcHandle.Free();
+        }
+        catch (System.Exception ex)
+        {
+            return ex.HResult;
+        }
+
+        if (_legacyModule is not null && assemblies.LegacyHandle != 0)
+            return _legacyModule.EndEnumAssemblies((ulong)assemblies.LegacyHandle);
+
+        return HResults.S_OK;
     }
 
     int IXCLRDataModule.StartEnumTypeDefinitions(ulong* handle)

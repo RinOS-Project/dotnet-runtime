@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
 using System.Threading;
 using Microsoft.Diagnostics.DataContractReader.Contracts;
+using Microsoft.Diagnostics.DataContractReader.Contracts.StackWalkHelpers;
 
 namespace Microsoft.Diagnostics.DataContractReader.Legacy;
 
@@ -65,19 +66,51 @@ public sealed unsafe partial class ClrDataTask : IXCLRDataTask
     {
         using Lock.Scope scope = _apiLock.EnterScope();
 
-        return HResults.E_NOTIMPL;
+        if (id is null)
+            return HResults.E_POINTER;
+
+        try
+        {
+            *id = _target.Contracts.Thread.GetThreadData(_address).Id;
+            return HResults.S_OK;
+        }
+        catch (System.Exception ex)
+        {
+            return ex.HResult;
+        }
     }
     int IXCLRDataTask.GetFlags(uint* flags)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
 
-        return HResults.E_NOTIMPL;
+        if (flags is null)
+            return HResults.E_POINTER;
+
+        // CLRDATA_TASK_DEFAULT is zero.  The native DAC currently exposes no
+        // task flags beyond the default value (see coreclr/debug/daccess/task.cpp).
+        *flags = 0;
+        return HResults.S_OK;
     }
     int IXCLRDataTask.IsSameObject(IXCLRDataTask* task)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
 
-        return HResults.E_NOTIMPL;
+        int hr = HResults.S_FALSE;
+        try
+        {
+            if (task is not null
+                && ComWrappers.TryGetObject((nint)task, out object? obj)
+                && obj is ClrDataTask other)
+            {
+                hr = _address == other._address ? HResults.S_OK : HResults.S_FALSE;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+        return hr;
     }
     int IXCLRDataTask.GetManagedObject(DacComNullableByRef<IXCLRDataValue> value)
     {
@@ -123,13 +156,52 @@ public sealed unsafe partial class ClrDataTask : IXCLRDataTask
     {
         using Lock.Scope scope = _apiLock.EnterScope();
 
-        return HResults.E_NOTIMPL;
+        if (id is null)
+            return HResults.E_POINTER;
+
+        *id = 0;
+        try
+        {
+            uint osId = (uint)_target.Contracts.Thread.GetThreadData(_address).OSId.Value;
+            // Match native DAC's switched-out fiber sentinel behavior.
+            if (osId == 0 || osId == 0xbaadf00d)
+                return HResults.S_FALSE;
+
+            *id = osId;
+            return HResults.S_OK;
+        }
+        catch (System.Exception ex)
+        {
+            return ex.HResult;
+        }
     }
     int IXCLRDataTask.GetContext(uint contextFlags, uint contextBufSize, uint* contextSize, byte* contextBuffer)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
 
-        return HResults.E_NOTIMPL;
+        IPlatformAgnosticContext context = IPlatformAgnosticContext.GetContextForPlatform(_target);
+        uint requiredSize = context.GetContextSizeForFlags(contextFlags);
+        if (contextSize is not null)
+            *contextSize = requiredSize;
+
+        if (contextBufSize < requiredSize || contextBuffer is null || contextBufSize > int.MaxValue)
+            return HResults.E_INVALIDARG;
+
+        try
+        {
+            Contracts.ThreadData threadData = _target.Contracts.Thread.GetThreadData(_address);
+            if (threadData.OSId.Value == 0)
+                return HResults.E_INVALIDARG;
+
+            Span<byte> buffer = new(contextBuffer, (int)contextBufSize);
+            return _target.TryGetThreadContext(threadData.OSId.Value, contextFlags, buffer)
+                ? HResults.S_OK
+                : HResults.E_FAIL;
+        }
+        catch (System.Exception ex)
+        {
+            return ex.HResult;
+        }
     }
     int IXCLRDataTask.SetContext(uint contextSize, byte* context)
     {

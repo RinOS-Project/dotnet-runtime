@@ -41,8 +41,35 @@ public sealed unsafe partial class ClrDataTypeDefinition : IXCLRDataTypeDefiniti
     int IXCLRDataTypeDefinition.GetModule(DacComNullableByRef<IXCLRDataModule> mod)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        int hrLocal = HResults.S_OK;
+        IXCLRDataModule? legacyModule = null;
 
-        return LegacyFallbackHelper.CanFallback() && _legacyImpl is not null ? _legacyImpl.GetModule(mod) : HResults.E_NOTIMPL;
+        if (_legacyImpl is not null && !mod.IsNullRef)
+        {
+            DacComNullableByRef<IXCLRDataModule> legacyModuleOut = new(isNullRef: false);
+            hrLocal = _legacyImpl.GetModule(legacyModuleOut);
+            legacyModule = legacyModuleOut.Interface;
+        }
+
+        try
+        {
+            if (mod.IsNullRef)
+                return HResults.S_OK;
+
+            mod.Interface = new ClrDataModule(_target, _module, legacyModule, _apiLock);
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyImpl is not null && !mod.IsNullRef)
+            Debug.ValidateHResult(hr, hrLocal);
+#endif
+
+        return hr;
     }
 
     int IXCLRDataTypeDefinition.StartEnumMethodDefinitions(ulong* handle)
@@ -261,8 +288,22 @@ public sealed unsafe partial class ClrDataTypeDefinition : IXCLRDataTypeDefiniti
     int IXCLRDataTypeDefinition.GetFlags(uint* flags)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        if (flags is null)
+            return HResults.E_POINTER;
 
-        return LegacyFallbackHelper.CanFallback() && _legacyImpl is not null ? _legacyImpl.GetFlags(flags) : HResults.E_NOTIMPL;
+        *flags = 0; // CLRDATA_TYPE_DEFAULT
+
+#if DEBUG
+        if (_legacyImpl is not null)
+        {
+            uint flagsLocal = 0;
+            int hrLocal = _legacyImpl.GetFlags(&flagsLocal);
+            Debug.ValidateHResult(HResults.S_OK, hrLocal);
+            Debug.Assert(flagsLocal == *flags, $"cDAC: {*flags}, DAC: {flagsLocal}");
+        }
+#endif
+
+        return HResults.S_OK;
     }
 
     int IXCLRDataTypeDefinition.IsSameObject(IXCLRDataTypeDefinition? type)
@@ -282,8 +323,23 @@ public sealed unsafe partial class ClrDataTypeDefinition : IXCLRDataTypeDefiniti
     int IXCLRDataTypeDefinition.GetArrayRank(uint* rank)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        if (rank is null)
+            return HResults.E_POINTER;
+        if (_typeHandle is null)
+            return HResults.E_NOTIMPL;
 
-        return LegacyFallbackHelper.CanFallback() && _legacyImpl is not null ? _legacyImpl.GetArrayRank(rank) : HResults.E_NOTIMPL;
+        try
+        {
+            if (!_target.Contracts.RuntimeTypeSystem.IsArray(_typeHandle, out uint arrayRank))
+                return HResults.E_NOINTERFACE;
+
+            *rank = arrayRank;
+            return HResults.S_OK;
+        }
+        catch (System.Exception ex)
+        {
+            return ex.HResult;
+        }
     }
 
     int IXCLRDataTypeDefinition.GetBase(DacComNullableByRef<IXCLRDataTypeDefinition> @base)

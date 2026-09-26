@@ -37,6 +37,16 @@
     "base": {
       "#import": []
     },
+    "rinos": {
+      "#import": [
+        "base"
+      ]
+    },
+    "rinos-x64": {
+      "#import": [
+        "rinos"
+      ]
+    },
     "browser": {
       "#import": [
         "any"

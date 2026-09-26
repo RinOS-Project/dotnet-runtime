@@ -32,7 +32,7 @@ extern "C" void QCALLTYPE NativeRuntimeEventSource_LogThreadPoolIOEnqueue(_In_z_
 extern "C" void QCALLTYPE NativeRuntimeEventSource_LogThreadPoolIODequeue(_In_z_ void* nativeOverlapped, _In_z_ void* overlapped, _In_z_ short ClrInstanceID);
 extern "C" void QCALLTYPE NativeRuntimeEventSource_LogThreadPoolWorkingThreadCount(_In_z_ uint count, _In_z_ short ClrInstanceID);
 extern "C" void QCALLTYPE NativeRuntimeEventSource_LogThreadPoolIOPack(_In_z_ void* nativeOverlapped, _In_z_ void* overlapped, _In_z_ short ClrInstanceID);
-extern "C" void QCALLTYPE NativeRuntimeEventSource_LogExceptionThrown(_In_z_ LPCWSTR exceptionTypeName, _In_z_ LPCWSTR exceptionMessage, _In_z_ void* faultingIP, _In_z_ HRESULT hresult, _In_z_ ushort flags, _In_z_ short clrInstanceID);
+extern "C" void QCALLTYPE NativeRuntimeEventSource_LogExceptionThrown(_In_z_ LPCWSTR exceptionTypeName, _In_z_ LPCWSTR exceptionMessage, _In_z_ void* faultingIP, _In_z_ HRESULT hresult, _In_z_ uint16_t flags, _In_z_ short clrInstanceID);
 extern "C" void QCALLTYPE NativeRuntimeEventSource_LogContentionLockCreated(void* LockID, void* AssociatedObjectID, uint16_t ClrInstanceID);
 extern "C" void QCALLTYPE NativeRuntimeEventSource_LogContentionStart(uint8_t ContentionFlags, uint16_t ClrInstanceID, void* LockID, void* AssociatedObjectID, uint64_t LockOwnerThreadID);
 extern "C" void QCALLTYPE NativeRuntimeEventSource_LogContentionStop(uint8_t ContentionFlags, uint16_t ClrInstanceID, double DurationNs);

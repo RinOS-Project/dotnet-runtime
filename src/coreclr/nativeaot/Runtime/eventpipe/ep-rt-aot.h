@@ -7,6 +7,7 @@
 
 #include <ctype.h>  // For isspace
 #ifdef TARGET_UNIX
+#include <strings.h> // strcasecmp
 #include <sys/time.h>
 #endif
 

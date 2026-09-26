@@ -75,4 +75,15 @@ check_symbol_exists(
 
 check_library_exists(c sched_getaffinity "" HAVE_SCHED_GETAFFINITY)
 
+if(CMAKE_SYSTEM_NAME STREQUAL RinOS)
+  # These APIs are provided by the RinOS libc headers and syscall-backed
+  # wrappers. Host probes cannot describe the target ABI when cross-building.
+  set(HAVE_PTHREAD_ATTR_GET_NP 0)
+  set(HAVE_PTHREAD_GETATTR_NP 1)
+  set(HAVE_UCONTEXT_H 1)
+  set(HAVE_GREGSET_T 1)
+  set(HAVE___GREGSET_T 0)
+  set(HAVE_SIGINFO_T 1)
+endif()
+
 configure_file(${CMAKE_CURRENT_LIST_DIR}/config.h.in ${CMAKE_CURRENT_BINARY_DIR}/config.h)

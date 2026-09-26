@@ -221,7 +221,8 @@ Error SystemNative_CreateNetworkChangeListenerSocket(intptr_t* retSocket)
 {
 #if defined(TARGET_RINOS)
     return CreateRinOSNetworkChangeListenerSocket(retSocket);
-#elif HAVE_LINUX_RTNETLINK_H
+#else
+#if HAVE_LINUX_RTNETLINK_H
     struct sockaddr_nl sa;
     memset(&sa, 0, sizeof(struct sockaddr_nl));
 
@@ -253,6 +254,7 @@ Error SystemNative_CreateNetworkChangeListenerSocket(intptr_t* retSocket)
 
     *retSocket = sock;
     return Error_SUCCESS;
+#endif
 }
 
 #if defined(TARGET_RINOS)

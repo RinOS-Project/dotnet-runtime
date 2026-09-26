@@ -371,8 +371,41 @@ public sealed unsafe partial class ClrDataTypeInstance : IXCLRDataTypeInstance
     int IXCLRDataTypeInstance.GetBase(DacComNullableByRef<IXCLRDataTypeInstance> @base)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        int hrLocal = HResults.S_OK;
+        IXCLRDataTypeInstance? legacyBase = null;
 
-        return LegacyFallbackHelper.CanFallback() && _legacyImpl is not null ? _legacyImpl.GetBase(@base) : HResults.E_NOTIMPL;
+        try
+        {
+            if (LegacyFallbackHelper.CanFallback() && _legacyImpl is not null)
+            {
+                DacComNullableByRef<IXCLRDataTypeInstance> legacyBaseOut = new(isNullRef: @base.IsNullRef);
+                hrLocal = _legacyImpl.GetBase(legacyBaseOut);
+                legacyBase = legacyBaseOut.Interface;
+            }
+
+            if (@base.IsNullRef)
+                return HResults.S_OK;
+
+            IRuntimeTypeSystem rts = _target.Contracts.RuntimeTypeSystem;
+            TargetPointer parentMethodTable = rts.GetParentMethodTable(_typeHandle);
+            if (parentMethodTable == TargetPointer.Null)
+                return HResults.E_NOINTERFACE;
+
+            ITypeHandle parentTypeHandle = rts.GetTypeHandle(parentMethodTable);
+            @base.Interface = new ClrDataTypeInstance(_target, parentTypeHandle, legacyBase, _apiLock);
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyImpl is not null)
+            Debug.ValidateHResult(hr, hrLocal);
+#endif
+
+        return hr;
     }
 
     int IXCLRDataTypeInstance.EnumStaticField2(ulong* handle, DacComNullableByRef<IXCLRDataValue> value, uint bufLen, uint* nameLen, char* nameBuf, DacComNullableByRef<IXCLRDataModule> tokenScope, uint* token)

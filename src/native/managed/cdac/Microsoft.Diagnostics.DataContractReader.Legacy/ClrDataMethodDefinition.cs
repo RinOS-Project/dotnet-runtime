@@ -150,8 +150,67 @@ public sealed unsafe partial class ClrDataMethodDefinition : IXCLRDataMethodDefi
     int IXCLRDataMethodDefinition.GetTypeDefinition(DacComNullableByRef<IXCLRDataTypeDefinition> typeDefinition)
     {
         using Lock.Scope scope = _apiLock.EnterScope();
+        int hr = HResults.S_OK;
+        int hrLocal = HResults.S_OK;
+        IXCLRDataTypeDefinition? legacyTypeDefinition = null;
 
-        return HResults.E_NOTIMPL;
+        if (_legacyImpl is not null)
+        {
+            DacComNullableByRef<IXCLRDataTypeDefinition> legacyTypeDefinitionOut = new(isNullRef: false);
+            hrLocal = _legacyImpl.GetTypeDefinition(legacyTypeDefinitionOut);
+            legacyTypeDefinition = legacyTypeDefinitionOut.Interface;
+        }
+
+        try
+        {
+            IRuntimeTypeSystem rts = _target.Contracts.RuntimeTypeSystem;
+            TargetPointer methodDescAddress = TryResolveMethodDesc();
+            TargetPointer module = _module;
+            uint typeDefToken;
+            ITypeHandle? typeHandle = null;
+
+            if (methodDescAddress != TargetPointer.Null)
+            {
+                MethodDescHandle methodDesc = rts.GetMethodDescHandle(methodDescAddress);
+                typeHandle = rts.GetTypeHandle(rts.GetMethodTable(methodDesc));
+                module = rts.GetModule(typeHandle);
+                typeDefToken = rts.GetTypeDefToken(typeHandle);
+            }
+            else
+            {
+                Contracts.ModuleHandle moduleHandle = _target.Contracts.Loader.GetModuleHandleFromModulePtr(_module);
+                MetadataReader reader = _target.Contracts.EcmaMetadata.GetMetadata(moduleHandle)
+                    ?? throw new InvalidOperationException("Module metadata is unavailable.");
+                MethodDefinition methodDefinition = reader.GetMethodDefinition(
+                    MetadataTokens.MethodDefinitionHandle((int)EcmaMetadataUtils.GetRowId(_token)));
+                TypeDefinitionHandle declaringType = methodDefinition.GetDeclaringType();
+                if (declaringType.IsNil)
+                    throw new InvalidOperationException("Method definition has no declaring type.");
+
+                typeDefToken = (uint)MetadataTokens.GetToken(declaringType);
+            }
+
+            if (!typeDefinition.IsNullRef)
+            {
+                typeDefinition.Interface = new ClrDataTypeDefinition(
+                    _target,
+                    module,
+                    typeDefToken,
+                    typeHandle,
+                    legacyTypeDefinition,
+                    _apiLock);
+            }
+        }
+        catch (System.Exception ex)
+        {
+            hr = ex.HResult;
+        }
+
+#if DEBUG
+        if (_legacyImpl is not null)
+            Debug.ValidateHResult(hr, hrLocal);
+#endif
+        return hr;
     }
 
     int IXCLRDataMethodDefinition.StartEnumInstances(IXCLRDataAppDomain? appDomain, ulong* handle)

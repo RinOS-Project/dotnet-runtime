@@ -2046,6 +2046,7 @@ static int locale_list_required(const char* list, size_t length, int32_t* requir
         ++count;
         if (i < length) ++i;
     }
+    if (count == 0u) return 0;
     *required = total;
     return 1;
 }

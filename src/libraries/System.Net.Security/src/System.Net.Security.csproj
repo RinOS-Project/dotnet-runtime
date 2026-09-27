@@ -20,7 +20,7 @@
     <DefineConstants Condition="'$(TargetPlatformIdentifier)' == 'osx' or '$(TargetPlatformIdentifier)' == 'ios' or '$(TargetPlatformIdentifier)' == 'tvos'">$(DefineConstants);TARGET_APPLE</DefineConstants>
     <UseAndroidCrypto Condition="'$(TargetPlatformIdentifier)' == 'android'">true</UseAndroidCrypto>
     <UseAppleCrypto Condition="'$(TargetPlatformIdentifier)' == 'osx' or '$(TargetPlatformIdentifier)' == 'ios' or '$(TargetPlatformIdentifier)' == 'tvos'">true</UseAppleCrypto>
-    <UseManagedNtlm Condition="'$(TargetPlatformIdentifier)' == 'android' or '$(TargetPlatformIdentifier)' == 'tvos'">true</UseManagedNtlm>
+    <UseManagedNtlm Condition="'$(TargetPlatformIdentifier)' == 'android' or '$(TargetPlatformIdentifier)' == 'tvos' or '$(TargetPlatformIdentifier)' == 'rinos'">true</UseManagedNtlm>
     <DefineConstants Condition="'$(UseAndroidCrypto)' == 'true' or '$(UseAppleCrypto)' == 'true'">$(DefineConstants);SYSNETSECURITY_NO_OPENSSL</DefineConstants>
     <GenAPIExcludeApiList>ReferenceAssemblyExclusions.txt</GenAPIExcludeApiList>
   </PropertyGroup>

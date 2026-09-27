@@ -56,6 +56,7 @@ namespace System
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => GetCachedSwitchValue("System.Net.Security.UseManagedNtlm", ref s_useManagedNtlm,
                 defaultValue: OperatingSystem.IsMacOS() || OperatingSystem.IsIOS() || OperatingSystem.IsMacCatalyst() ||
+                OperatingSystem.IsOSPlatform("RINOS") ||
                 IsOpenBsd ||
                 (OperatingSystem.IsLinux() && RuntimeInformation.RuntimeIdentifier.StartsWith("linux-bionic-", StringComparison.OrdinalIgnoreCase)));
         }

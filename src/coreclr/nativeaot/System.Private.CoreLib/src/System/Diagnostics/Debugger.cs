@@ -13,13 +13,11 @@ namespace System.Diagnostics
         [DebuggerHidden] // this helps VS appear to stop on the source line calling Debugger.Break() instead of inside it
         public static void Break()
         {
-#if TARGET_WINDOWS
-            // IsAttached is always true when IsDebuggerPresent is true, so no need to check for it
+            // Break only when a native debugger is attached. The runtime PAL
+            // provides the same probe on Windows and Unix; without a debugger
+            // Debugger.Break must remain a no-op instead of terminating the app.
             if (Debugger.IsNativeDebuggerAttached())
                 Debug.DebugBreak();
-#else
-            // UNIXTODO: Implement Debugger.Break
-#endif
         }
 
         public static bool IsAttached

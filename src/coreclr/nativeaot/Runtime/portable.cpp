@@ -339,75 +339,80 @@ FCIMPLEND
 
 FCIMPL1(HRESULT, RhAllocateThunksMapping, void ** ppThunksSection)
 {
-    return E_FAIL;
+    // PortableRuntime has no executable thunk template or writable/executable
+    // mapping owner. Keep the unsupported boundary in the managed ThunkPool
+    // caller, which translates any non-S_OK result to PlatformNotSupportedException.
+    UNREFERENCED_PARAMETER(ppThunksSection);
+    return E_NOTIMPL;
 }
 FCIMPLEND
 
 FCIMPL0(void *, RhpGetThunksBase)
 {
+    // PortableRuntime does not expose executable thunk mappings.
     return NULL;
 }
 FCIMPLEND
 
 FCIMPL0(int, RhpGetNumThunkBlocksPerMapping)
 {
-    ASSERT_UNCONDITIONALLY("NYI");
+    // Keep Constants initialization safe so RhAllocateThunksMapping can report
+    // the managed PlatformNotSupportedException boundary.
     return 0;
 }
 FCIMPLEND
 
 FCIMPL0(int, RhpGetNumThunksPerBlock)
 {
-    ASSERT_UNCONDITIONALLY("NYI");
     return 0;
 }
 FCIMPLEND
 
 FCIMPL0(int, RhpGetThunkSize)
 {
-    ASSERT_UNCONDITIONALLY("NYI");
     return 0;
 }
 FCIMPLEND
 
 FCIMPL1(void*, RhpGetThunkDataBlockAddress, void* pThunkStubAddress)
 {
-    ASSERT_UNCONDITIONALLY("NYI");
+    UNREFERENCED_PARAMETER(pThunkStubAddress);
     return NULL;
 }
 FCIMPLEND
 
 FCIMPL1(void*, RhpGetThunkStubsBlockAddress, void* pThunkDataAddress)
 {
-    ASSERT_UNCONDITIONALLY("NYI");
+    UNREFERENCED_PARAMETER(pThunkDataAddress);
     return NULL;
 }
 FCIMPLEND
 
 FCIMPL0(int, RhpGetThunkBlockSize)
 {
-    ASSERT_UNCONDITIONALLY("NYI");
     return 0;
 }
 FCIMPLEND
 
 FCIMPL0(void *, RhGetCommonStubAddress)
 {
-    ASSERT_UNCONDITIONALLY("NYI");
+    // There is no portable executable common stub.
     return NULL;
 }
 FCIMPLEND
 
 FCIMPL0(void *, RhGetCurrentThunkContext)
 {
-    ASSERT_UNCONDITIONALLY("NYI");
+    // PortableRuntime has no active native interop thunk context.
     return NULL;
 }
 FCIMPLEND
 
 FCIMPL0(void, RhpGcPoll)
 {
-    // TODO: implement
+    // PortableRuntime has no native probe frame or thread-hijack helper. The
+    // source-level GC polling owner must be added with a target-specific frame
+    // contract before this can do more than remain a no-op.
 }
 FCIMPLEND
 

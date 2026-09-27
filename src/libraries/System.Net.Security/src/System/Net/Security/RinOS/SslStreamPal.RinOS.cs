@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Security;
 using System.Security.Authentication;
@@ -523,11 +524,6 @@ namespace System.Net.Security
                 throw new PlatformNotSupportedException(
                     "RinTLS does not support disabling hostname verification.");
             }
-            if (sslAuthenticationOptions.CipherSuitesPolicy is not null)
-            {
-                throw new PlatformNotSupportedException(
-                    "RinTLS does not expose a managed cipher-suite policy yet.");
-            }
             if (sslAuthenticationOptions.CertificateRevocationCheckMode != X509RevocationMode.NoCheck)
             {
                 throw new PlatformNotSupportedException(
@@ -559,6 +555,18 @@ namespace System.Net.Security
             RinSslHandle handle = new RinSslHandle(raw);
             try
             {
+                if (sslAuthenticationOptions.CipherSuitesPolicy is { } cipherPolicy)
+                {
+                    ushort[] cipherSuites = GetRinTlsCipherSuites(cipherPolicy);
+                    int cipherResult = Interop.RinTls.SetCipherSuites(
+                        handle, cipherSuites);
+                    if (cipherResult != 0)
+                    {
+                        throw new PlatformNotSupportedException(
+                            "The RinTLS product does not support the requested cipher-suite policy.");
+                    }
+                }
+
                 bool useCustomTrust = chainPolicy?.TrustMode ==
                     X509ChainTrustMode.CustomRootTrust;
                 byte[] trust = useCustomTrust
@@ -588,6 +596,40 @@ namespace System.Net.Security
                 handle.Dispose();
                 throw;
             }
+        }
+
+        private static ushort[] GetRinTlsCipherSuites(
+            CipherSuitesPolicy cipherPolicy)
+        {
+            List<ushort> cipherSuites = new();
+            foreach (TlsCipherSuite cipherSuite in cipherPolicy.AllowedCipherSuites)
+            {
+                ushort value = cipherSuite switch
+                {
+                    TlsCipherSuite.TLS_AES_128_GCM_SHA256 => 0x1301,
+                    TlsCipherSuite.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 => 0xC02B,
+                    TlsCipherSuite.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 => 0xC02F,
+                    _ => throw new PlatformNotSupportedException(
+                        $"RinTLS does not implement cipher suite {cipherSuite}."),
+                };
+
+                if (cipherSuites.Contains(value))
+                {
+                    throw new ArgumentException(
+                        "CipherSuitesPolicy contains a duplicate cipher suite.",
+                        nameof(cipherPolicy));
+                }
+
+                cipherSuites.Add(value);
+            }
+
+            if (cipherSuites.Count == 0)
+            {
+                throw new PlatformNotSupportedException(
+                    "RinTLS requires at least one supported cipher suite.");
+            }
+
+            return cipherSuites.ToArray();
         }
 
         private static ulong GetTrustedUnixTime(X509ChainPolicy? chainPolicy)

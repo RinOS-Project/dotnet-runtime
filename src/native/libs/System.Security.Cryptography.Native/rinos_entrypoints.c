@@ -127,6 +127,9 @@ void* CryptoNative_RinTlsCreate(int32_t is_server, const char* hostname,
                                 uint32_t options, uint64_t trusted_time,
                                 int32_t* error);
 void CryptoNative_RinTlsDestroy(void* handle);
+int32_t CryptoNative_RinTlsSetCipherSuites(void* handle,
+                                           const uint16_t* cipher_suites,
+                                           int32_t cipher_suite_count);
 int32_t CryptoNative_RinTlsLoadTrustStore(void* handle,
                                           const uint8_t* bundle,
                                           int32_t bundle_length);
@@ -212,6 +215,7 @@ static const Entry s_cryptoNative[] =
     DllImportEntry(CryptoNative_RinOSEcdhDestroy)
     DllImportEntry(CryptoNative_RinTlsCreate)
     DllImportEntry(CryptoNative_RinTlsDestroy)
+    DllImportEntry(CryptoNative_RinTlsSetCipherSuites)
     DllImportEntry(CryptoNative_RinTlsLoadTrustStore)
     DllImportEntry(CryptoNative_RinTlsHandshake)
     DllImportEntry(CryptoNative_RinTlsSetClientCertificate)

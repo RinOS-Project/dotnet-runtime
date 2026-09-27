@@ -22,6 +22,11 @@ namespace System.Net.Security
             private static partial void DestroyNative(IntPtr handle);
 
             [LibraryImport(Libraries.CryptoNative,
+                EntryPoint = "CryptoNative_RinTlsSetCipherSuites")]
+            private static partial unsafe int SetCipherSuitesNative(
+                IntPtr handle, ushort* cipherSuites, int cipherSuiteCount);
+
+            [LibraryImport(Libraries.CryptoNative,
                 EntryPoint = "CryptoNative_RinTlsLoadTrustStore")]
             private static partial unsafe int LoadTrustStoreNative(
                 IntPtr handle, byte* bundle, int bundleLength);
@@ -110,6 +115,17 @@ namespace System.Net.Security
 
             internal static void Destroy(RinSslHandle handle)
                 => DestroyNative(handle.DangerousGetHandle());
+
+            internal static unsafe int SetCipherSuites(
+                RinSslHandle handle, ReadOnlySpan<ushort> cipherSuites)
+            {
+                fixed (ushort* cipherSuitesPtr = cipherSuites)
+                {
+                    return SetCipherSuitesNative(handle.DangerousGetHandle(),
+                                                 cipherSuitesPtr,
+                                                 cipherSuites.Length);
+                }
+            }
 
             internal static unsafe int LoadTrustStore(RinSslHandle handle,
                                                        ReadOnlySpan<byte> bundle)

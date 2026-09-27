@@ -172,6 +172,18 @@ void CryptoNative_RinTlsDestroy(void* handle)
     rintls_mem_free(adapter);
 }
 
+int32_t CryptoNative_RinTlsSetCipherSuites(void* handle,
+                                           const uint16_t* cipher_suites,
+                                           int32_t cipher_suite_count)
+{
+    rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;
+    if (!adapter || cipher_suite_count <= 0 ||
+        (cipher_suite_count != 0 && !cipher_suites))
+        return RINTLS_ERR_MEMORY;
+    return rintls_set_cipher_suites(adapter->context, cipher_suites,
+                                    (rin_size_t)cipher_suite_count);
+}
+
 int32_t CryptoNative_RinTlsLoadTrustStore(void* handle,
                                           const uint8_t* bundle,
                                           int32_t bundle_length)

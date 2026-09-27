@@ -969,8 +969,10 @@ void InitJITWriteBarrierHelpers()
 
 int StompWriteBarrierEphemeral(bool isRuntimeSuspended)
 {
-    // WASM-TODO: implement me
-    return 0;
+    // WASM uses static write barriers, so there is no code or ephemeral-range
+    // patching to perform when the GC publishes a new ephemeral region.
+    (void)isRuntimeSuspended;
+    return SWB_PASS;
 }
 
 int StompWriteBarrierResize(bool isRuntimeSuspended, bool bReqUpperBoundsCheck)

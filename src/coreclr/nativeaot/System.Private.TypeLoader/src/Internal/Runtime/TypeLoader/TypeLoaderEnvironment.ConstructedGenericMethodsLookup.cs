@@ -95,7 +95,9 @@ namespace Internal.Runtime.TypeLoader
 
             protected override GenericMethodEntry CreateValueFromKey(GenericMethodLookupData key)
             {
-                // Feature not used by the TypeBuilder
+                // Feature not used by the TypeBuilder. Keep this explicit
+                // boundary until dynamic TypeBuilder generic method creation
+                // is supported; a lookup miss must not synthesize a partial entry.
                 throw NotImplemented.ByDesign;
             }
         }
@@ -125,7 +127,9 @@ namespace Internal.Runtime.TypeLoader
 
             protected override GenericMethodEntry CreateValueFromKey(IntPtr key)
             {
-                // Feature not used by the TypeBuilder
+                // Feature not used by the TypeBuilder. Keep this explicit
+                // boundary until dynamic TypeBuilder generic method creation
+                // is supported; a lookup miss must not synthesize a partial entry.
                 throw NotImplemented.ByDesign;
             }
         }

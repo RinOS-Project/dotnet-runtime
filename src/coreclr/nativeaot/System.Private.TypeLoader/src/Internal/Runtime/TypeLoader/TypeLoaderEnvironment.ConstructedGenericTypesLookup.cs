@@ -85,7 +85,9 @@ namespace Internal.Runtime.TypeLoader
 
             protected override GenericTypeEntry CreateValueFromKey(GenericTypeLookupData key)
             {
-                // Feature not used by the TypeBuilder
+                // Feature not used by the TypeBuilder. Keep this explicit
+                // boundary until dynamic TypeBuilder generic type creation is
+                // supported; a lookup miss must not synthesize a partial entry.
                 throw NotImplemented.ByDesign;
             }
         }

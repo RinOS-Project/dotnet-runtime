@@ -98,6 +98,57 @@ int32_t SystemNative_GetRinOSNetworkUdpGlobalStatistics(
 #endif
 }
 
+int32_t SystemNative_GetRinOSNetworkTcpGlobalStatistics(
+    uint32_t addressFamily, RinOSNetworkTcpGlobalStatistics* retStats)
+{
+    if (retStats == NULL)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    memset(retStats, 0, sizeof(*retStats));
+#if defined(TARGET_RINOS)
+    RinNetTcpGlobalStatisticsV1 statistics = {0};
+    if (rin_net_get_tcp_global_statistics(addressFamily, &statistics) != 0 ||
+        statistics.version != RIN_NET_TCP_GLOBAL_STATISTICS_VERSION ||
+        statistics.struct_size != sizeof(statistics) ||
+        statistics.device_generation == 0u ||
+        statistics.address_family != addressFamily ||
+        (statistics.supported_flags &
+         ~RIN_NET_TCP_GLOBAL_STATISTICS_KNOWN_FLAGS) != 0u)
+    {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    retStats->Version = statistics.version;
+    retStats->StructSize = statistics.struct_size;
+    retStats->DeviceGeneration = statistics.device_generation;
+    retStats->AddressFamily = statistics.address_family;
+    retStats->SupportedFlags = statistics.supported_flags;
+    retStats->ConnectionsAccepted = statistics.connections_accepted;
+    retStats->ConnectionsInitiated = statistics.connections_initiated;
+    retStats->CumulativeConnections = statistics.cumulative_connections;
+    retStats->CurrentConnections = statistics.current_connections;
+    retStats->ErrorsReceived = statistics.errors_received;
+    retStats->FailedConnectionAttempts = statistics.failed_connection_attempts;
+    retStats->ResetConnections = statistics.reset_connections;
+    retStats->SegmentsReceived = statistics.segments_received;
+    retStats->SegmentsResent = statistics.segments_resent;
+    retStats->SegmentsSent = statistics.segments_sent;
+    retStats->ResetsSent = statistics.resets_sent;
+    retStats->MaximumConnections = statistics.maximum_connections;
+    retStats->MaximumTransmissionTimeout = statistics.maximum_transmission_timeout;
+    retStats->MinimumTransmissionTimeout = statistics.minimum_transmission_timeout;
+    return 0;
+#else
+    (void)addressFamily;
+    errno = ENOTSUP;
+    return -1;
+#endif
+}
+
 // These functions are only used for platforms which support
 // using sysctl to gather protocol statistics information.
 // Currently, this is all keyed off of whether the include tcp_var.h

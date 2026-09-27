@@ -249,4 +249,97 @@ namespace System.Net.NetworkInformation
 
         public override int UdpListeners => ReadListeners();
     }
+
+    internal sealed class RinOSTcpStatistics : TcpStatistics
+    {
+        private const uint AddressFamilyIPv4 = 4u;
+        private const uint AddressFamilyIPv6 = 6u;
+        private const uint ConnectionsAcceptedFlag = 0x00000001u;
+        private const uint ConnectionsInitiatedFlag = 0x00000002u;
+        private const uint CumulativeConnectionsFlag = 0x00000004u;
+        private const uint CurrentConnectionsFlag = 0x00000008u;
+        private const uint ErrorsReceivedFlag = 0x00000010u;
+        private const uint FailedConnectionAttemptsFlag = 0x00000020u;
+        private const uint ResetConnectionsFlag = 0x00000040u;
+        private const uint SegmentsReceivedFlag = 0x00000080u;
+        private const uint SegmentsResentFlag = 0x00000100u;
+        private const uint SegmentsSentFlag = 0x00000200u;
+        private const uint ResetsSentFlag = 0x00000400u;
+        private const uint KnownFlags = 0x00003FFFu;
+
+        private readonly Interop.Sys.RinOSNetworkTcpGlobalStatistics _snapshot;
+
+        internal unsafe RinOSTcpStatistics(AddressFamily family)
+        {
+            uint addressFamily = family == AddressFamily.InterNetwork
+                ? AddressFamilyIPv4
+                : family == AddressFamily.InterNetworkV6
+                    ? AddressFamilyIPv6
+                    : 0u;
+            Interop.Sys.RinOSNetworkTcpGlobalStatistics snapshot = default;
+            if (addressFamily == 0u ||
+                Interop.Sys.GetRinOSNetworkTcpGlobalStatistics(
+                    addressFamily, &snapshot) != 0 ||
+                snapshot.Version != 1u ||
+                snapshot.StructSize != 136u ||
+                snapshot.DeviceGeneration == 0u ||
+                snapshot.AddressFamily != addressFamily ||
+                (snapshot.SupportedFlags & ~KnownFlags) != 0u)
+            {
+                throw new NetworkInformationException(
+                    "RinOS did not provide a current TCP-statistics snapshot.");
+            }
+            _snapshot = snapshot;
+        }
+
+        private long Read(ulong value, uint flag) =>
+            (_snapshot.SupportedFlags & flag) != 0u
+                ? Clamp(value)
+                : RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+
+        private static long Clamp(ulong value) =>
+            value > long.MaxValue ? long.MaxValue : (long)value;
+
+        public override long ConnectionsAccepted =>
+            Read(_snapshot.ConnectionsAccepted, ConnectionsAcceptedFlag);
+
+        public override long ConnectionsInitiated =>
+            Read(_snapshot.ConnectionsInitiated, ConnectionsInitiatedFlag);
+
+        public override long CumulativeConnections =>
+            Read(_snapshot.CumulativeConnections, CumulativeConnectionsFlag);
+
+        public override long CurrentConnections =>
+            Read(_snapshot.CurrentConnections, CurrentConnectionsFlag);
+
+        public override long ErrorsReceived =>
+            Read(_snapshot.ErrorsReceived, ErrorsReceivedFlag);
+
+        public override long FailedConnectionAttempts =>
+            Read(_snapshot.FailedConnectionAttempts, FailedConnectionAttemptsFlag);
+
+        public override long MaximumConnections =>
+            RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+
+        public override long MaximumTransmissionTimeout =>
+            RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+
+        public override long MinimumTransmissionTimeout =>
+            RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+
+        public override long ResetConnections =>
+            Read(_snapshot.ResetConnections, ResetConnectionsFlag);
+
+        public override long SegmentsReceived =>
+            Read(_snapshot.SegmentsReceived, SegmentsReceivedFlag);
+
+        public override long SegmentsResent =>
+            Read(_snapshot.SegmentsResent, SegmentsResentFlag);
+
+        public override long SegmentsSent =>
+            Read(_snapshot.SegmentsSent, SegmentsSentFlag);
+
+        public override long ResetsSent =>
+            Read(_snapshot.ResetsSent, ResetsSentFlag);
+    }
 }

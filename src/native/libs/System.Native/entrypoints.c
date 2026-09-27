@@ -210,6 +210,7 @@ static const Entry s_sysNative[] =
     DllImportEntry(SystemNative_GetTcpGlobalStatistics)
     DllImportEntry(SystemNative_GetRinOSNetworkIpGlobalStatistics)
     DllImportEntry(SystemNative_GetRinOSNetworkUdpGlobalStatistics)
+    DllImportEntry(SystemNative_GetRinOSNetworkTcpGlobalStatistics)
     DllImportEntry(SystemNative_GetIPv4GlobalStatistics)
     DllImportEntry(SystemNative_GetUdpGlobalStatistics)
     DllImportEntry(SystemNative_GetIcmpv4GlobalStatistics)

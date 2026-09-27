@@ -144,6 +144,29 @@ typedef struct
 
 typedef struct
 {
+    uint32_t Version;
+    uint32_t StructSize;
+    uint64_t DeviceGeneration;
+    uint32_t AddressFamily;
+    uint32_t SupportedFlags;
+    uint64_t ConnectionsAccepted;
+    uint64_t ConnectionsInitiated;
+    uint64_t CumulativeConnections;
+    uint64_t CurrentConnections;
+    uint64_t ErrorsReceived;
+    uint64_t FailedConnectionAttempts;
+    uint64_t ResetConnections;
+    uint64_t SegmentsReceived;
+    uint64_t SegmentsResent;
+    uint64_t SegmentsSent;
+    uint64_t ResetsSent;
+    uint64_t MaximumConnections;
+    uint64_t MaximumTransmissionTimeout;
+    uint64_t MinimumTransmissionTimeout;
+} RinOSNetworkTcpGlobalStatistics;
+
+typedef struct
+{
     uint8_t AddressBytes[16];
     uint32_t NumAddressBytes;
     uint32_t Port;
@@ -182,6 +205,9 @@ PALEXPORT int32_t SystemNative_GetRinOSNetworkIpGlobalStatistics(
 
 PALEXPORT int32_t SystemNative_GetRinOSNetworkUdpGlobalStatistics(
     uint32_t addressFamily, RinOSNetworkUdpGlobalStatistics* retStats);
+
+PALEXPORT int32_t SystemNative_GetRinOSNetworkTcpGlobalStatistics(
+    uint32_t addressFamily, RinOSNetworkTcpGlobalStatistics* retStats);
 
 PALEXPORT int32_t SystemNative_GetIPv4GlobalStatistics(IPv4GlobalStatistics* retStats);
 

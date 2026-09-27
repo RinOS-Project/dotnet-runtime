@@ -29,10 +29,10 @@ namespace System.Net.NetworkInformation
             throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
 
         public override TcpStatistics GetTcpIPv4Statistics() =>
-            throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
+            new RinOSTcpStatistics(System.Net.Sockets.AddressFamily.InterNetwork);
 
         public override TcpStatistics GetTcpIPv6Statistics() =>
-            throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
+            new RinOSTcpStatistics(System.Net.Sockets.AddressFamily.InterNetworkV6);
 
         public override UdpStatistics GetUdpIPv4Statistics() =>
             new RinOSUdpStatistics(System.Net.Sockets.AddressFamily.InterNetwork);

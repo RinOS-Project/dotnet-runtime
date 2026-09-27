@@ -790,6 +790,10 @@ namespace System.Net.Security
                 0 => new SecurityStatusPal(SecurityStatusPalErrorCode.OK),
                 -10 or -11 => new SecurityStatusPal(SecurityStatusPalErrorCode.ContinueNeeded),
                 -13 => new SecurityStatusPal(SecurityStatusPalErrorCode.CredentialsNeeded),
+                -15 => new SecurityStatusPal(
+                    SecurityStatusPalErrorCode.Unsupported,
+                    new PlatformNotSupportedException(
+                        "RinTLS does not implement this operation.")),
                 -6 => new SecurityStatusPal(SecurityStatusPalErrorCode.ContextExpired),
                 -4 or -12 => new SecurityStatusPal(
                     SecurityStatusPalErrorCode.UntrustedRoot,

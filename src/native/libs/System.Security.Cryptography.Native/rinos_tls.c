@@ -131,7 +131,11 @@ void* CryptoNative_RinTlsCreate(int32_t is_server, const char* hostname,
     int result;
 
     if (error) *error = RINTLS_OK;
-    if (is_server != 0 || !hostname || hostname[0] == '\0') {
+    if (is_server != 0) {
+        if (error) *error = RINTLS_ERR_UNSUPPORTED;
+        return RIN_NULL;
+    }
+    if (!hostname || hostname[0] == '\0') {
         if (error) *error = RINTLS_ERR_HOSTNAME;
         return RIN_NULL;
     }

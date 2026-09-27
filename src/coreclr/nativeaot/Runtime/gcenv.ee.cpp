@@ -710,7 +710,67 @@ void GCToEEInterface::UpdateGCEventStatus(int currentPublicLevel, int currentPub
 
 void GCToEEInterface::LogStressMsg(unsigned level, unsigned facility, const StressLogMsg& msg)
 {
-    // TODO: Implementation
+    UNREFERENCED_PARAMETER(level);
+
+    // NativeAOT's StressLog::LogMsg is variadic, so preserve the GC-provided
+    // argument count instead of passing uninitialized trailing arguments.
+    switch (msg.m_cArgs)
+    {
+    case 0:
+        StressLog::LogMsg(facility, 0, msg.m_format);
+        break;
+    case 1:
+        StressLog::LogMsg(facility, 1, msg.m_format, msg.m_args[0]);
+        break;
+    case 2:
+        StressLog::LogMsg(facility, 2, msg.m_format, msg.m_args[0], msg.m_args[1]);
+        break;
+    case 3:
+        StressLog::LogMsg(facility, 3, msg.m_format, msg.m_args[0], msg.m_args[1], msg.m_args[2]);
+        break;
+    case 4:
+        StressLog::LogMsg(facility, 4, msg.m_format, msg.m_args[0], msg.m_args[1], msg.m_args[2], msg.m_args[3]);
+        break;
+    case 5:
+        StressLog::LogMsg(facility, 5, msg.m_format, msg.m_args[0], msg.m_args[1], msg.m_args[2], msg.m_args[3], msg.m_args[4]);
+        break;
+    case 6:
+        StressLog::LogMsg(facility, 6, msg.m_format, msg.m_args[0], msg.m_args[1], msg.m_args[2], msg.m_args[3], msg.m_args[4], msg.m_args[5]);
+        break;
+    case 7:
+        StressLog::LogMsg(facility, 7, msg.m_format, msg.m_args[0], msg.m_args[1], msg.m_args[2], msg.m_args[3], msg.m_args[4], msg.m_args[5], msg.m_args[6]);
+        break;
+    case 8:
+        StressLog::LogMsg(facility, 8, msg.m_format, msg.m_args[0], msg.m_args[1], msg.m_args[2], msg.m_args[3], msg.m_args[4], msg.m_args[5], msg.m_args[6], msg.m_args[7]);
+        break;
+    case 9:
+        StressLog::LogMsg(facility, 9, msg.m_format, msg.m_args[0], msg.m_args[1], msg.m_args[2], msg.m_args[3], msg.m_args[4], msg.m_args[5], msg.m_args[6], msg.m_args[7], msg.m_args[8]);
+        break;
+    case 10:
+        StressLog::LogMsg(facility, 10, msg.m_format, msg.m_args[0], msg.m_args[1], msg.m_args[2], msg.m_args[3], msg.m_args[4], msg.m_args[5], msg.m_args[6], msg.m_args[7], msg.m_args[8], msg.m_args[9]);
+        break;
+    case 11:
+        StressLog::LogMsg(facility, 11, msg.m_format, msg.m_args[0], msg.m_args[1], msg.m_args[2], msg.m_args[3], msg.m_args[4], msg.m_args[5], msg.m_args[6], msg.m_args[7], msg.m_args[8], msg.m_args[9], msg.m_args[10]);
+        break;
+    case 12:
+        StressLog::LogMsg(facility, 12, msg.m_format, msg.m_args[0], msg.m_args[1], msg.m_args[2], msg.m_args[3], msg.m_args[4], msg.m_args[5], msg.m_args[6], msg.m_args[7], msg.m_args[8], msg.m_args[9], msg.m_args[10], msg.m_args[11]);
+        break;
+    case 13:
+        StressLog::LogMsg(facility, 13, msg.m_format, msg.m_args[0], msg.m_args[1], msg.m_args[2], msg.m_args[3], msg.m_args[4], msg.m_args[5], msg.m_args[6], msg.m_args[7], msg.m_args[8], msg.m_args[9], msg.m_args[10], msg.m_args[11], msg.m_args[12]);
+        break;
+    case 14:
+        StressLog::LogMsg(facility, 14, msg.m_format, msg.m_args[0], msg.m_args[1], msg.m_args[2], msg.m_args[3], msg.m_args[4], msg.m_args[5], msg.m_args[6], msg.m_args[7], msg.m_args[8], msg.m_args[9], msg.m_args[10], msg.m_args[11], msg.m_args[12], msg.m_args[13]);
+        break;
+    case 15:
+        StressLog::LogMsg(facility, 15, msg.m_format, msg.m_args[0], msg.m_args[1], msg.m_args[2], msg.m_args[3], msg.m_args[4], msg.m_args[5], msg.m_args[6], msg.m_args[7], msg.m_args[8], msg.m_args[9], msg.m_args[10], msg.m_args[11], msg.m_args[12], msg.m_args[13], msg.m_args[14]);
+        break;
+    case 16:
+        StressLog::LogMsg(facility, 16, msg.m_format, msg.m_args[0], msg.m_args[1], msg.m_args[2], msg.m_args[3], msg.m_args[4], msg.m_args[5], msg.m_args[6], msg.m_args[7], msg.m_args[8], msg.m_args[9], msg.m_args[10], msg.m_args[11], msg.m_args[12], msg.m_args[13], msg.m_args[14], msg.m_args[15]);
+        break;
+    default:
+        assert(false);
+        break;
+    }
 }
 
 uint32_t GCToEEInterface::GetCurrentProcessCpuCount()

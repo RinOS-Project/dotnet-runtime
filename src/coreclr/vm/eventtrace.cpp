@@ -3164,19 +3164,23 @@ VOID ETW::InfoLog::RuntimeInformation(INT32 type)
     } EX_CATCH { } EX_END_CATCH
 }
 
-/* Fires ETW events every time a pdb is dynamically loaded.
+/* Fires EventPipe/ETW-compatible events every time a pdb is dynamically loaded.
 *
-* The ETW events correspond to sending parts of the pdb in roughly
+* The events correspond to sending parts of the pdb in roughly
 * 64K sized chunks in order. Additional information sent is as follows:
 * ModuleID, TotalChunks, Size of Current Chunk, Chunk Number, CLRInstanceID
 *
 * Note: The current implementation does not support reflection.emit.
 * The method will silently return without firing an event.
+*
+* ClrEtwAll.man defines the CodeSymbols payload for both Windows ETW and the
+* generated EventPipe path. HOST_UNIX must not disable this method: on RinOS,
+* FireEtwCodeSymbols is the product EventPipe sink and preserves the same
+* bounded chunk contract for diagnostic consumers.
 */
 
 VOID ETW::CodeSymbolLog::EmitCodeSymbols(Module* pModule)
 {
-#if !defined(HOST_UNIX)
     CONTRACTL {
         NOTHROW;
         GC_NOTRIGGER;
@@ -3233,11 +3237,6 @@ VOID ETW::CodeSymbolLog::EmitCodeSymbols(Module* pModule)
             }
         }
     } EX_CATCH{} EX_END_CATCH
-#else
-    // RinOS/Unix has no product EventPipe payload contract for ETW code symbols.
-    // Keep this path explicitly inert until the diagnostic transport can carry
-    // symbol chunks; do not turn the missing sink into a false-success event.
-#endif // !defined(HOST_UNIX)
 }
 
 /* Returns the length of an in-memory symbol stream

@@ -161,7 +161,12 @@ namespace Internal.Runtime.TypeLoader
             // a single definition may or may not have a static constructor after AOT compilation.
             // Asking about this for a definition is an invalid question.
             // If this is ever needed, we need to restructure things in the common type system.
-            throw new NotImplementedException();
+            // Keep this as an explicit boundary rather than exposing an
+            // implementation-shaped NotImplementedException. A runtime
+            // generic instantiation can have a different cctor state from
+            // its definition after AOT compilation.
+            throw new NotSupportedException(
+                "Static-constructor state is not defined for an AOT type definition.");
         }
 
         public override bool SupportsUniversalCanon => false;

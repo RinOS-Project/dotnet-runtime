@@ -822,7 +822,7 @@ namespace Internal.JitInterface
                     return _compilation.NodeFactory.ExternIndirectFunctionSymbol(new Utf8String("__guard_dispatch_icall_fptr"u8));
 
                 default:
-                    throw new NotImplementedException(ftnNum.ToString());
+                    throw new NotSupportedException("RyuJIT helper is not supported: " + ftnNum.ToString());
             }
 
             string mangledName;

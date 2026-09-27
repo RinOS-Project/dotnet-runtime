@@ -360,17 +360,23 @@ namespace System.Net.NetworkInformation
         private const uint ParameterProblemsSentFlag = 0x00000800u;
         private const uint TimeExceededReceivedFlag = 0x00001000u;
         private const uint TimeExceededSentFlag = 0x00002000u;
-        private const uint KnownFlags = 0x00003FFFu;
+        private const uint AddressMaskFlag = 0x00010000u;
+        private const uint AddressMaskRequestFlag = 0x00020000u;
+        private const uint RedirectFlag = 0x00040000u;
+        private const uint SourceQuenchFlag = 0x00080000u;
+        private const uint TimestampReplyFlag = 0x00100000u;
+        private const uint TimestampRequestFlag = 0x00200000u;
+        private const uint KnownFlags = 0x003F3FFFu;
 
-        private readonly Interop.Sys.RinOSNetworkIcmpGlobalStatistics _snapshot;
+        private readonly Interop.Sys.RinOSNetworkIcmpGlobalStatisticsV2 _snapshot;
 
         internal unsafe RinOSIcmpV4Statistics()
         {
-            Interop.Sys.RinOSNetworkIcmpGlobalStatistics snapshot = default;
-            if (Interop.Sys.GetRinOSNetworkIcmpGlobalStatistics(
+            Interop.Sys.RinOSNetworkIcmpGlobalStatisticsV2 snapshot = default;
+            if (Interop.Sys.GetRinOSNetworkIcmpGlobalStatisticsV2(
                     AddressFamily, &snapshot) != 0 ||
-                snapshot.Version != 1u ||
-                snapshot.StructSize != 152u ||
+                snapshot.Version != 2u ||
+                snapshot.StructSize != 376u ||
                 snapshot.DeviceGeneration == 0u ||
                 snapshot.AddressFamily != AddressFamily ||
                 (snapshot.SupportedFlags & ~KnownFlags) != 0u)
@@ -392,10 +398,14 @@ namespace System.Net.NetworkInformation
         private static long Unsupported() =>
             RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
 
-        public override long AddressMaskRepliesReceived => Unsupported();
-        public override long AddressMaskRepliesSent => Unsupported();
-        public override long AddressMaskRequestsReceived => Unsupported();
-        public override long AddressMaskRequestsSent => Unsupported();
+        public override long AddressMaskRepliesReceived =>
+            Read(_snapshot.AddressMaskRepliesReceived, AddressMaskFlag);
+        public override long AddressMaskRepliesSent =>
+            Read(_snapshot.AddressMaskRepliesSent, AddressMaskFlag);
+        public override long AddressMaskRequestsReceived =>
+            Read(_snapshot.AddressMaskRequestsReceived, AddressMaskRequestFlag);
+        public override long AddressMaskRequestsSent =>
+            Read(_snapshot.AddressMaskRequestsSent, AddressMaskRequestFlag);
         public override long DestinationUnreachableMessagesReceived =>
             Read(_snapshot.DestinationUnreachableReceived, DestinationUnreachableReceivedFlag);
         public override long DestinationUnreachableMessagesSent =>
@@ -420,18 +430,26 @@ namespace System.Net.NetworkInformation
             Read(_snapshot.ParameterProblemsReceived, ParameterProblemsReceivedFlag);
         public override long ParameterProblemsSent =>
             Read(_snapshot.ParameterProblemsSent, ParameterProblemsSentFlag);
-        public override long RedirectsReceived => Unsupported();
-        public override long RedirectsSent => Unsupported();
-        public override long SourceQuenchesReceived => Unsupported();
-        public override long SourceQuenchesSent => Unsupported();
+        public override long RedirectsReceived =>
+            Read(_snapshot.RedirectsV4Received, RedirectFlag);
+        public override long RedirectsSent =>
+            Read(_snapshot.RedirectsV4Sent, RedirectFlag);
+        public override long SourceQuenchesReceived =>
+            Read(_snapshot.SourceQuenchesReceived, SourceQuenchFlag);
+        public override long SourceQuenchesSent =>
+            Read(_snapshot.SourceQuenchesSent, SourceQuenchFlag);
         public override long TimeExceededMessagesReceived =>
             Read(_snapshot.TimeExceededReceived, TimeExceededReceivedFlag);
         public override long TimeExceededMessagesSent =>
             Read(_snapshot.TimeExceededSent, TimeExceededSentFlag);
-        public override long TimestampRepliesReceived => Unsupported();
-        public override long TimestampRepliesSent => Unsupported();
-        public override long TimestampRequestsReceived => Unsupported();
-        public override long TimestampRequestsSent => Unsupported();
+        public override long TimestampRepliesReceived =>
+            Read(_snapshot.TimestampRepliesReceived, TimestampReplyFlag);
+        public override long TimestampRepliesSent =>
+            Read(_snapshot.TimestampRepliesSent, TimestampReplyFlag);
+        public override long TimestampRequestsReceived =>
+            Read(_snapshot.TimestampRequestsReceived, TimestampRequestFlag);
+        public override long TimestampRequestsSent =>
+            Read(_snapshot.TimestampRequestsSent, TimestampRequestFlag);
     }
 
     internal sealed class RinOSIcmpV6Statistics : IcmpV6Statistics
@@ -453,17 +471,25 @@ namespace System.Net.NetworkInformation
         private const uint TimeExceededSentFlag = 0x00002000u;
         private const uint PacketTooBigReceivedFlag = 0x00004000u;
         private const uint PacketTooBigSentFlag = 0x00008000u;
-        private const uint KnownFlags = 0x0000FFFFu;
+        private const uint MembershipQueryFlag = 0x00400000u;
+        private const uint MembershipReductionFlag = 0x00800000u;
+        private const uint MembershipReportFlag = 0x01000000u;
+        private const uint NeighborAdvertisementFlag = 0x02000000u;
+        private const uint NeighborSolicitFlag = 0x04000000u;
+        private const uint RedirectFlag = 0x08000000u;
+        private const uint RouterAdvertisementFlag = 0x10000000u;
+        private const uint RouterSolicitFlag = 0x20000000u;
+        private const uint KnownFlags = 0x3FC0FFFFu;
 
-        private readonly Interop.Sys.RinOSNetworkIcmpGlobalStatistics _snapshot;
+        private readonly Interop.Sys.RinOSNetworkIcmpGlobalStatisticsV2 _snapshot;
 
         internal unsafe RinOSIcmpV6Statistics()
         {
-            Interop.Sys.RinOSNetworkIcmpGlobalStatistics snapshot = default;
-            if (Interop.Sys.GetRinOSNetworkIcmpGlobalStatistics(
+            Interop.Sys.RinOSNetworkIcmpGlobalStatisticsV2 snapshot = default;
+            if (Interop.Sys.GetRinOSNetworkIcmpGlobalStatisticsV2(
                     AddressFamily, &snapshot) != 0 ||
-                snapshot.Version != 1u ||
-                snapshot.StructSize != 152u ||
+                snapshot.Version != 2u ||
+                snapshot.StructSize != 376u ||
                 snapshot.DeviceGeneration == 0u ||
                 snapshot.AddressFamily != AddressFamily ||
                 (snapshot.SupportedFlags & ~KnownFlags) != 0u)
@@ -501,20 +527,30 @@ namespace System.Net.NetworkInformation
             Read(_snapshot.ErrorsReceived, ErrorsReceivedFlag);
         public override long ErrorsSent =>
             Read(_snapshot.ErrorsSent, ErrorsSentFlag);
-        public override long MembershipQueriesReceived => Unsupported();
-        public override long MembershipQueriesSent => Unsupported();
-        public override long MembershipReductionsReceived => Unsupported();
-        public override long MembershipReductionsSent => Unsupported();
-        public override long MembershipReportsReceived => Unsupported();
-        public override long MembershipReportsSent => Unsupported();
+        public override long MembershipQueriesReceived =>
+            Read(_snapshot.MembershipQueriesReceived, MembershipQueryFlag);
+        public override long MembershipQueriesSent =>
+            Read(_snapshot.MembershipQueriesSent, MembershipQueryFlag);
+        public override long MembershipReductionsReceived =>
+            Read(_snapshot.MembershipReductionsReceived, MembershipReductionFlag);
+        public override long MembershipReductionsSent =>
+            Read(_snapshot.MembershipReductionsSent, MembershipReductionFlag);
+        public override long MembershipReportsReceived =>
+            Read(_snapshot.MembershipReportsReceived, MembershipReportFlag);
+        public override long MembershipReportsSent =>
+            Read(_snapshot.MembershipReportsSent, MembershipReportFlag);
         public override long MessagesReceived =>
             Read(_snapshot.MessagesReceived, MessagesReceivedFlag);
         public override long MessagesSent =>
             Read(_snapshot.MessagesSent, MessagesSentFlag);
-        public override long NeighborAdvertisementsReceived => Unsupported();
-        public override long NeighborAdvertisementsSent => Unsupported();
-        public override long NeighborSolicitsReceived => Unsupported();
-        public override long NeighborSolicitsSent => Unsupported();
+        public override long NeighborAdvertisementsReceived =>
+            Read(_snapshot.NeighborAdvertisementsReceived, NeighborAdvertisementFlag);
+        public override long NeighborAdvertisementsSent =>
+            Read(_snapshot.NeighborAdvertisementsSent, NeighborAdvertisementFlag);
+        public override long NeighborSolicitsReceived =>
+            Read(_snapshot.NeighborSolicitsReceived, NeighborSolicitFlag);
+        public override long NeighborSolicitsSent =>
+            Read(_snapshot.NeighborSolicitsSent, NeighborSolicitFlag);
         public override long PacketTooBigMessagesReceived =>
             Read(_snapshot.PacketTooBigReceived, PacketTooBigReceivedFlag);
         public override long PacketTooBigMessagesSent =>
@@ -523,12 +559,18 @@ namespace System.Net.NetworkInformation
             Read(_snapshot.ParameterProblemsReceived, ParameterProblemsReceivedFlag);
         public override long ParameterProblemsSent =>
             Read(_snapshot.ParameterProblemsSent, ParameterProblemsSentFlag);
-        public override long RedirectsReceived => Unsupported();
-        public override long RedirectsSent => Unsupported();
-        public override long RouterAdvertisementsReceived => Unsupported();
-        public override long RouterAdvertisementsSent => Unsupported();
-        public override long RouterSolicitsReceived => Unsupported();
-        public override long RouterSolicitsSent => Unsupported();
+        public override long RedirectsReceived =>
+            Read(_snapshot.RedirectsV6Received, RedirectFlag);
+        public override long RedirectsSent =>
+            Read(_snapshot.RedirectsV6Sent, RedirectFlag);
+        public override long RouterAdvertisementsReceived =>
+            Read(_snapshot.RouterAdvertisementsReceived, RouterAdvertisementFlag);
+        public override long RouterAdvertisementsSent =>
+            Read(_snapshot.RouterAdvertisementsSent, RouterAdvertisementFlag);
+        public override long RouterSolicitsReceived =>
+            Read(_snapshot.RouterSolicitsReceived, RouterSolicitFlag);
+        public override long RouterSolicitsSent =>
+            Read(_snapshot.RouterSolicitsSent, RouterSolicitFlag);
         public override long TimeExceededMessagesReceived =>
             Read(_snapshot.TimeExceededReceived, TimeExceededReceivedFlag);
         public override long TimeExceededMessagesSent =>

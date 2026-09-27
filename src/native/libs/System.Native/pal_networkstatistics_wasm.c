@@ -47,6 +47,15 @@ int32_t SystemNative_GetRinOSNetworkIcmpGlobalStatistics(
     return -1;
 }
 
+int32_t SystemNative_GetRinOSNetworkIcmpGlobalStatisticsV2(
+    uint32_t addressFamily, RinOSNetworkIcmpGlobalStatisticsV2* retStats)
+{
+    (void)addressFamily;
+    (void)retStats;
+    errno = ENOTSUP;
+    return -1;
+}
+
 int32_t SystemNative_GetTcpGlobalStatistics(TcpGlobalStatistics* retStats)
 {
     (void)retStats;

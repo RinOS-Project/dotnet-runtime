@@ -202,6 +202,87 @@ int32_t SystemNative_GetRinOSNetworkIcmpGlobalStatistics(
 #endif
 }
 
+int32_t SystemNative_GetRinOSNetworkIcmpGlobalStatisticsV2(
+    uint32_t addressFamily, RinOSNetworkIcmpGlobalStatisticsV2* retStats)
+{
+    if (retStats == NULL)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    memset(retStats, 0, sizeof(*retStats));
+#if defined(TARGET_RINOS)
+    RinNetIcmpGlobalStatisticsV2 statistics = {0};
+    if (rin_net_get_icmp_global_statistics_v2(addressFamily, &statistics) != 0 ||
+        statistics.version != RIN_NET_ICMP_GLOBAL_STATISTICS_V2_VERSION ||
+        statistics.struct_size != sizeof(statistics) ||
+        statistics.device_generation == 0u ||
+        statistics.address_family != addressFamily ||
+        (statistics.supported_flags &
+         ~RIN_NET_ICMP_GLOBAL_STATISTICS_V2_KNOWN_FLAGS) != 0u)
+    {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    retStats->Version = statistics.version;
+    retStats->StructSize = statistics.struct_size;
+    retStats->DeviceGeneration = statistics.device_generation;
+    retStats->AddressFamily = statistics.address_family;
+    retStats->SupportedFlags = statistics.supported_flags;
+    retStats->MessagesReceived = statistics.messages_received;
+    retStats->MessagesSent = statistics.messages_sent;
+    retStats->ErrorsReceived = statistics.errors_received;
+    retStats->ErrorsSent = statistics.errors_sent;
+    retStats->DestinationUnreachableReceived = statistics.destination_unreachable_received;
+    retStats->DestinationUnreachableSent = statistics.destination_unreachable_sent;
+    retStats->EchoRepliesReceived = statistics.echo_replies_received;
+    retStats->EchoRepliesSent = statistics.echo_replies_sent;
+    retStats->EchoRequestsReceived = statistics.echo_requests_received;
+    retStats->EchoRequestsSent = statistics.echo_requests_sent;
+    retStats->ParameterProblemsReceived = statistics.parameter_problems_received;
+    retStats->ParameterProblemsSent = statistics.parameter_problems_sent;
+    retStats->TimeExceededReceived = statistics.time_exceeded_received;
+    retStats->TimeExceededSent = statistics.time_exceeded_sent;
+    retStats->PacketTooBigReceived = statistics.packet_too_big_received;
+    retStats->PacketTooBigSent = statistics.packet_too_big_sent;
+    retStats->AddressMaskRepliesReceived = statistics.address_mask_replies_received;
+    retStats->AddressMaskRepliesSent = statistics.address_mask_replies_sent;
+    retStats->AddressMaskRequestsReceived = statistics.address_mask_requests_received;
+    retStats->AddressMaskRequestsSent = statistics.address_mask_requests_sent;
+    retStats->RedirectsV4Received = statistics.redirects_v4_received;
+    retStats->RedirectsV4Sent = statistics.redirects_v4_sent;
+    retStats->SourceQuenchesReceived = statistics.source_quenches_received;
+    retStats->SourceQuenchesSent = statistics.source_quenches_sent;
+    retStats->TimestampRepliesReceived = statistics.timestamp_replies_received;
+    retStats->TimestampRepliesSent = statistics.timestamp_replies_sent;
+    retStats->TimestampRequestsReceived = statistics.timestamp_requests_received;
+    retStats->TimestampRequestsSent = statistics.timestamp_requests_sent;
+    retStats->MembershipQueriesReceived = statistics.membership_queries_received;
+    retStats->MembershipQueriesSent = statistics.membership_queries_sent;
+    retStats->MembershipReductionsReceived = statistics.membership_reductions_received;
+    retStats->MembershipReductionsSent = statistics.membership_reductions_sent;
+    retStats->MembershipReportsReceived = statistics.membership_reports_received;
+    retStats->MembershipReportsSent = statistics.membership_reports_sent;
+    retStats->NeighborAdvertisementsReceived = statistics.neighbor_advertisements_received;
+    retStats->NeighborAdvertisementsSent = statistics.neighbor_advertisements_sent;
+    retStats->NeighborSolicitsReceived = statistics.neighbor_solicits_received;
+    retStats->NeighborSolicitsSent = statistics.neighbor_solicits_sent;
+    retStats->RedirectsV6Received = statistics.redirects_v6_received;
+    retStats->RedirectsV6Sent = statistics.redirects_v6_sent;
+    retStats->RouterAdvertisementsReceived = statistics.router_advertisements_received;
+    retStats->RouterAdvertisementsSent = statistics.router_advertisements_sent;
+    retStats->RouterSolicitsReceived = statistics.router_solicits_received;
+    retStats->RouterSolicitsSent = statistics.router_solicits_sent;
+    return 0;
+#else
+    (void)addressFamily;
+    errno = ENOTSUP;
+    return -1;
+#endif
+}
+
 // These functions are only used for platforms which support
 // using sysctl to gather protocol statistics information.
 // Currently, this is all keyed off of whether the include tcp_var.h

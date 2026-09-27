@@ -147,6 +147,60 @@ internal static partial class Interop
             public ulong PacketTooBigSent;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RinOSNetworkIcmpGlobalStatisticsV2
+        {
+            public uint Version;
+            public uint StructSize;
+            public ulong DeviceGeneration;
+            public uint AddressFamily;
+            public uint SupportedFlags;
+            public ulong MessagesReceived;
+            public ulong MessagesSent;
+            public ulong ErrorsReceived;
+            public ulong ErrorsSent;
+            public ulong DestinationUnreachableReceived;
+            public ulong DestinationUnreachableSent;
+            public ulong EchoRepliesReceived;
+            public ulong EchoRepliesSent;
+            public ulong EchoRequestsReceived;
+            public ulong EchoRequestsSent;
+            public ulong ParameterProblemsReceived;
+            public ulong ParameterProblemsSent;
+            public ulong TimeExceededReceived;
+            public ulong TimeExceededSent;
+            public ulong PacketTooBigReceived;
+            public ulong PacketTooBigSent;
+            public ulong AddressMaskRepliesReceived;
+            public ulong AddressMaskRepliesSent;
+            public ulong AddressMaskRequestsReceived;
+            public ulong AddressMaskRequestsSent;
+            public ulong RedirectsV4Received;
+            public ulong RedirectsV4Sent;
+            public ulong SourceQuenchesReceived;
+            public ulong SourceQuenchesSent;
+            public ulong TimestampRepliesReceived;
+            public ulong TimestampRepliesSent;
+            public ulong TimestampRequestsReceived;
+            public ulong TimestampRequestsSent;
+            public ulong MembershipQueriesReceived;
+            public ulong MembershipQueriesSent;
+            public ulong MembershipReductionsReceived;
+            public ulong MembershipReductionsSent;
+            public ulong MembershipReportsReceived;
+            public ulong MembershipReportsSent;
+            public ulong NeighborAdvertisementsReceived;
+            public ulong NeighborAdvertisementsSent;
+            public ulong NeighborSolicitsReceived;
+            public ulong NeighborSolicitsSent;
+            public ulong RedirectsV6Received;
+            public ulong RedirectsV6Sent;
+            public ulong RouterAdvertisementsReceived;
+            public ulong RouterAdvertisementsSent;
+            public ulong RouterSolicitsReceived;
+            public ulong RouterSolicitsSent;
+        }
+
         [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_EnumerateInterfaceAddresses")]
         public static unsafe partial int EnumerateInterfaceAddresses(
             void* context,
@@ -177,6 +231,9 @@ internal static partial class Interop
 
         [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_GetRinOSNetworkIcmpGlobalStatistics", SetLastError = true)]
         public static unsafe partial int GetRinOSNetworkIcmpGlobalStatistics(uint addressFamily, RinOSNetworkIcmpGlobalStatistics* info);
+
+        [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_GetRinOSNetworkIcmpGlobalStatisticsV2", SetLastError = true)]
+        public static unsafe partial int GetRinOSNetworkIcmpGlobalStatisticsV2(uint addressFamily, RinOSNetworkIcmpGlobalStatisticsV2* info);
 
     }
 }

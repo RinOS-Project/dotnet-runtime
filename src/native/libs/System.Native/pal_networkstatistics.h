@@ -192,6 +192,59 @@ typedef struct
 
 typedef struct
 {
+    uint32_t Version;
+    uint32_t StructSize;
+    uint64_t DeviceGeneration;
+    uint32_t AddressFamily;
+    uint32_t SupportedFlags;
+    uint64_t MessagesReceived;
+    uint64_t MessagesSent;
+    uint64_t ErrorsReceived;
+    uint64_t ErrorsSent;
+    uint64_t DestinationUnreachableReceived;
+    uint64_t DestinationUnreachableSent;
+    uint64_t EchoRepliesReceived;
+    uint64_t EchoRepliesSent;
+    uint64_t EchoRequestsReceived;
+    uint64_t EchoRequestsSent;
+    uint64_t ParameterProblemsReceived;
+    uint64_t ParameterProblemsSent;
+    uint64_t TimeExceededReceived;
+    uint64_t TimeExceededSent;
+    uint64_t PacketTooBigReceived;
+    uint64_t PacketTooBigSent;
+    uint64_t AddressMaskRepliesReceived;
+    uint64_t AddressMaskRepliesSent;
+    uint64_t AddressMaskRequestsReceived;
+    uint64_t AddressMaskRequestsSent;
+    uint64_t RedirectsV4Received;
+    uint64_t RedirectsV4Sent;
+    uint64_t SourceQuenchesReceived;
+    uint64_t SourceQuenchesSent;
+    uint64_t TimestampRepliesReceived;
+    uint64_t TimestampRepliesSent;
+    uint64_t TimestampRequestsReceived;
+    uint64_t TimestampRequestsSent;
+    uint64_t MembershipQueriesReceived;
+    uint64_t MembershipQueriesSent;
+    uint64_t MembershipReductionsReceived;
+    uint64_t MembershipReductionsSent;
+    uint64_t MembershipReportsReceived;
+    uint64_t MembershipReportsSent;
+    uint64_t NeighborAdvertisementsReceived;
+    uint64_t NeighborAdvertisementsSent;
+    uint64_t NeighborSolicitsReceived;
+    uint64_t NeighborSolicitsSent;
+    uint64_t RedirectsV6Received;
+    uint64_t RedirectsV6Sent;
+    uint64_t RouterAdvertisementsReceived;
+    uint64_t RouterAdvertisementsSent;
+    uint64_t RouterSolicitsReceived;
+    uint64_t RouterSolicitsSent;
+} RinOSNetworkIcmpGlobalStatisticsV2;
+
+typedef struct
+{
     uint8_t AddressBytes[16];
     uint32_t NumAddressBytes;
     uint32_t Port;
@@ -236,6 +289,9 @@ PALEXPORT int32_t SystemNative_GetRinOSNetworkTcpGlobalStatistics(
 
 PALEXPORT int32_t SystemNative_GetRinOSNetworkIcmpGlobalStatistics(
     uint32_t addressFamily, RinOSNetworkIcmpGlobalStatistics* retStats);
+
+PALEXPORT int32_t SystemNative_GetRinOSNetworkIcmpGlobalStatisticsV2(
+    uint32_t addressFamily, RinOSNetworkIcmpGlobalStatisticsV2* retStats);
 
 PALEXPORT int32_t SystemNative_GetIPv4GlobalStatistics(IPv4GlobalStatistics* retStats);
 

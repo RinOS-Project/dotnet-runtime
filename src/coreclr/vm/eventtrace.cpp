@@ -3176,7 +3176,7 @@ VOID ETW::InfoLog::RuntimeInformation(INT32 type)
 
 VOID ETW::CodeSymbolLog::EmitCodeSymbols(Module* pModule)
 {
-#if  !defined(HOST_UNIX) //UNIXTODO: Enable EmitCodeSymbols
+#if !defined(HOST_UNIX)
     CONTRACTL {
         NOTHROW;
         GC_NOTRIGGER;
@@ -3233,7 +3233,11 @@ VOID ETW::CodeSymbolLog::EmitCodeSymbols(Module* pModule)
             }
         }
     } EX_CATCH{} EX_END_CATCH
-#endif//  !defined(HOST_UNIX)
+#else
+    // RinOS/Unix has no product EventPipe payload contract for ETW code symbols.
+    // Keep this path explicitly inert until the diagnostic transport can carry
+    // symbol chunks; do not turn the missing sink into a false-success event.
+#endif // !defined(HOST_UNIX)
 }
 
 /* Returns the length of an in-memory symbol stream

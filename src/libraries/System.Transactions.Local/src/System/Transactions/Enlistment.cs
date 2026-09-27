@@ -175,7 +175,7 @@ namespace System.Transactions
             get
             {
                 Debug.Fail("PromotableSinglePhaseNotification called for a non promotable enlistment.");
-                throw new NotImplementedException();
+                throw new InvalidOperationException("PromotableSinglePhaseNotification is only available for a promotable enlistment.");
             }
         }
 
@@ -247,7 +247,7 @@ namespace System.Transactions
             get
             {
                 Debug.Fail("ResourceManagerIdentifier called for non durable enlistment");
-                throw new NotImplementedException();
+                throw new InvalidOperationException("ResourceManagerIdentifier is only available for a durable enlistment.");
             }
         }
 

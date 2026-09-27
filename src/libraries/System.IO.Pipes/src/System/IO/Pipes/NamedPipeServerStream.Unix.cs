@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net.Sockets;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -218,14 +219,37 @@ namespace System.IO.Pipes
                 throw CreateExceptionForLastError(_instance?.PipeName);
             }
 
+            ExceptionDispatchInfo? workerException = null;
             try
             {
                 impersonationWorker();
             }
-            finally
+            catch (Exception exception)
             {
-                // set the userid of the current (server) process back to its original value
-                Interop.Sys.SetEUid(currentEUID);
+                workerException = ExceptionDispatchInfo.Capture(exception);
+            }
+
+            // set the userid of the current (server) process back to its original value.
+            // Ignoring this result can leave the server running with the client's EUID.
+            Exception? restoreException = null;
+            if (Interop.Sys.SetEUid(currentEUID) == -1)
+            {
+                restoreException = CreateExceptionForLastError(_instance?.PipeName);
+            }
+
+            if (workerException is not null)
+            {
+                if (restoreException is not null)
+                {
+                    throw new AggregateException(workerException.SourceException, restoreException);
+                }
+
+                workerException.Throw();
+            }
+
+            if (restoreException is not null)
+            {
+                throw restoreException;
             }
         }
 

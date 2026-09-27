@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.Marshalling;
+using System.Text;
 
 namespace System.Net.NetworkInformation
 {
@@ -16,6 +16,9 @@ namespace System.Net.NetworkInformation
     {
         private const int InterfaceNameCapacity = 16;
         private const int HardwareAddressCapacity = 12;
+        private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(
+            encoderShouldEmitUTF8Identifier: false,
+            throwOnInvalidBytes: true);
 
         private readonly RinOSIPInterfaceProperties _ipProperties;
         private readonly OperationalStatus _operationalStatus;
@@ -155,7 +158,15 @@ namespace System.Net.NetworkInformation
                     "RinOS returned an invalid network-interface name.");
             }
 
-            return Utf8StringMarshaller.ConvertToManaged(name)!;
+            try
+            {
+                return StrictUtf8.GetString(new ReadOnlySpan<byte>(name, terminator));
+            }
+            catch (DecoderFallbackException)
+            {
+                throw new NetworkInformationException(
+                    "RinOS returned an invalid UTF-8 network-interface name.");
+            }
         }
 
         private static int GetAddressLength(byte length)

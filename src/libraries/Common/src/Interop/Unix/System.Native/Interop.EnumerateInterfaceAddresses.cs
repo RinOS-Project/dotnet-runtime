@@ -68,6 +68,20 @@ internal static partial class Interop
             public ulong TxErrors;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RinOSNetworkIpGlobalStatistics
+        {
+            public uint Version;
+            public uint StructSize;
+            public ulong DeviceGeneration;
+            public uint AddressFamily;
+            public uint SupportedFlags;
+            public ulong OutputPacketRequests;
+            public ulong ReceivedPackets;
+            public ulong ReceivedPacketsDelivered;
+            public ulong ReceivedPacketsForwarded;
+        }
+
         [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_EnumerateInterfaceAddresses")]
         public static unsafe partial int EnumerateInterfaceAddresses(
             void* context,
@@ -86,6 +100,9 @@ internal static partial class Interop
 
         [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_GetRinOSNetworkInterfaceStatistics", SetLastError = true)]
         public static unsafe partial int GetRinOSNetworkInterfaceStatistics(uint interfaceIndex, RinOSNetworkInterfaceStatistics* info);
+
+        [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_GetRinOSNetworkIpGlobalStatistics", SetLastError = true)]
+        public static unsafe partial int GetRinOSNetworkIpGlobalStatistics(uint addressFamily, RinOSNetworkIpGlobalStatistics* info);
 
     }
 }

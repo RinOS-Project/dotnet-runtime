@@ -9,6 +9,52 @@
 
 #include <stdlib.h>
 #include <errno.h>
+#include <string.h>
+
+#if defined(TARGET_RINOS)
+#include <rin/net/netif_abi.h>
+#endif
+
+int32_t SystemNative_GetRinOSNetworkIpGlobalStatistics(
+    uint32_t addressFamily, RinOSNetworkIpGlobalStatistics* retStats)
+{
+    if (retStats == NULL)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    memset(retStats, 0, sizeof(*retStats));
+#if defined(TARGET_RINOS)
+    RinNetIpGlobalStatisticsV1 statistics = {0};
+    if (rin_net_get_ip_global_statistics(addressFamily, &statistics) != 0 ||
+        statistics.version != RIN_NET_IP_GLOBAL_STATISTICS_VERSION ||
+        statistics.struct_size != sizeof(statistics) ||
+        statistics.device_generation == 0u ||
+        statistics.address_family != addressFamily ||
+        (statistics.supported_flags &
+         ~RIN_NET_IP_GLOBAL_STATISTICS_KNOWN_FLAGS) != 0u)
+    {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    retStats->Version = statistics.version;
+    retStats->StructSize = statistics.struct_size;
+    retStats->DeviceGeneration = statistics.device_generation;
+    retStats->AddressFamily = statistics.address_family;
+    retStats->SupportedFlags = statistics.supported_flags;
+    retStats->OutputPacketRequests = statistics.output_packet_requests;
+    retStats->ReceivedPackets = statistics.received_packets;
+    retStats->ReceivedPacketsDelivered = statistics.received_packets_delivered;
+    retStats->ReceivedPacketsForwarded = statistics.received_packets_forwarded;
+    return 0;
+#else
+    (void)addressFamily;
+    errno = ENOTSUP;
+    return -1;
+#endif
+}
 
 // These functions are only used for platforms which support
 // using sysctl to gather protocol statistics information.

@@ -47,9 +47,9 @@ namespace System.Net.NetworkInformation
             throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
 
         public override IPGlobalStatistics GetIPv4GlobalStatistics() =>
-            throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
+            new RinOSIPGlobalStatistics(System.Net.Sockets.AddressFamily.InterNetwork);
 
         public override IPGlobalStatistics GetIPv6GlobalStatistics() =>
-            throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
+            new RinOSIPGlobalStatistics(System.Net.Sockets.AddressFamily.InterNetworkV6);
     }
 }

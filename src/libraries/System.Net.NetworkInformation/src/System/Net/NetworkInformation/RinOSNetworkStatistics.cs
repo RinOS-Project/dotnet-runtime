@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Net.Sockets;
 
 namespace System.Net.NetworkInformation
 {
@@ -63,6 +64,12 @@ namespace System.Net.NetworkInformation
 
         internal static long UnsupportedMetric() =>
             throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
+
+        internal static int UnsupportedMetricInt() =>
+            throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
+
+        internal static bool UnsupportedMetricBool() =>
+            throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
     }
 
     internal sealed class RinOSIPInterfaceStatistics : IPInterfaceStatistics
@@ -109,5 +116,71 @@ namespace System.Net.NetworkInformation
         public override long OutputQueueLength => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
         public override long UnicastPacketsReceived => _snapshot.UnicastPacketsReceived;
         public override long UnicastPacketsSent => _snapshot.UnicastPacketsSent;
+    }
+
+    internal sealed class RinOSIPGlobalStatistics : IPGlobalStatistics
+    {
+        private const uint AddressFamilyIPv4 = 4u;
+        private const uint AddressFamilyIPv6 = 6u;
+        private const uint OutputPacketRequestsFlag = 0x00000001u;
+        private const uint ReceivedPacketsFlag = 0x00000002u;
+        private const uint ReceivedPacketsDeliveredFlag = 0x00000004u;
+        private const uint ReceivedPacketsForwardedFlag = 0x00000008u;
+
+        private readonly Interop.Sys.RinOSNetworkIpGlobalStatistics _snapshot;
+
+        internal unsafe RinOSIPGlobalStatistics(AddressFamily family)
+        {
+            uint addressFamily = family == AddressFamily.InterNetwork
+                ? AddressFamilyIPv4
+                : family == AddressFamily.InterNetworkV6
+                    ? AddressFamilyIPv6
+                    : 0u;
+            Interop.Sys.RinOSNetworkIpGlobalStatistics snapshot = default;
+            if (addressFamily == 0u ||
+                Interop.Sys.GetRinOSNetworkIpGlobalStatistics(
+                    addressFamily, &snapshot) != 0 ||
+                snapshot.Version != 1u ||
+                snapshot.StructSize != 56u ||
+                snapshot.DeviceGeneration == 0u ||
+                snapshot.AddressFamily != addressFamily ||
+                (snapshot.SupportedFlags & ~0x0000000Fu) != 0u)
+            {
+                throw new NetworkInformationException(
+                    "RinOS did not provide a current IP-global-statistics snapshot.");
+            }
+            _snapshot = snapshot;
+        }
+
+        private long Read(ulong value, uint flag) =>
+            (_snapshot.SupportedFlags & flag) != 0u
+                ? Clamp(value)
+                : RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+
+        private static long Clamp(ulong value) =>
+            value > long.MaxValue ? long.MaxValue : (long)value;
+
+        public override int DefaultTtl => RinOSNetworkStatisticsSnapshot.UnsupportedMetricInt();
+        public override bool ForwardingEnabled => RinOSNetworkStatisticsSnapshot.UnsupportedMetricBool();
+        public override int NumberOfInterfaces => RinOSNetworkStatisticsSnapshot.UnsupportedMetricInt();
+        public override int NumberOfIPAddresses => RinOSNetworkStatisticsSnapshot.UnsupportedMetricInt();
+        public override long OutputPacketRequests => Read(_snapshot.OutputPacketRequests, OutputPacketRequestsFlag);
+        public override long OutputPacketRoutingDiscards => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+        public override long OutputPacketsDiscarded => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+        public override long OutputPacketsWithNoRoute => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+        public override long PacketFragmentFailures => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+        public override long PacketReassembliesRequired => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+        public override long PacketReassemblyFailures => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+        public override long PacketReassemblyTimeout => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+        public override long PacketsFragmented => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+        public override long PacketsReassembled => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+        public override long ReceivedPackets => Read(_snapshot.ReceivedPackets, ReceivedPacketsFlag);
+        public override long ReceivedPacketsDelivered => Read(_snapshot.ReceivedPacketsDelivered, ReceivedPacketsDeliveredFlag);
+        public override long ReceivedPacketsDiscarded => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+        public override long ReceivedPacketsForwarded => Read(_snapshot.ReceivedPacketsForwarded, ReceivedPacketsForwardedFlag);
+        public override long ReceivedPacketsWithAddressErrors => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+        public override long ReceivedPacketsWithHeadersErrors => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+        public override long ReceivedPacketsWithUnknownProtocol => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+        public override int NumberOfRoutes => RinOSNetworkStatisticsSnapshot.UnsupportedMetricInt();
     }
 }

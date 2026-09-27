@@ -11,6 +11,15 @@
 #include <errno.h>
 #include <string.h>
 
+int32_t SystemNative_GetRinOSNetworkIpGlobalStatistics(
+    uint32_t addressFamily, RinOSNetworkIpGlobalStatistics* retStats)
+{
+    (void)addressFamily;
+    (void)retStats;
+    errno = ENOTSUP;
+    return -1;
+}
+
 int32_t SystemNative_GetTcpGlobalStatistics(TcpGlobalStatistics* retStats)
 {
     (void)retStats;

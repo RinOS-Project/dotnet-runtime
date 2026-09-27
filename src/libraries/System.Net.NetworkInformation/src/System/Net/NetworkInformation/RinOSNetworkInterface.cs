@@ -79,9 +79,11 @@ namespace System.Net.NetworkInformation
                 for (int i = 0; i < interfaceCount; i++)
                 {
                     string name = ReadFixedUtf8Name((byte*)&interfaceList->Name);
+                    int interfaceIndex = GetInterfaceIndex(
+                        unchecked((uint)interfaceList->InterfaceIndex));
                     RinOSNetworkInterface networkInterface = new RinOSNetworkInterface(
                         name,
-                        interfaceList->InterfaceIndex,
+                        interfaceIndex,
                         interfaceList->Speed,
                         interfaceList->Mtu,
                         (NetworkInterfaceType)interfaceList->HardwareType,
@@ -107,7 +109,11 @@ namespace System.Net.NetworkInformation
                     }
 
                     result[i] = networkInterface;
-                    byIndex.Add(networkInterface.Index, networkInterface);
+                    if (!byIndex.TryAdd(networkInterface.Index, networkInterface))
+                    {
+                        throw new NetworkInformationException(
+                            "RinOS returned duplicate network-interface indices.");
+                    }
                     interfaceList++;
                 }
 
@@ -116,7 +122,9 @@ namespace System.Net.NetworkInformation
                     Interop.Sys.IpAddressInfo addressInfo = *addressList;
                     int addressLength = GetAddressLength(addressInfo.NumAddressBytes);
                     ValidatePrefixLength(addressLength, addressInfo.PrefixLength);
-                    if (byIndex.TryGetValue(addressInfo.InterfaceIndex, out RinOSNetworkInterface? networkInterface))
+                    int interfaceIndex = GetInterfaceIndex(
+                        unchecked((uint)addressInfo.InterfaceIndex));
+                    if (byIndex.TryGetValue(interfaceIndex, out RinOSNetworkInterface? networkInterface))
                     {
                         IPAddress address = new IPAddress(((ReadOnlySpan<byte>)addressInfo.AddressBytes)[..addressLength]);
                         if (addressLength == 16 && address.IsIPv6LinkLocal)
@@ -159,6 +167,17 @@ namespace System.Net.NetworkInformation
             }
 
             return length;
+        }
+
+        private static int GetInterfaceIndex(uint index)
+        {
+            if (index == 0 || index > int.MaxValue)
+            {
+                throw new NetworkInformationException(
+                    "RinOS returned an invalid network-interface index.");
+            }
+
+            return (int)index;
         }
 
         private static void ValidatePrefixLength(int addressLength, byte prefixLength)

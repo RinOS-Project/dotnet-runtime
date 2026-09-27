@@ -2148,9 +2148,11 @@ static bool TryGetPlatformSocketOption(int32_t socketOptionLevel, int32_t socket
                     return true;
 #endif
 
+#if !defined(TARGET_RINOS)
                 case SocketOptionName_SO_IP_PKTINFO:
                     *optName = IP_PKTINFO;
                     return true;
+#endif
 
                 default:
                     return false;
@@ -2171,9 +2173,11 @@ static bool TryGetPlatformSocketOption(int32_t socketOptionLevel, int32_t socket
                     *optName = IPV6_V6ONLY;
                     return true;
 
+#if !defined(TARGET_RINOS)
                 case SocketOptionName_SO_IP_PKTINFO:
                     *optName = IPV6_RECVPKTINFO;
                     return true;
+#endif
 
                 case SocketOptionName_SO_IP_MULTICAST_IF:
                     *optName = IPV6_MULTICAST_IF;

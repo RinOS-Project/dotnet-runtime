@@ -112,7 +112,12 @@ namespace System.Runtime.InteropServices
 
             protected override nint ConvertIntPtrToValue(nint pointer) => pointer;
             protected override nint ConvertValueToIntPtr(nint value) => value;
-            protected override nint CreateValueFromKey(InstantiatingThunkKey key) => throw new NotImplementedException();
+            protected override nint CreateValueFromKey(InstantiatingThunkKey key)
+            {
+                nint thunk = RuntimeAugments.AllocateThunk(s_thunkPoolHeap);
+                RuntimeAugments.SetThunkData(s_thunkPoolHeap, thunk, key.Context, key.Target);
+                return thunk;
+            }
             protected override int GetKeyHashCode(InstantiatingThunkKey key) => HashCode.Combine(key.Target, key.Context);
 
             protected override int GetValueHashCode(nint value)

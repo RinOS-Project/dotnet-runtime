@@ -770,6 +770,13 @@ namespace System.Net
 
         public static bool CheckHasSystemNetSecurityNative()
         {
+#if TARGET_RINOS
+            // RinOS ships the GSS PAL entry points as an explicit fail-closed
+            // boundary.  The native library therefore does not imply that a
+            // Kerberos provider exists.  Keep managed SPNEGO NTLM-only until a
+            // product identity/authentication provider is connected.
+            return false;
+#else
             try
             {
                 _ = Interop.NetSecurityNative.IsNtlmInstalled();
@@ -780,6 +787,7 @@ namespace System.Net
                 // libSystem.Net.Security.Native is not available
                 return false;
             }
+#endif
         }
     }
 }

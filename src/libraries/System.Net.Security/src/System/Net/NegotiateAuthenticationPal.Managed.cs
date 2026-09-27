@@ -29,6 +29,11 @@ namespace System.Net
                 return ManagedNtlmNegotiateAuthenticationPal.Create(serverOptions);
             }
 
+            if (serverOptions.Package == NegotiationInfoClass.Negotiate)
+            {
+                return new ManagedSpnegoNegotiateAuthenticationPal(serverOptions);
+            }
+
             return new UnsupportedNegotiateAuthenticationPal(serverOptions);
         }
     }

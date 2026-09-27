@@ -402,13 +402,13 @@ namespace System.Net
                     (_mechanism as ManagedNtlmNegotiateAuthenticationPal)?.ResetKeys();
                 }
 
-                _isAuthenticated = state == NegState.AcceptCompleted || state == NegState.Reject;
                 statusCode = state switch {
                     NegState.AcceptCompleted => NegotiateAuthenticationStatusCode.Completed,
                     NegState.AcceptIncomplete => NegotiateAuthenticationStatusCode.ContinueNeeded,
                     NegState.Reject => NegotiateAuthenticationStatusCode.UnknownCredentials,
                     _ => NegotiateAuthenticationStatusCode.GenericFailure
                 };
+                _isAuthenticated = statusCode == NegotiateAuthenticationStatusCode.Completed;
 
                 return null;
             }

@@ -154,7 +154,12 @@ namespace Internal.Runtime
             [Intrinsic]
             get
             {
-                throw new NotImplementedException();
+                // This getter is replaced by the NativeAOT compiler intrinsic.
+                // Keep the source fallback explicit if an unlowered call ever
+                // reaches the runtime instead of exposing an implementation-shaped
+                // NotImplementedException.
+                throw new NotSupportedException(
+                    "SupportsRelativePointers is a NativeAOT compiler intrinsic.");
             }
         }
 

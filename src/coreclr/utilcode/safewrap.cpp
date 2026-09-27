@@ -73,8 +73,11 @@ DWORD ClrReportEvent(
 
     return (ret == TRUE)?ERROR_SUCCESS:dwRetStatus;
 #else // TARGET_UNIX
-    // UNIXTODO: Report the event somewhere?
-    return ERROR_SUCCESS;
+    // Unix has no Windows Event Log provider. Do not report success when no
+    // event sink consumed the record; callers must be able to distinguish the
+    // unsupported logging boundary from a delivered event.
+    SetLastError(ERROR_NOT_SUPPORTED);
+    return ERROR_NOT_SUPPORTED;
 #endif // TARGET_UNIX
 }
 

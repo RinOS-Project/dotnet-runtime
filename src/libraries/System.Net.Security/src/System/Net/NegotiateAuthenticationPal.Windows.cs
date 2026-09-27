@@ -381,7 +381,7 @@ namespace System.Net
                 {
                     //CloseContext();
                     _securityContext?.Dispose();
-                    _isAuthenticated = true;
+                    _isAuthenticated = false;
                     _tokenBuffer = null;
                     return null;
                 }

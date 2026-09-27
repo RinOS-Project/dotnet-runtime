@@ -55,7 +55,8 @@ namespace System.Reflection.Runtime.General
         internal Type[] GetCustomModifiers(TypeContext typeContext, bool optional)
         {
 #if ECMA_METADATA_SUPPORT
-            throw new NotImplementedException();
+            throw new NotSupportedException(
+                "ECMA metadata custom modifiers are not supported by NativeAOT.");
 #else
             return _handle.GetCustomModifiers((global::Internal.Metadata.NativeFormat.MetadataReader)Reader, typeContext, optional);
 #endif

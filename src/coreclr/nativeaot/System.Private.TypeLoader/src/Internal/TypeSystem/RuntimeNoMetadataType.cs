@@ -52,7 +52,10 @@ namespace Internal.TypeSystem.NoMetadata
                         Runtime.GenericVariance.Contravariant => GenericVariance.Contravariant,
                         Runtime.GenericVariance.Covariant => GenericVariance.Covariant,
                         Runtime.GenericVariance.NonVariant or Runtime.GenericVariance.ArrayCovariant => GenericVariance.None,
-                        _ => throw new NotImplementedException()
+                        // The variance byte comes from runtime-owned type
+                        // metadata. An unknown value is malformed input, not
+                        // a feature that can be safely treated as absent.
+                        _ => throw new BadImageFormatException()
                     };
                     genericParameters[i] = new RuntimeGenericParameterDesc(GenericParameterKind.Type, i, this, variance);
                 }

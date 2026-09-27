@@ -40,9 +40,10 @@ namespace System.Reflection.Runtime.General
             }
 
 #if ECMA_METADATA_SUPPORT
-            if (Reader is global::System.Reflection.Metadata.MetadataReader ecmaReader)
+            if (Reader is global::System.Reflection.Metadata.MetadataReader)
             {
-                return TryResolveSignature(typeContext, ref exception);
+                throw new NotSupportedException(
+                    "ECMA metadata signature type resolution is not supported by NativeAOT.");
             }
 #endif
 
@@ -64,6 +65,13 @@ namespace System.Reflection.Runtime.General
 
         internal Type GetModifiedType(TypeContext typeContext)
         {
+#if ECMA_METADATA_SUPPORT
+            if (Reader is global::System.Reflection.Metadata.MetadataReader)
+            {
+                throw new NotSupportedException(
+                    "ECMA metadata modified types are not supported by NativeAOT.");
+            }
+#endif
             return ModifiedType.Create(Resolve(typeContext).ToType(), (global::Internal.Metadata.NativeFormat.MetadataReader)Reader, _handle);
         }
     }

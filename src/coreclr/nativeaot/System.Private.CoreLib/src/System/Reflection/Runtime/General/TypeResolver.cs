@@ -27,8 +27,9 @@ namespace System.Reflection.Runtime.General
             }
 
 #if ECMA_METADATA_SUPPORT
-            if (typeDefOrRefOrSpec.Reader is global::System.Reflection.Metadata.MetadataReader ecmaReader)
-                return global::System.Reflection.Metadata.Ecma335.MetadataTokens.Handle(typeDefOrRefOrSpec.Handle).TryResolve(ecmaReader, typeContext, ref exception);
+            if (typeDefOrRefOrSpec.Reader is global::System.Reflection.Metadata.MetadataReader)
+                throw new NotSupportedException(
+                    "ECMA metadata type resolution is not supported by NativeAOT.");
 #endif
 
             throw new BadImageFormatException();  // Expected TypeRef, Def or Spec with MetadataReader
@@ -45,7 +46,9 @@ namespace System.Reflection.Runtime.General
             }
 
 #if ECMA_METADATA_SUPPORT
-            // TODO: implement
+            if (typeDef.Reader is global::System.Reflection.Metadata.MetadataReader)
+                throw new NotSupportedException(
+                    "ECMA metadata type-definition resolution is not supported by NativeAOT.");
 #endif
 
             throw new BadImageFormatException();  // Expected TypeRef, Def or Spec with MetadataReader

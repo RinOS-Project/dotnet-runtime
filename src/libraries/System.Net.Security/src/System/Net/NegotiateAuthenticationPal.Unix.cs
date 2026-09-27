@@ -60,6 +60,11 @@ namespace System.Net
 
         public static NegotiateAuthenticationPal Create(NegotiateAuthenticationServerOptions serverOptions)
         {
+            if (LocalAppContextSwitches.UseManagedNtlm && serverOptions.Package == NegotiationInfoClass.NTLM)
+            {
+                return ManagedNtlmNegotiateAuthenticationPal.Create(serverOptions);
+            }
+
             try
             {
                 return new UnixNegotiateAuthenticationPal(serverOptions);

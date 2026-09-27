@@ -27,6 +27,7 @@ namespace System.Net
         {
             // Input parameters
             private readonly NetworkCredential _credential;
+            private readonly bool _isServer;
             private readonly string? _spn;
             private readonly ChannelBinding? _channelBinding;
             private readonly ProtectionLevel _protectionLevel;
@@ -42,6 +43,9 @@ namespace System.Net
             private uint _clientSequenceNumber;
             private uint _serverSequenceNumber;
             private bool _isAuthenticated;
+            private byte[]? _serverChallenge;
+            private byte[]? _challengeMessage;
+            private IIdentity? _remoteIdentity;
 
             // value should match the Windows sspicli NTE_FAIL value
             // defined in winerror.h
@@ -281,18 +285,30 @@ namespace System.Net
             public override bool IsEncrypted => _protectionLevel == ProtectionLevel.EncryptAndSign;
             public override bool IsMutuallyAuthenticated => false;
             public override string Package => NegotiationInfoClass.NTLM;
-            public override string? TargetName => _spn;
-            public override IIdentity RemoteIdentity => throw new InvalidOperationException();
+            public override string? TargetName => _isServer ? null : _spn;
+            public override IIdentity RemoteIdentity => _remoteIdentity ?? throw new InvalidOperationException();
             public override System.Security.Principal.TokenImpersonationLevel ImpersonationLevel => System.Security.Principal.TokenImpersonationLevel.Impersonation;
 
             private ManagedNtlmNegotiateAuthenticationPal(NegotiateAuthenticationClientOptions clientOptions)
             {
                 _credential = clientOptions.Credential;
+                _isServer = false;
                 _spn = clientOptions.TargetName;
                 _channelBinding = clientOptions.Binding;
                 _protectionLevel = clientOptions.RequiredProtectionLevel;
 
                 if (NetEventSource.Log.IsEnabled()) NetEventSource.Info(this, $"package={clientOptions.Package}, spn={_spn}, requiredProtectionLevel={_protectionLevel}");
+            }
+
+            private ManagedNtlmNegotiateAuthenticationPal(NegotiateAuthenticationServerOptions serverOptions)
+            {
+                _credential = serverOptions.Credential;
+                _isServer = true;
+                _spn = null;
+                _channelBinding = serverOptions.Binding;
+                _protectionLevel = serverOptions.RequiredProtectionLevel;
+
+                if (NetEventSource.Log.IsEnabled()) NetEventSource.Info(this, $"server package={serverOptions.Package}, requiredProtectionLevel={_protectionLevel}");
             }
 
             public static new NegotiateAuthenticationPal Create(NegotiateAuthenticationClientOptions clientOptions)
@@ -311,6 +327,20 @@ namespace System.Net
                 return new ManagedNtlmNegotiateAuthenticationPal(clientOptions);
             }
 
+            public static new NegotiateAuthenticationPal Create(NegotiateAuthenticationServerOptions serverOptions)
+            {
+                Debug.Assert(serverOptions.Package == NegotiationInfoClass.NTLM);
+
+                if (serverOptions.Credential == CredentialCache.DefaultNetworkCredentials ||
+                    string.IsNullOrWhiteSpace(serverOptions.Credential.UserName) ||
+                    string.IsNullOrWhiteSpace(serverOptions.Credential.Password))
+                {
+                    return new UnsupportedNegotiateAuthenticationPal(serverOptions, NegotiateAuthenticationStatusCode.UnknownCredentials);
+                }
+
+                return new ManagedNtlmNegotiateAuthenticationPal(serverOptions);
+            }
+
             public override void Dispose()
             {
                 // Dispose of the state
@@ -326,10 +356,24 @@ namespace System.Net
                 _clientSequenceNumber = 0;
                 _serverSequenceNumber = 0;
                 _isAuthenticated = false;
+                _negotiateMessage = null;
+                _serverChallenge = null;
+                _challengeMessage = null;
+                _remoteIdentity = null;
             }
 
             public override unsafe byte[]? GetOutgoingBlob(ReadOnlySpan<byte> incomingBlob, out NegotiateAuthenticationStatusCode statusCode)
             {
+                if (_isServer)
+                {
+                    if (_negotiateMessage == null)
+                    {
+                        return ProcessNegotiate(incomingBlob, out statusCode);
+                    }
+
+                    return ProcessAuthenticate(incomingBlob, out statusCode);
+                }
+
                 byte[]? outgoingBlob;
 
                 // TODO: Logging, validation
@@ -371,6 +415,229 @@ namespace System.Net
                 message.Header.MessageType = MessageType.Negotiate;
                 message.Flags = requiredFlags;
                 message.Version = s_version;
+            }
+
+            private static void AddTargetInfoPair(Span<byte> targetInfo, ref int offset, AvId id, ReadOnlySpan<byte> value)
+            {
+                if (value.Length > ushort.MaxValue || offset > targetInfo.Length - (4 + value.Length))
+                {
+                    throw new Win32Exception(NTE_FAIL);
+                }
+
+                targetInfo[offset] = (byte)id;
+                BinaryPrimitives.WriteUInt16LittleEndian(targetInfo.Slice(offset + 2), (ushort)value.Length);
+                value.CopyTo(targetInfo.Slice(offset + 4));
+                offset += 4 + value.Length;
+            }
+
+            private byte[] CreateServerTargetInfo()
+            {
+                byte[] computerName = Encoding.Unicode.GetBytes(Environment.MachineName);
+                byte[] domainName = Encoding.Unicode.GetBytes(
+                    string.IsNullOrEmpty(_credential.Domain) ? Environment.MachineName : _credential.Domain);
+
+                int targetInfoLength =
+                    4 + computerName.Length +
+                    4 + domainName.Length +
+                    4 + sizeof(long) +
+                    (_channelBinding is null ? 0 : 4 + DigestLength) +
+                    4;
+                byte[] targetInfo = new byte[targetInfoLength];
+                int offset = 0;
+
+                AddTargetInfoPair(targetInfo, ref offset, AvId.NbComputerName, computerName);
+                AddTargetInfoPair(targetInfo, ref offset, AvId.NbDomainName, domainName);
+
+                Span<byte> timestamp = stackalloc byte[sizeof(long)];
+                BinaryPrimitives.WriteInt64LittleEndian(timestamp, DateTime.UtcNow.ToFileTimeUtc());
+                AddTargetInfoPair(targetInfo, ref offset, AvId.Timestamp, timestamp);
+
+                if (_channelBinding is not null)
+                {
+                    Span<byte> channelBindingHash = stackalloc byte[DigestLength];
+                    WriteChannelBindingHash(channelBindingHash);
+                    AddTargetInfoPair(targetInfo, ref offset, AvId.ChannelBindings, channelBindingHash);
+                }
+
+                BinaryPrimitives.WriteUInt16LittleEndian(targetInfo.AsSpan(offset + 2), 0);
+                targetInfo[offset] = (byte)AvId.EOL;
+                offset += 4;
+                Debug.Assert(offset == targetInfo.Length);
+                return targetInfo;
+            }
+
+            private unsafe byte[]? ProcessNegotiate(ReadOnlySpan<byte> blob, out NegotiateAuthenticationStatusCode statusCode)
+            {
+                if (blob.Length < sizeof(NegotiateMessage) ||
+                    !NtlmHeader.SequenceEqual(blob.Slice(0, NtlmHeader.Length)))
+                {
+                    statusCode = NegotiateAuthenticationStatusCode.InvalidToken;
+                    return null;
+                }
+
+                ref readonly NegotiateMessage negotiateMessage = ref MemoryMarshal.AsRef<NegotiateMessage>(blob.Slice(0, sizeof(NegotiateMessage)));
+                if (negotiateMessage.Header.MessageType != MessageType.Negotiate)
+                {
+                    statusCode = NegotiateAuthenticationStatusCode.InvalidToken;
+                    return null;
+                }
+
+                Flags clientFlags = negotiateMessage.Flags;
+                if ((clientFlags & s_requiredFlags) != s_requiredFlags)
+                {
+                    statusCode = NegotiateAuthenticationStatusCode.InvalidToken;
+                    return null;
+                }
+
+                if (_protectionLevel == ProtectionLevel.EncryptAndSign && (clientFlags & Flags.NegotiateSeal) == 0)
+                {
+                    statusCode = NegotiateAuthenticationStatusCode.QopNotSupported;
+                    return null;
+                }
+
+                byte[] targetInfo = CreateServerTargetInfo();
+                byte[] challengeBytes = new byte[sizeof(ChallengeMessage) + targetInfo.Length];
+                Span<byte> challengeSpan = challengeBytes;
+                ref ChallengeMessage challengeMessage = ref MemoryMarshal.AsRef<ChallengeMessage>(challengeSpan.Slice(0, sizeof(ChallengeMessage)));
+
+                challengeSpan.Clear();
+                NtlmHeader.CopyTo(challengeSpan);
+                challengeMessage.Header.MessageType = MessageType.Challenge;
+                challengeMessage.Flags = s_requiredFlags | Flags.TargetTypeServer | (clientFlags & Flags.NegotiateSeal);
+                RandomNumberGenerator.Fill((Span<byte>)challengeMessage.ServerChallenge);
+                SetField(ref challengeMessage.TargetName, 0, 0);
+                SetField(ref challengeMessage.TargetInfo, targetInfo.Length, sizeof(ChallengeMessage));
+                targetInfo.CopyTo(challengeSpan.Slice(sizeof(ChallengeMessage)));
+
+                _negotiateMessage = blob.ToArray();
+                _challengeMessage = challengeBytes;
+                _serverChallenge = challengeBytes.AsSpan(24, ChallengeLength).ToArray();
+                statusCode = NegotiateAuthenticationStatusCode.ContinueNeeded;
+                return challengeBytes;
+            }
+
+            private unsafe byte[]? ProcessAuthenticate(ReadOnlySpan<byte> blob, out NegotiateAuthenticationStatusCode statusCode)
+            {
+                if (_serverChallenge is null || _challengeMessage is null || blob.Length < sizeof(AuthenticateMessage) ||
+                    !NtlmHeader.SequenceEqual(blob.Slice(0, NtlmHeader.Length)))
+                {
+                    statusCode = NegotiateAuthenticationStatusCode.InvalidToken;
+                    return null;
+                }
+
+                ref readonly AuthenticateMessage authenticateMessage = ref MemoryMarshal.AsRef<AuthenticateMessage>(blob.Slice(0, sizeof(AuthenticateMessage)));
+                if (authenticateMessage.Header.MessageType != MessageType.Authenticate)
+                {
+                    statusCode = NegotiateAuthenticationStatusCode.InvalidToken;
+                    return null;
+                }
+
+                Flags flags = authenticateMessage.Flags;
+                if ((flags & s_requiredFlags) != s_requiredFlags)
+                {
+                    statusCode = NegotiateAuthenticationStatusCode.InvalidToken;
+                    return null;
+                }
+
+                if (_protectionLevel == ProtectionLevel.EncryptAndSign && (flags & Flags.NegotiateSeal) == 0)
+                {
+                    statusCode = NegotiateAuthenticationStatusCode.QopNotSupported;
+                    return null;
+                }
+
+                ReadOnlySpan<byte> userBytes = GetField(authenticateMessage.UserName, blob);
+                ReadOnlySpan<byte> domainBytes = GetField(authenticateMessage.DomainName, blob);
+                ReadOnlySpan<byte> ntChallengeResponse = GetField(authenticateMessage.NtChallengeResponse, blob);
+                if (userBytes.IsEmpty || (userBytes.Length & 1) != 0 || (domainBytes.Length & 1) != 0 ||
+                    ntChallengeResponse.Length < DigestLength + 28)
+                {
+                    statusCode = NegotiateAuthenticationStatusCode.InvalidToken;
+                    return null;
+                }
+
+                string userName = Encoding.Unicode.GetString(userBytes);
+                string domain = Encoding.Unicode.GetString(domainBytes);
+                if (!string.Equals(userName, _credential.UserName, StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(domain, _credential.Domain, StringComparison.OrdinalIgnoreCase))
+                {
+                    statusCode = NegotiateAuthenticationStatusCode.UnknownCredentials;
+                    return null;
+                }
+
+                Span<byte> ntlm2Hash = stackalloc byte[DigestLength];
+                makeNtlm2Hash(domain, userName, _credential.Password, ntlm2Hash);
+
+                Span<byte> expectedProof = stackalloc byte[DigestLength];
+                using (var proofHmac = IncrementalHash.CreateHMAC(HashAlgorithmName.MD5, ntlm2Hash))
+                {
+                    proofHmac.AppendData(_serverChallenge);
+                    proofHmac.AppendData(ntChallengeResponse.Slice(DigestLength));
+                    proofHmac.GetHashAndReset(expectedProof);
+                }
+
+                if (!CryptographicOperations.FixedTimeEquals(expectedProof, ntChallengeResponse.Slice(0, DigestLength)))
+                {
+                    statusCode = NegotiateAuthenticationStatusCode.UnknownCredentials;
+                    return null;
+                }
+
+                Span<byte> sessionBaseKey = stackalloc byte[SessionKeyLength];
+                HMACMD5.HashData(ntlm2Hash, ntChallengeResponse.Slice(0, DigestLength), sessionBaseKey);
+                byte[] exportedSessionKey = new byte[SessionKeyLength];
+                if ((flags & Flags.NegotiateKeyExchange) != 0)
+                {
+                    ReadOnlySpan<byte> encryptedSessionKey = GetField(authenticateMessage.EncryptedRandomSessionKey, blob);
+                    if (encryptedSessionKey.Length != SessionKeyLength)
+                    {
+                        statusCode = NegotiateAuthenticationStatusCode.InvalidToken;
+                        return null;
+                    }
+
+                    using (RC4 rc4 = new RC4(sessionBaseKey))
+                    {
+                        rc4.Transform(encryptedSessionKey, exportedSessionKey);
+                    }
+                }
+                else
+                {
+                    sessionBaseKey.CopyTo(exportedSessionKey);
+                }
+
+                byte[] authenticateForMic = blob.ToArray();
+                ref AuthenticateMessage authenticateForMicMessage = ref MemoryMarshal.AsRef<AuthenticateMessage>(authenticateForMic.AsSpan(0, sizeof(AuthenticateMessage)));
+                ((Span<byte>)authenticateForMicMessage.Mic).Clear();
+                Span<byte> expectedMic = stackalloc byte[DigestLength];
+                using (var micHmac = IncrementalHash.CreateHMAC(HashAlgorithmName.MD5, exportedSessionKey))
+                {
+                    micHmac.AppendData(_negotiateMessage);
+                    micHmac.AppendData(_challengeMessage);
+                    micHmac.AppendData(authenticateForMic);
+                    micHmac.GetHashAndReset(expectedMic);
+                }
+
+                ReadOnlySpan<byte> actualMic = blob.Slice((int)Marshal.OffsetOf<AuthenticateMessage>(nameof(AuthenticateMessage.Mic)), DigestLength);
+                if (!CryptographicOperations.FixedTimeEquals(expectedMic, actualMic))
+                {
+                    CryptographicOperations.ZeroMemory(exportedSessionKey);
+                    statusCode = NegotiateAuthenticationStatusCode.MessageAltered;
+                    return null;
+                }
+
+                _clientSigningKey = DeriveKey(exportedSessionKey, ClientSigningKeyMagic);
+                _serverSigningKey = DeriveKey(exportedSessionKey, ServerSigningKeyMagic);
+                _clientSealingKey = DeriveKey(exportedSessionKey, ClientSealingKeyMagic);
+                _serverSealingKey = DeriveKey(exportedSessionKey, ServerSealingKeyMagic);
+                ResetKeys();
+                _clientSequenceNumber = 0;
+                _serverSequenceNumber = 0;
+                _remoteIdentity = new GenericIdentity(
+                    string.IsNullOrEmpty(domain) ? userName : $"{domain}\\{userName}",
+                    NegotiationInfoClass.NTLM);
+                _isAuthenticated = true;
+                CryptographicOperations.ZeroMemory(exportedSessionKey);
+
+                statusCode = NegotiateAuthenticationStatusCode.Completed;
+                return null;
             }
 
             private static ReadOnlySpan<byte> GetField(MessageField field, ReadOnlySpan<byte> payload)
@@ -808,44 +1075,74 @@ namespace System.Net
             public override unsafe bool VerifyMIC(ReadOnlySpan<byte> message, ReadOnlySpan<byte> signature)
             {
                 // Check length and version
+                RC4? seal = _isServer ? _clientSeal : _serverSeal;
+                byte[]? signingKey = _isServer ? _clientSigningKey : _serverSigningKey;
+                uint sequenceNumber = _isServer ? _clientSequenceNumber : _serverSequenceNumber;
                 if (signature.Length != SignatureLength ||
                     BinaryPrimitives.ReadInt32LittleEndian(signature) != 1 ||
-                    _serverSeal == null ||
-                    _serverSigningKey == null)
+                    seal == null ||
+                    signingKey == null)
                 {
                     return false;
                 }
 
                 Span<byte> expectedSignature = stackalloc byte[SignatureLength];
-                CalculateSignature(message, _serverSequenceNumber, _serverSigningKey, _serverSeal, expectedSignature);
+                CalculateSignature(message, sequenceNumber, signingKey, seal, expectedSignature);
 
-                _serverSequenceNumber++;
+                if (_isServer)
+                {
+                    _clientSequenceNumber++;
+                }
+                else
+                {
+                    _serverSequenceNumber++;
+                }
 
                 return signature.SequenceEqual(expectedSignature);
             }
 
             public override void GetMIC(ReadOnlySpan<byte> message, IBufferWriter<byte> signature)
             {
-                Debug.Assert(_clientSeal is not null);
-                Debug.Assert(_clientSigningKey is not null);
+                RC4? seal = _isServer ? _serverSeal : _clientSeal;
+                byte[]? signingKey = _isServer ? _serverSigningKey : _clientSigningKey;
+                uint sequenceNumber = _isServer ? _serverSequenceNumber : _clientSequenceNumber;
+                Debug.Assert(seal is not null);
+                Debug.Assert(signingKey is not null);
 
                 Span<byte> signatureBuffer = signature.GetSpan(SignatureLength);
-                CalculateSignature(message, _clientSequenceNumber, _clientSigningKey, _clientSeal, signatureBuffer);
-                _clientSequenceNumber++;
+                CalculateSignature(message, sequenceNumber, signingKey, seal, signatureBuffer);
+                if (_isServer)
+                {
+                    _serverSequenceNumber++;
+                }
+                else
+                {
+                    _clientSequenceNumber++;
+                }
                 signature.Advance(SignatureLength);
             }
 
             public override NegotiateAuthenticationStatusCode Wrap(ReadOnlySpan<byte> input, IBufferWriter<byte> outputWriter, bool _/*requestEncryption*/, out bool isEncrypted)
             {
-                if (_clientSeal == null)
+                RC4? seal = _isServer ? _serverSeal : _clientSeal;
+                byte[]? signingKey = _isServer ? _serverSigningKey : _clientSigningKey;
+                uint sequenceNumber = _isServer ? _serverSequenceNumber : _clientSequenceNumber;
+                if (seal == null || signingKey == null)
                 {
                     throw new InvalidOperationException(SR.net_auth_noauth);
                 }
 
                 Span<byte> output = outputWriter.GetSpan(input.Length + SignatureLength);
-                _clientSeal.Transform(input, output.Slice(SignatureLength, input.Length));
-                CalculateSignature(input, _clientSequenceNumber, _clientSigningKey, _clientSeal, output.Slice(0, SignatureLength));
-                _clientSequenceNumber++;
+                seal.Transform(input, output.Slice(SignatureLength, input.Length));
+                CalculateSignature(input, sequenceNumber, signingKey, seal, output.Slice(0, SignatureLength));
+                if (_isServer)
+                {
+                    _serverSequenceNumber++;
+                }
+                else
+                {
+                    _clientSequenceNumber++;
+                }
 
                 isEncrypted = true;
                 outputWriter.Advance(input.Length + SignatureLength);
@@ -857,7 +1154,8 @@ namespace System.Net
             {
                 wasEncrypted = true;
 
-                if (_serverSeal == null)
+                RC4? seal = _isServer ? _clientSeal : _serverSeal;
+                if (seal == null)
                 {
                     throw new InvalidOperationException(SR.net_auth_noauth);
                 }
@@ -868,7 +1166,7 @@ namespace System.Net
                 }
 
                 Span<byte> output = outputWriter.GetSpan(input.Length - SignatureLength);
-                _serverSeal.Transform(input.Slice(SignatureLength), output.Slice(0, input.Length - SignatureLength));
+                seal.Transform(input.Slice(SignatureLength), output.Slice(0, input.Length - SignatureLength));
                 if (!VerifyMIC(output.Slice(0, input.Length - SignatureLength), input.Slice(0, SignatureLength)))
                 {
                     CryptographicOperations.ZeroMemory(output);
@@ -886,17 +1184,18 @@ namespace System.Net
                 unwrappedOffset = SignatureLength;
                 unwrappedLength = input.Length - SignatureLength;
 
-                if (_serverSeal == null)
-                {
-                    throw new InvalidOperationException(SR.net_auth_noauth);
-                }
-
                 if (input.Length < SignatureLength)
                 {
                     return NegotiateAuthenticationStatusCode.InvalidToken;
                 }
 
-                _serverSeal.Transform(input.Slice(SignatureLength), input.Slice(SignatureLength));
+                RC4? seal = _isServer ? _clientSeal : _serverSeal;
+                if (seal == null)
+                {
+                    throw new InvalidOperationException(SR.net_auth_noauth);
+                }
+
+                seal.Transform(input.Slice(SignatureLength), input.Slice(SignatureLength));
                 if (!VerifyMIC(input.Slice(SignatureLength), input.Slice(0, SignatureLength)))
                 {
                     CryptographicOperations.ZeroMemory(input.Slice(SignatureLength));

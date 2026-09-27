@@ -524,6 +524,7 @@ namespace System.Net.Security
                 throw new PlatformNotSupportedException(
                     "RinTLS does not support disabling hostname verification.");
             }
+            ValidateChainPolicy(chainPolicy);
             // CertificateChainPolicy takes precedence over CertificateRevocationCheckMode in
             // the public Ssl*AuthenticationOptions API. Reject both paths while RinTLS has no
             // revocation transport or managed chain-policy projection, rather than silently
@@ -639,7 +640,9 @@ namespace System.Net.Security
 
         private static ulong GetTrustedUnixTime(X509ChainPolicy? chainPolicy)
         {
-            DateTime verificationTime = chainPolicy?.VerificationTime ?? DateTime.UtcNow;
+            DateTime verificationTime = chainPolicy is null || chainPolicy.VerificationTimeIgnored
+                ? DateTime.UtcNow
+                : chainPolicy.VerificationTime;
             long unixTime = new DateTimeOffset(
                 verificationTime.ToUniversalTime()).ToUnixTimeSeconds();
             if (unixTime <= 0 || unixTime > MaxTrustedUnixTime)
@@ -649,6 +652,50 @@ namespace System.Net.Security
             }
 
             return (ulong)unixTime;
+        }
+
+        private static void ValidateChainPolicy(X509ChainPolicy? chainPolicy)
+        {
+            if (chainPolicy is null)
+            {
+                return;
+            }
+
+            // RinTLS currently verifies the peer chain, hostname, validity window and
+            // trust anchors inside the product TLS session. Do not silently discard
+            // managed chain-policy inputs that would change that decision.
+            if (chainPolicy.ApplicationPolicy.Count != 0 ||
+                chainPolicy.CertificatePolicy.Count != 0)
+            {
+                throw new PlatformNotSupportedException(
+                    "RinTLS does not support certificate or application policy OIDs yet.");
+            }
+            if (chainPolicy.ExtraStore.Count != 0)
+            {
+                throw new PlatformNotSupportedException(
+                    "RinTLS does not support managed extra-chain certificates yet.");
+            }
+            if (chainPolicy.VerificationFlags != X509VerificationFlags.NoFlag)
+            {
+                throw new PlatformNotSupportedException(
+                    "RinTLS does not support overriding certificate-chain verification flags.");
+            }
+            if (chainPolicy.RevocationFlag != X509RevocationFlag.ExcludeRoot)
+            {
+                throw new PlatformNotSupportedException(
+                    "RinTLS does not support managed revocation-scope selection yet.");
+            }
+            if (chainPolicy.UrlRetrievalTimeout != TimeSpan.Zero)
+            {
+                throw new PlatformNotSupportedException(
+                    "RinTLS does not support managed certificate URL retrieval yet.");
+            }
+            if (chainPolicy.CustomTrustStore.Count != 0 &&
+                chainPolicy.TrustMode != X509ChainTrustMode.CustomRootTrust)
+            {
+                throw new ArgumentException(
+                    "CustomTrustStore requires CustomRootTrust.", nameof(chainPolicy));
+            }
         }
 
         private static byte[] BuildCustomTrustBundle(

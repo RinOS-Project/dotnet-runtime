@@ -167,6 +167,31 @@ typedef struct
 
 typedef struct
 {
+    uint32_t Version;
+    uint32_t StructSize;
+    uint64_t DeviceGeneration;
+    uint32_t AddressFamily;
+    uint32_t SupportedFlags;
+    uint64_t MessagesReceived;
+    uint64_t MessagesSent;
+    uint64_t ErrorsReceived;
+    uint64_t ErrorsSent;
+    uint64_t DestinationUnreachableReceived;
+    uint64_t DestinationUnreachableSent;
+    uint64_t EchoRepliesReceived;
+    uint64_t EchoRepliesSent;
+    uint64_t EchoRequestsReceived;
+    uint64_t EchoRequestsSent;
+    uint64_t ParameterProblemsReceived;
+    uint64_t ParameterProblemsSent;
+    uint64_t TimeExceededReceived;
+    uint64_t TimeExceededSent;
+    uint64_t PacketTooBigReceived;
+    uint64_t PacketTooBigSent;
+} RinOSNetworkIcmpGlobalStatistics;
+
+typedef struct
+{
     uint8_t AddressBytes[16];
     uint32_t NumAddressBytes;
     uint32_t Port;
@@ -208,6 +233,9 @@ PALEXPORT int32_t SystemNative_GetRinOSNetworkUdpGlobalStatistics(
 
 PALEXPORT int32_t SystemNative_GetRinOSNetworkTcpGlobalStatistics(
     uint32_t addressFamily, RinOSNetworkTcpGlobalStatistics* retStats);
+
+PALEXPORT int32_t SystemNative_GetRinOSNetworkIcmpGlobalStatistics(
+    uint32_t addressFamily, RinOSNetworkIcmpGlobalStatistics* retStats);
 
 PALEXPORT int32_t SystemNative_GetIPv4GlobalStatistics(IPv4GlobalStatistics* retStats);
 

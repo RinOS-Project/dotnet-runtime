@@ -121,6 +121,32 @@ internal static partial class Interop
             public ulong MinimumTransmissionTimeout;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RinOSNetworkIcmpGlobalStatistics
+        {
+            public uint Version;
+            public uint StructSize;
+            public ulong DeviceGeneration;
+            public uint AddressFamily;
+            public uint SupportedFlags;
+            public ulong MessagesReceived;
+            public ulong MessagesSent;
+            public ulong ErrorsReceived;
+            public ulong ErrorsSent;
+            public ulong DestinationUnreachableReceived;
+            public ulong DestinationUnreachableSent;
+            public ulong EchoRepliesReceived;
+            public ulong EchoRepliesSent;
+            public ulong EchoRequestsReceived;
+            public ulong EchoRequestsSent;
+            public ulong ParameterProblemsReceived;
+            public ulong ParameterProblemsSent;
+            public ulong TimeExceededReceived;
+            public ulong TimeExceededSent;
+            public ulong PacketTooBigReceived;
+            public ulong PacketTooBigSent;
+        }
+
         [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_EnumerateInterfaceAddresses")]
         public static unsafe partial int EnumerateInterfaceAddresses(
             void* context,
@@ -148,6 +174,9 @@ internal static partial class Interop
 
         [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_GetRinOSNetworkTcpGlobalStatistics", SetLastError = true)]
         public static unsafe partial int GetRinOSNetworkTcpGlobalStatistics(uint addressFamily, RinOSNetworkTcpGlobalStatistics* info);
+
+        [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_GetRinOSNetworkIcmpGlobalStatistics", SetLastError = true)]
+        public static unsafe partial int GetRinOSNetworkIcmpGlobalStatistics(uint addressFamily, RinOSNetworkIcmpGlobalStatistics* info);
 
     }
 }

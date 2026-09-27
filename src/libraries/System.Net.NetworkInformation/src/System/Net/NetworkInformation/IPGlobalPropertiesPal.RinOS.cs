@@ -41,10 +41,10 @@ namespace System.Net.NetworkInformation
             new RinOSUdpStatistics(System.Net.Sockets.AddressFamily.InterNetworkV6);
 
         public override IcmpV4Statistics GetIcmpV4Statistics() =>
-            throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
+            new RinOSIcmpV4Statistics();
 
         public override IcmpV6Statistics GetIcmpV6Statistics() =>
-            throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
+            new RinOSIcmpV6Statistics();
 
         public override IPGlobalStatistics GetIPv4GlobalStatistics() =>
             new RinOSIPGlobalStatistics(System.Net.Sockets.AddressFamily.InterNetwork);

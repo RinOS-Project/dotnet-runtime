@@ -129,7 +129,7 @@ namespace System.Net.NetworkInformation
                         IPAddress address = new IPAddress(((ReadOnlySpan<byte>)addressInfo.AddressBytes)[..addressLength]);
                         if (addressLength == 16 && address.IsIPv6LinkLocal)
                         {
-                            address.ScopeId = (uint)addressInfo.InterfaceIndex;
+                            address.ScopeId = (uint)interfaceIndex;
                         }
 
                         networkInterface.AddAddress(address, addressInfo.PrefixLength);

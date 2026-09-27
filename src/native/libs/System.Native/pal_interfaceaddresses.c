@@ -567,6 +567,19 @@ int32_t SystemNative_GetNetworkInterfaces(int32_t * interfaceCount, NetworkInter
             return -1;
         }
 
+        // NetworkInterfaceInfo.InterfaceIndex is a signed int in the
+        // managed interop ABI.  Do not let a platform-sized ifindex wrap
+        // before RinOSNetworkInterface validates the returned snapshot.
+        if (ifindex > (uint32_t)INT_MAX)
+        {
+            freeifaddrs(head);
+            free(memoryBlock);
+            if (socketfd != -1)
+                close(socketfd);
+            errno = EOVERFLOW;
+            return -1;
+        }
+
         for (index = 0; index < (int)ifcount; index ++)
         {
             if (((NetworkInterfaceInfo*)memoryBlock)[index].InterfaceIndex == ifindex)

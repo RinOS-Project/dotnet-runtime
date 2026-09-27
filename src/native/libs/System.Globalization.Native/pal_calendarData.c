@@ -58,19 +58,13 @@ static const char* GetCalendarName(CalendarId calendarId)
         case GREGORIAN_ME_FRENCH:
         case GREGORIAN_XLIT_ENGLISH:
         case GREGORIAN_XLIT_FRENCH:
-        case JULIAN:
-        case LUNAR_ETO_CHN:
-        case LUNAR_ETO_KOR:
-        case LUNAR_ETO_ROKUYOU:
-        case SAKA:
-        // don't support the lunisolar calendars until we have a solid understanding
-        // of how they map to the ICU/CLDR calendars
-        case CHINESELUNISOLAR:
-        case KOREANLUNISOLAR:
-        case JAPANESELUNISOLAR:
-        case TAIWANLUNISOLAR:
-        default:
+            // ICU exposes one Gregorian keyword.  The managed Gregorian variants
+            // above differ in Windows-era formatting policy, but share this ICU
+            // calendar data.  Do not apply that fallback to managed-only calendar
+            // IDs below; returning Gregorian data for them would be false success.
             return GREGORIAN_NAME;
+        default:
+            return NULL;
     }
 }
 
@@ -82,8 +76,12 @@ Gets the associated CalendarId for the ICU calendar name.
 */
 static CalendarId GetCalendarId(const char* calendarName)
 {
+    if (calendarName == NULL)
+        return UNINITIALIZED_VALUE;
+
     if (strcasecmp(calendarName, GREGORIAN_NAME) == 0)
-        // TODO: what about the other gregorian types?
+        // ICU exposes one Gregorian keyword; the managed variants use the same
+        // calendar data and are selected by managed policy outside this PAL.
         return GREGORIAN;
     else if (strcasecmp(calendarName, JAPANESE_NAME) == 0)
         return JAPAN;
@@ -166,10 +164,23 @@ static ResultCode GetNativeCalendarName(const char* locale,
                                         UChar* nativeName,
                                         int32_t stringCapacity)
 {
+    const char* calendarName = GetCalendarName(calendarId);
+    if (calendarName == NULL)
+        return UnknownError;
+
     UErrorCode err = U_ZERO_ERROR;
     ULocaleDisplayNames* pDisplayNames = uldn_open(locale, ULDN_STANDARD_NAMES, &err);
 
-    uldn_keyValueDisplayName(pDisplayNames, "calendar", GetCalendarName(calendarId), nativeName, stringCapacity, &err);
+    if (pDisplayNames == NULL)
+    {
+        if (U_SUCCESS(err))
+            err = U_MEMORY_ALLOCATION_ERROR;
+        return GetResultCode(err);
+    }
+    if (U_FAILURE(err))
+        return GetResultCode(err);
+
+    uldn_keyValueDisplayName(pDisplayNames, "calendar", calendarName, nativeName, stringCapacity, &err);
 
     uldn_close(pDisplayNames);
     return GetResultCode(err);
@@ -185,6 +196,9 @@ with the requested value.
 ResultCode GlobalizationNative_GetCalendarInfo(
     const UChar* localeName, CalendarId calendarId, CalendarDataType dataType, UChar* result, int32_t resultCapacity)
 {
+    if (GetCalendarName(calendarId) == NULL)
+        return UnknownError;
+
     UErrorCode err = U_ZERO_ERROR;
     char locale[ULOC_FULLNAME_CAPACITY];
     GetLocale(localeName, locale, ULOC_FULLNAME_CAPACITY, false, &err);
@@ -297,6 +311,10 @@ static int32_t EnumSymbols(const char* locale,
                            EnumCalendarInfoCallback callback,
                            const void* context)
 {
+    const char* calendarName = GetCalendarName(calendarId);
+    if (calendarName == NULL)
+        return false;
+
     UErrorCode err = U_ZERO_ERROR;
     UDateFormat* pFormat = udat_open(UDAT_DEFAULT, UDAT_DEFAULT, locale, NULL, 0, NULL, 0, &err);
 
@@ -306,7 +324,7 @@ static int32_t EnumSymbols(const char* locale,
     char localeWithCalendarName[ULOC_FULLNAME_CAPACITY];
     STRING_COPY(localeWithCalendarName, sizeof(localeWithCalendarName), locale);
 
-    uloc_setKeywordValue("calendar", GetCalendarName(calendarId), localeWithCalendarName, ULOC_FULLNAME_CAPACITY, &err);
+    uloc_setKeywordValue("calendar", calendarName, localeWithCalendarName, ULOC_FULLNAME_CAPACITY, &err);
 
     UCalendar* pCalendar = ucal_open(NULL, 0, localeWithCalendarName, UCAL_DEFAULT, &err);
 
@@ -403,6 +421,10 @@ static int32_t EnumAbbrevEraNames(const char* locale,
                                   EnumCalendarInfoCallback callback,
                                   const void* context)
 {
+    const char* calendarName = GetCalendarName(calendarId);
+    if (calendarName == NULL)
+        return false;
+
     // The C-API for ICU provides no way to get at the abbreviated era names for a calendar (so we can't use EnumSymbols
     // here). Instead we will try to walk the ICU resource tables directly and fall back to regular era names if can't
     // find good data.
@@ -417,11 +439,9 @@ static int32_t EnumAbbrevEraNames(const char* locale,
     while (true)
     {
         UErrorCode status = U_ZERO_ERROR;
-        const char* name = GetCalendarName(calendarId);
-
         UResourceBundle* rootResBundle = ures_open(NULL, localeNamePtr, &status);
         UResourceBundle* calResBundle = ures_getByKey(rootResBundle, "calendar", NULL, &status);
-        UResourceBundle* targetCalResBundle = ures_getByKey(calResBundle, name, NULL, &status);
+        UResourceBundle* targetCalResBundle = ures_getByKey(calResBundle, calendarName, NULL, &status);
         UResourceBundle* erasColResBundle = ures_getByKey(targetCalResBundle, "eras", NULL, &status);
         UResourceBundle* erasResBundle = ures_getByKey(erasColResBundle, "narrow", NULL, &status);
 

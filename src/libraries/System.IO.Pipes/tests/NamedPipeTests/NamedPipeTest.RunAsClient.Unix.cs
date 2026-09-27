@@ -30,6 +30,15 @@ namespace System.IO.Pipes.Tests
             RemoteExecutor.Invoke(new Action<string, string>(ServerConnectAsId), pipeName, pairID.ToString()).Dispose();
         }
 
+        [ConditionalFact(typeof(NamedPipeTest_RunAsClient), nameof(IsRemoteExecutorSupportedAndPrivilegedProcess))]
+        [ActiveIssue("https://github.com/dotnet/runtime/issues/0")]
+        public void RunAsClient_Unix_RestoresEuidAfterWorkerException()
+        {
+            string pipeName = Path.GetRandomFileName();
+            uint pairID = (uint)(Math.Abs(new Random(5125124).Next()));
+            RemoteExecutor.Invoke(new Action<string, string>(ServerConnectAsIdAndThrow), pipeName, pairID.ToString()).Dispose();
+        }
+
         private static void ServerConnectAsId(string pipeName, string pairIDString)
         {
             uint pairID = uint.Parse(pairIDString);
@@ -49,6 +58,24 @@ namespace System.IO.Pipes.Tests
                 });
                 Assert.True(ran, "Expected delegate to have been invoked");
                 Assert.Equal(pairID, ranAs);
+            }
+        }
+
+        private static void ServerConnectAsIdAndThrow(string pipeName, string pairIDString)
+        {
+            uint pairID = uint.Parse(pairIDString);
+            Assert.NotEqual(-1, seteuid(pairID));
+            using (var outbound = new NamedPipeServerStream(pipeName, PipeDirection.Out))
+            using (var handle = RemoteExecutor.Invoke(new Action<string, string>(ClientConnectAsID), pipeName, pairIDString))
+            {
+                outbound.WaitForConnection();
+                Assert.NotEqual(-1, seteuid(0));
+
+                Assert.Throws<InvalidOperationException>(() => outbound.RunAsClient(() => {
+                    Assert.Equal(pairID, geteuid());
+                    throw new InvalidOperationException("worker failure");
+                }));
+                Assert.Equal(0u, geteuid());
             }
         }
 

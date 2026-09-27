@@ -1007,10 +1007,12 @@ static void ConvertMessageHeaderToMsghdr(struct msghdr* header, const MessageHea
 
 int32_t SystemNative_GetControlMessageBufferSize(int32_t isIPv4, int32_t isIPv6)
 {
+    /* RinOS publishes the ancillary-data packet-info ABI using the same
+     * in_pktinfo/in6_pktinfo payloads as the managed networking contract. */
     // Note: it is possible that the address family of the socket is neither
     //       AF_INET nor AF_INET6. In this case both inputs will be 0 and
     //       the control message buffer size should be zero.
-#if defined(CMSG_SPACE) && !defined(TARGET_RINOS)
+#if defined(CMSG_SPACE)
     return (isIPv4 != 0 ? CMSG_SPACE(sizeof(struct in_pktinfo)) : 0) + (isIPv6 != 0 ? CMSG_SPACE(sizeof(struct in6_pktinfo)) : 0);
 #else // CMSG_SPACE
     (void)isIPv4;
@@ -1019,7 +1021,7 @@ int32_t SystemNative_GetControlMessageBufferSize(int32_t isIPv4, int32_t isIPv6)
 #endif // CMSG_SPACE
 }
 
-#if defined(CMSG_SPACE) && !defined(TARGET_RINOS)
+#if defined(CMSG_SPACE)
 static int32_t GetIPv4PacketInformation(struct cmsghdr* controlMessage, IPPacketInformation* packetInfo)
 {
     assert(controlMessage != NULL);
@@ -1033,7 +1035,7 @@ static int32_t GetIPv4PacketInformation(struct cmsghdr* controlMessage, IPPacket
 
     struct in_pktinfo* pktinfo = (struct in_pktinfo*)CMSG_DATA(controlMessage);
     ConvertInAddrToByteArray(&packetInfo->Address.Address[0], NUM_BYTES_IN_IPV4_ADDRESS, &pktinfo->ipi_addr);
-#if HAVE_IN_PKTINFO
+#if HAVE_IN_PKTINFO || defined(TARGET_RINOS)
     packetInfo->InterfaceIndex = (int32_t)pktinfo->ipi_ifindex;
 #elif HAVE_GETIFADDRS
     packetInfo->InterfaceIndex = 0;
@@ -1140,15 +1142,6 @@ SystemNative_TryGetIPPacketInformation(MessageHeader* messageHeader, int32_t isI
 int32_t
 SystemNative_TryGetIPPacketInformation(MessageHeader* messageHeader, int32_t isIPv4, IPPacketInformation* packetInfo)
 {
-#if defined(TARGET_RINOS)
-    // RinOS has not published the ancillary-data packet-info ABI yet.  Do not
-    // infer interface metadata from the payload address; callers must treat
-    // the absence of packet information as a normal unsupported result.
-    (void)messageHeader;
-    (void)isIPv4;
-    (void)packetInfo;
-    return 0;
-#else
     if (messageHeader == NULL || packetInfo == NULL)
     {
         return 0;
@@ -1171,7 +1164,6 @@ SystemNative_TryGetIPPacketInformation(MessageHeader* messageHeader, int32_t isI
     }
     packetInfo->InterfaceIndex = 0;
     return 1;
-#endif
 }
 #endif // !CMSG_SPACE
 
@@ -2148,11 +2140,9 @@ static bool TryGetPlatformSocketOption(int32_t socketOptionLevel, int32_t socket
                     return true;
 #endif
 
-#if !defined(TARGET_RINOS)
                 case SocketOptionName_SO_IP_PKTINFO:
                     *optName = IP_PKTINFO;
                     return true;
-#endif
 
                 default:
                     return false;
@@ -2173,11 +2163,9 @@ static bool TryGetPlatformSocketOption(int32_t socketOptionLevel, int32_t socket
                     *optName = IPV6_V6ONLY;
                     return true;
 
-#if !defined(TARGET_RINOS)
                 case SocketOptionName_SO_IP_PKTINFO:
                     *optName = IPV6_RECVPKTINFO;
                     return true;
-#endif
 
                 case SocketOptionName_SO_IP_MULTICAST_IF:
                     *optName = IPV6_MULTICAST_IF;

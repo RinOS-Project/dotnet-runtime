@@ -17,5 +17,24 @@ internal static partial class Interop
 
         [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_SysConf", SetLastError = true)]
         internal static partial long SysConf(SysConfName name);
+
+#if TARGET_RINOS
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct RinOSMemoryAvailability
+        {
+            internal uint Flags;
+            internal uint Reserved;
+            internal ulong AvailableVmBytes;
+            internal ulong TotalFreeVirtualBytes;
+            internal ulong LargestFreeVirtualExtentBytes;
+        }
+
+        internal const uint RinOSMemoryAvailabilityVmValid = 0x1u;
+        internal const uint RinOSMemoryAvailabilityVirtualValid = 0x2u;
+
+        [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_GetRinOSMemoryAvailability", SetLastError = true)]
+        internal static partial int GetRinOSMemoryAvailability(
+            out RinOSMemoryAvailability availability);
+#endif
     }
 }

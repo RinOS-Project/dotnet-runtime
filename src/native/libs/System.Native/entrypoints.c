@@ -103,6 +103,7 @@ static const Entry s_sysNative[] =
     DllImportEntry(SystemNative_MAdvise)
     DllImportEntry(SystemNative_MSync)
     DllImportEntry(SystemNative_SysConf)
+    DllImportEntry(SystemNative_GetRinOSMemoryAvailability)
     DllImportEntry(SystemNative_FTruncate)
     DllImportEntry(SystemNative_Poll)
     DllImportEntry(SystemNative_PosixFAdvise)

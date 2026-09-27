@@ -35,6 +35,9 @@
 #endif
 #include <unistd.h>
 #include <limits.h>
+#if defined(TARGET_RINOS)
+#include <rin/contract_abi.h>
+#endif
 #if HAVE_FCOPYFILE
 #include <copyfile.h>
 #elif HAVE_SENDFILE_4
@@ -1182,6 +1185,53 @@ int64_t SystemNative_SysConf(int32_t name)
     assert_msg(false, "Unknown SysConf name", (int)name);
     errno = EINVAL;
     return -1;
+}
+
+int32_t SystemNative_GetRinOSMemoryAvailability(
+    RinOSMemoryAvailability* availability)
+{
+    if (availability == NULL)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    memset(availability, 0, sizeof(*availability));
+#if defined(TARGET_RINOS)
+    RinSystemInfoV2 info = {0};
+    intptr_t result;
+    info.struct_size = sizeof(info);
+    info.version = RIN_SYSTEM_INFO_VERSION_2;
+    result = syscall(SYS_SYSTEM_INFO_GET, &info);
+    if (result != 0 || info.struct_size < sizeof(info) ||
+        info.version != RIN_SYSTEM_INFO_VERSION_2 ||
+        (info.flags & RIN_SYSTEM_INFO_FLAG_MEMORY_VALID) == 0u)
+    {
+        if (result == 0) errno = EIO;
+        return -1;
+    }
+
+    if (UINT64_MAX - info.available_memory_bytes <
+        info.available_pagefile_bytes)
+    {
+        errno = EOVERFLOW;
+        return -1;
+    }
+    availability->Flags = RINOS_MEMORY_AVAILABILITY_VM_VALID;
+    availability->AvailableVmBytes = info.available_memory_bytes +
+                                     info.available_pagefile_bytes;
+    if ((info.flags & RIN_SYSTEM_INFO_FLAG_VIRTUAL_MEMORY_VALID) != 0u)
+    {
+        availability->Flags |= RINOS_MEMORY_AVAILABILITY_VIRTUAL_VALID;
+        availability->TotalFreeVirtualBytes = info.total_free_virtual_bytes;
+        availability->LargestFreeVirtualExtentBytes =
+            info.largest_free_virtual_extent_bytes;
+    }
+    return 0;
+#else
+    errno = ENOTSUP;
+    return -1;
+#endif
 }
 
 int32_t SystemNative_FTruncate(intptr_t fd, int64_t length)

@@ -304,6 +304,18 @@ typedef enum
     PAL_SC_AVPHYS_PAGES = 4, // Number of available physical memory pages
 } SysConfName;
 
+#define RINOS_MEMORY_AVAILABILITY_VM_VALID      0x00000001u
+#define RINOS_MEMORY_AVAILABILITY_VIRTUAL_VALID 0x00000002u
+
+typedef struct
+{
+    uint32_t Flags;
+    uint32_t Reserved;
+    uint64_t AvailableVmBytes;
+    uint64_t TotalFreeVirtualBytes;
+    uint64_t LargestFreeVirtualExtentBytes;
+} RinOSMemoryAvailability;
+
 /**
  * Constants passed to posix_advise to give hints to the kernel about the type of I/O
  * operations that will occur.
@@ -675,6 +687,14 @@ PALEXPORT int32_t SystemNative_MSync(void* address, uint64_t length, int32_t fla
  * which case errno is unchanged.
  */
 PALEXPORT int64_t SystemNative_SysConf(int32_t name);
+
+/**
+ * Gets the product-owned RinOS memory availability snapshot.  The snapshot
+ * includes physical memory plus enabled swap and the current process VMA
+ * free-space summary; it never reads a host /proc or swap file.
+ */
+PALEXPORT int32_t SystemNative_GetRinOSMemoryAvailability(
+    RinOSMemoryAvailability* availability);
 
 /**
  * Truncate a file to given length. Implemented as shim to ftruncate(2).

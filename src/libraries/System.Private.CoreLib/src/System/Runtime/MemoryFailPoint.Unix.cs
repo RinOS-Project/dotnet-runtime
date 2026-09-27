@@ -14,11 +14,25 @@ namespace System.Runtime
 
         private static bool CheckForAvailableMemory(out ulong availPageFile, out ulong totalAddressSpaceFree)
         {
-            // RinOS and the other Unix PALs expose the physical-memory snapshot
-            // through SysConf.  It is intentionally used as a lower bound for
-            // available VM: the product does not expose a page-file accounting
-            // ABI, so claiming swap capacity here would make MemoryFailPoint
-            // report success without an owned source of truth.
+#if TARGET_RINOS
+            Interop.Sys.RinOSMemoryAvailability availability;
+            if (Interop.Sys.GetRinOSMemoryAvailability(out availability) != 0 ||
+                (availability.Flags & Interop.Sys.RinOSMemoryAvailabilityVmValid) == 0u ||
+                (availability.Flags & Interop.Sys.RinOSMemoryAvailabilityVirtualValid) == 0u)
+            {
+                availPageFile = 0;
+                totalAddressSpaceFree = 0;
+                // A broken or unavailable product memory snapshot must not
+                // become a successful gate.
+                return true;
+            }
+
+            availPageFile = availability.AvailableVmBytes;
+            totalAddressSpaceFree = availability.TotalFreeVirtualBytes;
+            return true;
+#else
+            // Unix PALs that do not expose a page-file/VMA availability
+            // snapshot use the physical-memory SysConf value as a lower bound.
             long pageSize = Interop.Sys.SysConf(Interop.Sys.SysConfName._SC_PAGESIZE);
             long availablePages = Interop.Sys.SysConf(Interop.Sys.SysConfName._SC_AVPHYS_PAGES);
             if (pageSize <= 0 || availablePages < 0)
@@ -51,6 +65,7 @@ namespace System.Runtime
             // synthesizing a host /proc or platform-specific map scan.
             totalAddressSpaceFree = GetTopOfMemory();
             return true;
+#endif
         }
 
 #pragma warning disable IDE0060

@@ -21,6 +21,11 @@
 #include "mdfileformat.h"
 #include <configuration.h>
 
+#if defined(HOST_UNIX) && !defined(TARGET_WASM) && !defined(DACCESS_COMPILE)
+#include <link.h>
+#include <stdint.h>
+#endif
+
 #ifndef DACCESS_COMPILE
 UINT32 g_nClrInstanceId = 0;
 
@@ -2327,6 +2332,46 @@ void PutRiscV64AuipcCombo(UINT32 * pCode, INT64 offset, bool isStype)
 //======================================================================
 // This function returns true, if it can determine that the instruction pointer
 // refers to a code address that belongs in the range of the given image.
+#if defined(HOST_UNIX) && !defined(TARGET_WASM) && !defined(DACCESS_COMPILE)
+struct IsIPInModuleData
+{
+    uintptr_t moduleBase;
+    uintptr_t instructionPointer;
+    BOOL result;
+};
+
+static int IsIPInModuleCallback(struct dl_phdr_info* info, size_t, void* context)
+{
+    IsIPInModuleData* data = static_cast<IsIPInModuleData*>(context);
+    if (static_cast<uintptr_t>(info->dlpi_addr) != data->moduleBase)
+    {
+        return 0;
+    }
+
+    for (ElfW(Half) index = 0; index < info->dlpi_phnum; ++index)
+    {
+        const ElfW(Phdr)& header = info->dlpi_phdr[index];
+        if (header.p_type != PT_LOAD || header.p_memsz == 0)
+        {
+            continue;
+        }
+
+        const uintptr_t segmentStart = static_cast<uintptr_t>(info->dlpi_addr) +
+                                       static_cast<uintptr_t>(header.p_vaddr);
+        const uintptr_t segmentSize = static_cast<uintptr_t>(header.p_memsz);
+        if (segmentStart <= UINTPTR_MAX - segmentSize &&
+            data->instructionPointer >= segmentStart &&
+            data->instructionPointer - segmentStart < segmentSize)
+        {
+            data->result = TRUE;
+            break;
+        }
+    }
+
+    return 1;
+}
+#endif
+
 BOOL IsIPInModule(PTR_VOID pModuleBaseAddress, PCODE ip)
 {
     STATIC_CONTRACT_LEAF;
@@ -2342,7 +2387,6 @@ BOOL IsIPInModule(PTR_VOID pModuleBaseAddress, PCODE ip)
     param.ip = ip;
     param.fRet = FALSE;
 
-// UNIXTODO: implement a proper version for PAL
 #ifdef HOST_WINDOWS
     PAL_TRY(Param *, pParam, &param)
     {
@@ -2412,6 +2456,16 @@ lDone: ;
     {
     }
     PAL_ENDTRY
+#elif defined(HOST_UNIX) && !defined(TARGET_WASM) && !defined(DACCESS_COMPILE)
+    if (pModuleBaseAddress != NULL && ip != NULL)
+    {
+        IsIPInModuleData data{
+            static_cast<uintptr_t>(pModuleBaseAddress),
+            static_cast<uintptr_t>(ip),
+            FALSE};
+        dl_iterate_phdr(&IsIPInModuleCallback, &data);
+        param.fRet = data.result;
+    }
 #endif // HOST_WINDOWS
 
     return param.fRet;

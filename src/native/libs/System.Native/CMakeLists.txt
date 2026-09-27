@@ -172,6 +172,7 @@ endif()
 if (CLR_CMAKE_TARGET_ARCH_WASM AND DEFINED CMAKE_TZD_DIR)
     cmake_path(CONVERT "${CMAKE_TZD_DIR}/" TO_CMAKE_PATH_LIST TZ_FILES_DIR NORMALIZE)
     file(GLOB_RECURSE TZ_FILES RELATIVE "${TZ_FILES_DIR}" "${TZ_FILES_DIR}*")
+    list(SORT TZ_FILES)
     string(REPLACE ";" "\",\"" TZ_FILES "${TZ_FILES}")
     configure_file(pal_datetime_time_zone_data-config.h.in inc/pal_datetime_time_zone_data-config.h)
 

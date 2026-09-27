@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include <assert.h>
 #include <stdbool.h>
 #include <minipal/utils.h>
 
@@ -71,23 +70,51 @@ extern const char *g_dataIndex[];
 
 const char* SystemNative_GetTimeZoneData(const char* name, int* length)
 {
+    if (length == NULL)
+    {
+        return NULL;
+    }
+
+    *length = 0;
+
+    if (name == NULL)
+    {
+        return NULL;
+    }
+
 #ifdef TZ_DATA_ENABLED
     // Small size and speed optimization: skip comparing the prefix.
     static const char TZ_PREFIX[] = "/usr/share/zoneinfo/";
     static const size_t TZ_PREFIX_LENGTH = STRING_LENGTH(TZ_PREFIX);
 
-    // TODO: use a binary search here. The index is ~500 entries long.
-    assert(strncmp(TZ_PREFIX, name, TZ_PREFIX_LENGTH) == 0);
-    for (size_t i = 0; i < ARRAY_SIZE(g_nameIndex); i++)
+    if (strncmp(TZ_PREFIX, name, TZ_PREFIX_LENGTH) != 0)
     {
-        if (strcmp(name + TZ_PREFIX_LENGTH, g_nameIndex[i]) == 0)
+        return NULL;
+    }
+
+    const char* relative_name = name + TZ_PREFIX_LENGTH;
+    size_t lower = 0;
+    size_t upper = ARRAY_SIZE(g_nameIndex);
+    while (lower < upper)
+    {
+        size_t middle = lower + ((upper - lower) / 2);
+        int comparison = strcmp(relative_name, g_nameIndex[middle]);
+        if (comparison == 0)
         {
-            *length = (int)(g_dataIndex[i + 1] - g_dataIndex[i]);
-            return g_dataIndex[i];
+            *length = (int)(g_dataIndex[middle + 1] - g_dataIndex[middle]);
+            return g_dataIndex[middle];
+        }
+
+        if (comparison < 0)
+        {
+            upper = middle;
+        }
+        else
+        {
+            lower = middle + 1;
         }
     }
 #endif // TZ_DATA_ENABLED
 
-    *length = 0;
     return NULL;
 }

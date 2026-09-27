@@ -39,10 +39,10 @@ namespace System.Runtime
 
             availPageFile = availablePagesUnsigned * pageSizeUnsigned;
 
-            // Unix does not provide the Windows-style free virtual-address
-            // extent query through this PAL.  The GC owns virtual reservations,
-            // so keep the address-space side conservative and do not synthesize
-            // a host /proc or platform-specific map scan.
+            // Unix does not provide the Windows-style total free virtual-address
+            // extent query through this PAL.  Use the product VMM's anonymous
+            // mapping probe for the contiguous segment check below instead of
+            // synthesizing a host /proc or platform-specific map scan.
             totalAddressSpaceFree = GetTopOfMemory();
             return true;
         }
@@ -54,11 +54,25 @@ namespace System.Runtime
         // probe again.
         private static void CheckForFreeAddressSpace(ulong size, bool shouldThrow)
         {
-            // The current product ABI has no address-space extent enumeration.
-            // Physical availability is checked above; the GC's own reserve and
-            // commit path remains authoritative for virtual address space.
-            LastKnownFreeAddressSpace = long.MaxValue;
+            IntPtr address = Interop.Sys.MMap(
+                IntPtr.Zero,
+                size,
+                Interop.Sys.MemoryMappedProtections.PROT_NONE,
+                Interop.Sys.MemoryMappedFlags.MAP_PRIVATE |
+                    Interop.Sys.MemoryMappedFlags.MAP_ANONYMOUS,
+                new IntPtr(-1),
+                0);
+            bool hasSpace = address != IntPtr.Zero;
+            if (hasSpace)
+                hasSpace = Interop.Sys.MUnmap(address, size) == 0;
+
+            LastKnownFreeAddressSpace = hasSpace
+                ? (long)Math.Min(size, (ulong)long.MaxValue)
+                : 0;
             LastTimeCheckingAddressSpace = Environment.TickCount;
+
+            if (!hasSpace && shouldThrow)
+                throw new InsufficientMemoryException(SR.InsufficientMemory_MemFailPoint_VAFrag);
         }
 
         // Allocate a specified number of bytes, commit them and free them. This should enlarge

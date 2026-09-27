@@ -352,8 +352,8 @@ namespace System.Net
                 else
                 {
                     Debug.Assert(!incomingBlob.IsEmpty);
-                    _isAuthenticated = true;
                     outgoingBlob = ProcessChallenge(incomingBlob, out statusCode);
+                    _isAuthenticated = statusCode == NegotiateAuthenticationStatusCode.Completed;
                 }
 
                 return outgoingBlob;

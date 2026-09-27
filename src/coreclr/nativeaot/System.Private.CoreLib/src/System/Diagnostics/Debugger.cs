@@ -46,10 +46,10 @@ namespace System.Diagnostics
         /// </summary>
         public static void Log(int level, string category, string message)
         {
-            if (IsLogging())
-            {
-                throw new NotImplementedException(); // TODO: Implement Debugger.Log, IsLogging
-            }
+            // NativeAOT has no managed debugger logging channel. Keep the
+            // documented no-op behavior until a debugger transport exposes
+            // one; an unavailable optional diagnostic sink must not turn a
+            // logging call into an application failure.
         }
 
         /// <summary>
@@ -57,10 +57,7 @@ namespace System.Diagnostics
         /// </summary>
         public static bool IsLogging()
         {
-            if (string.Empty.Length != 0)
-            {
-                throw new NotImplementedException(); // TODO: Implement Debugger.Log, IsLogging
-            }
+            // There is no NativeAOT debugger logging channel yet.
             return false;
         }
 

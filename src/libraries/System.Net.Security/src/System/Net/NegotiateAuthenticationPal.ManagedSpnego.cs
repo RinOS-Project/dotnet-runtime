@@ -32,6 +32,8 @@ namespace System.Net
             private byte[]? _spnegoMechList;
             private bool _isAuthenticated;
             private bool _supportKerberos;
+            private bool _serverAwaitingMechanismToken;
+            private string? _serverSelectedMechanism;
             private NegotiateAuthenticationPal? _optimisticMechanism;
             private NegotiateAuthenticationPal? _mechanism;
 
@@ -111,13 +113,15 @@ namespace System.Net
                 _mechanism?.Dispose();
                 _mechanism = null;
                 _isAuthenticated = false;
+                _serverAwaitingMechanismToken = false;
+                _serverSelectedMechanism = null;
             }
 
             public override unsafe byte[]? GetOutgoingBlob(ReadOnlySpan<byte> incomingBlob, out NegotiateAuthenticationStatusCode statusCode)
             {
                 if (_isServer)
                 {
-                    return _mechanism is null
+                    return _mechanism is null && !_serverAwaitingMechanismToken
                         ? CreateServerResponse(incomingBlob, out statusCode)
                         : ProcessServerResponse(incomingBlob, out statusCode);
                 }
@@ -372,13 +376,23 @@ namespace System.Net
                     return null;
                 }
 
+                _spnegoMechList = mechanismList;
+
                 if (selectedMechanism is null || mechanismToken is null || mechanismToken.Length == 0)
                 {
-                    statusCode = NegotiateAuthenticationStatusCode.Unsupported;
-                    return null;
+                    if (selectedMechanism is null)
+                    {
+                        statusCode = NegotiateAuthenticationStatusCode.Unsupported;
+                        return null;
+                    }
+
+                    _serverSelectedMechanism = selectedMechanism;
+                    _serverAwaitingMechanismToken = true;
+                    statusCode = NegotiateAuthenticationStatusCode.ContinueNeeded;
+                    return CreateServerResponse(NegState.AcceptIncomplete, ReadOnlySpan<byte>.Empty, includeMechanism: true);
                 }
 
-                _spnegoMechList = mechanismList;
+                _serverSelectedMechanism = selectedMechanism;
                 _mechanism = CreateServerMechanismForPackage(selectedMechanism);
                 byte[]? response = _mechanism.GetOutgoingBlob(mechanismToken, out statusCode);
                 if (statusCode != NegotiateAuthenticationStatusCode.ContinueNeeded &&
@@ -386,8 +400,11 @@ namespace System.Net
                 {
                     _mechanism.Dispose();
                     _mechanism = null;
+                    _serverSelectedMechanism = null;
                     return null;
                 }
+
+                _serverAwaitingMechanismToken = false;
 
                 return CreateServerResponse(
                     statusCode == NegotiateAuthenticationStatusCode.Completed ? NegState.AcceptCompleted : NegState.AcceptIncomplete,
@@ -458,16 +475,30 @@ namespace System.Net
 
                 if (mechanismToken is null || mechanismToken.Length == 0)
                 {
-                    statusCode = state == NegState.AcceptCompleted
-                        ? NegotiateAuthenticationStatusCode.Completed
-                        : NegotiateAuthenticationStatusCode.InvalidToken;
-                    _isAuthenticated = statusCode == NegotiateAuthenticationStatusCode.Completed;
-                    return _isAuthenticated
-                        ? CreateServerResponse(NegState.AcceptCompleted, ReadOnlySpan<byte>.Empty, includeMechanism: false)
-                        : null;
+                    if (state != NegState.AcceptCompleted || _mechanism is null || !_mechanism.IsAuthenticated)
+                    {
+                        statusCode = NegotiateAuthenticationStatusCode.InvalidToken;
+                        return null;
+                    }
+
+                    _isAuthenticated = true;
+                    statusCode = NegotiateAuthenticationStatusCode.Completed;
+                    return CreateServerResponse(NegState.AcceptCompleted, ReadOnlySpan<byte>.Empty, includeMechanism: false);
                 }
 
-                byte[]? responseToken = _mechanism!.GetOutgoingBlob(mechanismToken, out statusCode);
+                if (_mechanism is null)
+                {
+                    if (!_serverAwaitingMechanismToken || _serverSelectedMechanism is null || mechanismToken is null || mechanismToken.Length == 0)
+                    {
+                        statusCode = NegotiateAuthenticationStatusCode.InvalidToken;
+                        return null;
+                    }
+
+                    _mechanism = CreateServerMechanismForPackage(_serverSelectedMechanism);
+                    _serverAwaitingMechanismToken = false;
+                }
+
+                byte[]? responseToken = _mechanism.GetOutgoingBlob(mechanismToken, out statusCode);
                 if (statusCode != NegotiateAuthenticationStatusCode.ContinueNeeded &&
                     statusCode != NegotiateAuthenticationStatusCode.Completed)
                 {

@@ -1089,10 +1089,23 @@ namespace ETW
         static HRESULT ReadInMemorySymbols(Module* pmodule, DWORD symbolsReadOffset, BYTE* pSymbolBytes,
             DWORD countSymbolBytes,    DWORD* pCountSymbolBytesRead);
 #else
-        static VOID EmitCodeSymbols(Module* pModule) {}
-        static HRESULT GetInMemorySymbolsLength(Module* pModule, DWORD* pCountSymbolBytes) { return S_OK; }
-        static HRESULT ReadInMemorySymbols(Module* pmodule, DWORD symbolsReadOffset, BYTE* pSymbolBytes,
-            DWORD countSymbolBytes, DWORD* pCountSymbolBytesRead) {    return S_OK; }
+        static VOID EmitCodeSymbols(Module*) {}
+        static HRESULT GetInMemorySymbolsLength(Module*, DWORD* pCountSymbolBytes)
+        {
+            if (pCountSymbolBytes != nullptr)
+            {
+                *pCountSymbolBytes = 0;
+            }
+            return E_NOTIMPL;
+        }
+        static HRESULT ReadInMemorySymbols(Module*, DWORD, BYTE*, DWORD, DWORD* pCountSymbolBytesRead)
+        {
+            if (pCountSymbolBytesRead != nullptr)
+            {
+                *pCountSymbolBytesRead = 0;
+            }
+            return E_NOTIMPL;
+        }
 #endif // FEATURE_EVENT_TRACE
     };
 

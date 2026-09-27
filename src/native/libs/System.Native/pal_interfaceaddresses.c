@@ -440,6 +440,7 @@ c_static_assert(sizeof_member(LinkLayerAddressInfo, AddressBytes) == 12);
 c_static_assert(sizeof_member(NetworkInterfaceInfo, AddressBytes) == 12);
 c_static_assert(sizeof(NetworkInterfaceInfo) >= sizeof(IpAddressInfo));
 c_static_assert(sizeof(RinOSNetworkPrimaryInfo) == 36);
+c_static_assert(sizeof(RinOSNetworkInterfaceStatistics) == 64);
 
 int32_t SystemNative_GetNetworkInterfaces(int32_t * interfaceCount, NetworkInterfaceInfo **interfaceList, int32_t * addressCount, IpAddressInfo **addressList )
 {
@@ -802,6 +803,44 @@ int32_t SystemNative_GetRinOSNetworkPrimaryInfo(RinOSNetworkPrimaryInfo* info)
     memcpy(info->GatewayBytes, primary.gateway, sizeof(info->GatewayBytes));
     memcpy(info->DnsBytes, primary.dns, sizeof(info->DnsBytes));
     info->Flags = primary.flags & RIN_NETINFO_KNOWN_FLAGS;
+    return 0;
+#else
+    errno = ENOTSUP;
+    return -1;
+#endif
+}
+
+int32_t SystemNative_GetRinOSNetworkInterfaceStatistics(
+    uint32_t interfaceIndex, RinOSNetworkInterfaceStatistics* info)
+{
+    if (info == NULL)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    memset(info, 0, sizeof(*info));
+#if defined(TARGET_RINOS)
+    RinNetInterfaceStatisticsV1 statistics = {0};
+    if (rin_net_get_interface_statistics(&statistics) != 0 ||
+        statistics.version != RIN_NET_STATISTICS_VERSION ||
+        statistics.struct_size != sizeof(statistics) ||
+        statistics.device_generation == 0u ||
+        statistics.device_generation != (uint64_t)interfaceIndex)
+    {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    info->Version = statistics.version;
+    info->StructSize = statistics.struct_size;
+    info->DeviceGeneration = statistics.device_generation;
+    info->RxBytes = statistics.rx_bytes;
+    info->TxBytes = statistics.tx_bytes;
+    info->RxPackets = statistics.rx_packets;
+    info->TxPackets = statistics.tx_packets;
+    info->RxErrors = statistics.rx_errors;
+    info->TxErrors = statistics.tx_errors;
     return 0;
 #else
     errno = ENOTSUP;

@@ -215,6 +215,7 @@
     <Compile Include="System\Net\NetworkInformation\RinOSIPv4InterfaceProperties.cs" />
     <Compile Include="System\Net\NetworkInformation\RinOSIPv6InterfaceProperties.cs" />
     <Compile Include="System\Net\NetworkInformation\RinOSNetworkInterface.cs" />
+    <Compile Include="System\Net\NetworkInformation\RinOSNetworkStatistics.cs" />
   </ItemGroup>
 
   <!-- Unknown Unix -->

@@ -57,6 +57,19 @@ typedef struct
     uint32_t Flags;
 } RinOSNetworkPrimaryInfo;
 
+typedef struct
+{
+    uint32_t Version;
+    uint32_t StructSize;
+    uint64_t DeviceGeneration;
+    uint64_t RxBytes;
+    uint64_t TxBytes;
+    uint64_t RxPackets;
+    uint64_t TxPackets;
+    uint64_t RxErrors;
+    uint64_t TxErrors;
+} RinOSNetworkInterfaceStatistics;
+
 typedef void (*IPv4AddressFound)(void* context, const char* interfaceName, IpAddressInfo* addressInfo);
 typedef void (*IPv6AddressFound)(void* context, const char* interfaceName, IpAddressInfo* info, uint32_t* scopeId);
 typedef void (*LinkLayerAddressFound)(void* context, const char* interfaceName, LinkLayerAddressInfo* llAddress);
@@ -66,5 +79,7 @@ PALEXPORT  int32_t SystemNative_EnumerateInterfaceAddresses(
     void* context, IPv4AddressFound onIpv4Found, IPv6AddressFound onIpv6Found, LinkLayerAddressFound onLinkLayerFound);
 PALEXPORT int32_t SystemNative_GetNetworkInterfaces(int32_t * interfaceCount, NetworkInterfaceInfo** interfaces, int32_t * addressCount, IpAddressInfo **addressList);
 PALEXPORT int32_t SystemNative_GetRinOSNetworkPrimaryInfo(RinOSNetworkPrimaryInfo* info);
+PALEXPORT int32_t SystemNative_GetRinOSNetworkInterfaceStatistics(
+    uint32_t interfaceIndex, RinOSNetworkInterfaceStatistics* info);
 
 PALEXPORT int32_t SystemNative_EnumerateGatewayAddressesForInterface(void* context, uint32_t interfaceIndex, GatewayAddressFound onGatewayFound);

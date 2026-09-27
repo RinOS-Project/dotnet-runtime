@@ -59,6 +59,7 @@ static const Entry s_sysNative[] =
     DllImportEntry(SystemNative_EnumerateInterfaceAddresses)
     DllImportEntry(SystemNative_GetNetworkInterfaces)
     DllImportEntry(SystemNative_GetRinOSNetworkPrimaryInfo)
+    DllImportEntry(SystemNative_GetRinOSNetworkInterfaceStatistics)
     DllImportEntry(SystemNative_EnumerateGatewayAddressesForInterface)
     DllImportEntry(SystemNative_Stat)
     DllImportEntry(SystemNative_LStat)

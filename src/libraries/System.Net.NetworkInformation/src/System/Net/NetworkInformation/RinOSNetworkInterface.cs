@@ -206,10 +206,10 @@ namespace System.Net.NetworkInformation
         public override IPInterfaceProperties GetIPProperties() => _ipProperties;
 
         public override IPInterfaceStatistics GetIPStatistics() =>
-            throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
+            new RinOSIPInterfaceStatistics(Index);
 
         public override IPv4InterfaceStatistics GetIPv4Statistics() =>
-            throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
+            new RinOSIPv4InterfaceStatistics(Index);
 
         public override OperationalStatus OperationalStatus => _operationalStatus;
 

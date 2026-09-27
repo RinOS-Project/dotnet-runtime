@@ -54,6 +54,20 @@ internal static partial class Interop
             public uint Flags;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RinOSNetworkInterfaceStatistics
+        {
+            public uint Version;
+            public uint StructSize;
+            public ulong DeviceGeneration;
+            public ulong RxBytes;
+            public ulong TxBytes;
+            public ulong RxPackets;
+            public ulong TxPackets;
+            public ulong RxErrors;
+            public ulong TxErrors;
+        }
+
         [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_EnumerateInterfaceAddresses")]
         public static unsafe partial int EnumerateInterfaceAddresses(
             void* context,
@@ -69,6 +83,9 @@ internal static partial class Interop
 
         [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_GetRinOSNetworkPrimaryInfo", SetLastError = true)]
         public static unsafe partial int GetRinOSNetworkPrimaryInfo(RinOSNetworkPrimaryInfo* info);
+
+        [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_GetRinOSNetworkInterfaceStatistics", SetLastError = true)]
+        public static unsafe partial int GetRinOSNetworkInterfaceStatistics(uint interfaceIndex, RinOSNetworkInterfaceStatistics* info);
 
     }
 }

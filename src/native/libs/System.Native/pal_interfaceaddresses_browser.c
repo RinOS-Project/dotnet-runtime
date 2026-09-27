@@ -51,6 +51,21 @@ int32_t SystemNative_GetRinOSNetworkPrimaryInfo(RinOSNetworkPrimaryInfo* info)
     return -1;
 }
 
+int32_t SystemNative_GetRinOSNetworkInterfaceStatistics(
+    uint32_t interfaceIndex, RinOSNetworkInterfaceStatistics* info)
+{
+    (void)interfaceIndex;
+    if (info == NULL)
+    {
+        errno = EFAULT;
+        return -1;
+    }
+
+    memset(info, 0, sizeof(*info));
+    errno = ENOTSUP;
+    return -1;
+}
+
 int32_t SystemNative_EnumerateGatewayAddressesForInterface(void* context, uint32_t interfaceIndex, GatewayAddressFound onGatewayFound)
 {
     (void)context;

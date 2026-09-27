@@ -127,11 +127,12 @@ FCIMPL2(Array *, RhpNewArrayFast, MethodTable * pArrayEEType, intptr_t numElemen
 }
 FCIMPLEND
 
-FCIMPL2(String *, RhNewString, MethodTable * pArrayEEType, intptr_t numElements)
+FCIMPL2(String *, RhNewString, MethodTable * pStringEEType, intptr_t numElements)
 {
-    // TODO: Implement. We tail call to RhpNewArrayFast for now since there's a bunch of TODOs in the places
-    // that matter anyway.
-    return (String*)RhpNewArrayFast(pArrayEEType, numElements);
+    // NativeAOT strings use the array-compatible length/component layout. Reuse the
+    // bounded allocator so negative lengths, overflow, fast-path limits, and OOM
+    // handling remain identical to other variable-sized allocations.
+    return (String*)RhpNewArrayFast(pStringEEType, numElements);
 }
 FCIMPLEND
 

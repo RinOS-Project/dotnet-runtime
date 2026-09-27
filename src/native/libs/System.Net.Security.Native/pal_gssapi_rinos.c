@@ -13,7 +13,18 @@
 
 #include <stdint.h>
 
+#define RINOS_GSS_S_COMPLETE ((uint32_t)0u)
 #define RINOS_GSS_S_UNAVAILABLE ((uint32_t)(16u << 16))
+
+static uint32_t rinos_gss_complete(uint32_t* minorStatus)
+{
+    if (minorStatus != NULL)
+    {
+        *minorStatus = 0;
+    }
+
+    return RINOS_GSS_S_COMPLETE;
+}
 
 static uint32_t rinos_gss_unavailable(uint32_t* minorStatus)
 {
@@ -32,6 +43,11 @@ static void rinos_gss_clear_buffer(PAL_GssBuffer* outBuffer)
         outBuffer->length = 0;
         outBuffer->data = NULL;
     }
+}
+
+static uint32_t rinos_gss_release_status(uint32_t* minorStatus, int32_t hadHandle)
+{
+    return hadHandle ? rinos_gss_unavailable(minorStatus) : rinos_gss_complete(minorStatus);
 }
 
 PALEXPORT void NetSecurityNative_ReleaseGssBuffer(void* buffer, uint64_t length)
@@ -82,11 +98,15 @@ PALEXPORT uint32_t NetSecurityNative_ImportPrincipalName(
 
 PALEXPORT uint32_t NetSecurityNative_ReleaseName(uint32_t* minorStatus, GssName** inputName)
 {
-    if (inputName != NULL)
+    int32_t hadHandle;
+    if (inputName == NULL)
     {
-        *inputName = NULL;
+        return rinos_gss_unavailable(minorStatus);
     }
-    return rinos_gss_unavailable(minorStatus);
+
+    hadHandle = *inputName != NULL;
+    *inputName = NULL;
+    return rinos_gss_release_status(minorStatus, hadHandle);
 }
 
 PALEXPORT uint32_t NetSecurityNative_AcquireAcceptorCred(uint32_t* minorStatus, GssCredId** outputCredHandle)
@@ -111,11 +131,15 @@ PALEXPORT uint32_t NetSecurityNative_InitiateCredSpNego(
 
 PALEXPORT uint32_t NetSecurityNative_ReleaseCred(uint32_t* minorStatus, GssCredId** credHandle)
 {
-    if (credHandle != NULL)
+    int32_t hadHandle;
+    if (credHandle == NULL)
     {
-        *credHandle = NULL;
+        return rinos_gss_unavailable(minorStatus);
     }
-    return rinos_gss_unavailable(minorStatus);
+
+    hadHandle = *credHandle != NULL;
+    *credHandle = NULL;
+    return rinos_gss_release_status(minorStatus, hadHandle);
 }
 
 PALEXPORT uint32_t NetSecurityNative_InitSecContext(
@@ -219,11 +243,15 @@ PALEXPORT uint32_t NetSecurityNative_AcceptSecContext(
 
 PALEXPORT uint32_t NetSecurityNative_DeleteSecContext(uint32_t* minorStatus, GssCtxId** contextHandle)
 {
-    if (contextHandle != NULL)
+    int32_t hadHandle;
+    if (contextHandle == NULL)
     {
-        *contextHandle = NULL;
+        return rinos_gss_unavailable(minorStatus);
     }
-    return rinos_gss_unavailable(minorStatus);
+
+    hadHandle = *contextHandle != NULL;
+    *contextHandle = NULL;
+    return rinos_gss_release_status(minorStatus, hadHandle);
 }
 
 PALEXPORT uint32_t NetSecurityNative_Wrap(

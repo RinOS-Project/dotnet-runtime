@@ -25,6 +25,13 @@ int32_t GlobalizationNative_WindowsIdToIanaId(const UChar* windowsId, const char
 {
     UErrorCode status = U_ZERO_ERROR;
 
+    if (windowsId == NULL || ianaId == NULL || ianaIdLength <= 0)
+    {
+        return 0;
+    }
+
+    ianaId[0] = 0;
+
     int32_t ianaIdFilledLength = ucal_getTimeZoneIDForWindowsID(windowsId, -1, region, ianaId, ianaIdLength, &status);
     if (U_SUCCESS(status))
     {
@@ -41,6 +48,13 @@ Convert IANA Time Zone Id to Windows Id
 int32_t GlobalizationNative_IanaIdToWindowsId(const UChar* ianaId, UChar* windowsId, int32_t windowsIdLength)
 {
     UErrorCode status = U_ZERO_ERROR;
+
+    if (ianaId == NULL || windowsId == NULL || windowsIdLength <= 0)
+    {
+        return 0;
+    }
+
+    windowsId[0] = 0;
 
     int32_t windowsIdFilledLength = ucal_getWindowsTimeZoneID(ianaId, -1, windowsId, windowsIdLength, &status);
 
@@ -279,6 +293,14 @@ Gets the localized display name that is currently in effect for the specified ti
 ResultCode GlobalizationNative_GetTimeZoneDisplayName(const UChar* localeName, const UChar* timeZoneId, TimeZoneDisplayNameType type, UChar* result, int32_t resultLength)
 {
     UErrorCode err = U_ZERO_ERROR;
+
+    if (localeName == NULL || timeZoneId == NULL || result == NULL || resultLength <= 0)
+    {
+        return UnknownError;
+    }
+
+    result[0] = 0;
+
     char locale[ULOC_FULLNAME_CAPACITY];
     GetLocale(localeName, locale, ULOC_FULLNAME_CAPACITY, false, &err);
     if (U_FAILURE(err))

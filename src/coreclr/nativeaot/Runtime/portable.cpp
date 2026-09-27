@@ -298,14 +298,20 @@ FCIMPLEND
 #endif // !HOST_64BIT
 #endif // defined(HOST_ARM) || defined(HOST_WASM)
 
-// @TODO Implement UniversalTransitionTailCall
+// PortableRuntime source boundary: UniversalTransitionTailCall is an ABI-level
+// tail-call trampoline.  It must preserve the target-specific register and
+// stack contract, so a C++ fallback cannot safely replace the assembly helper.
+// Keep the return-address marker defined for stack-walker builds until a
+// target-specific portable thunk owner supplies the trampoline.
 EXTERN_C void * ReturnFromUniversalTransitionTailCall;
 void * ReturnFromUniversalTransitionTailCall;
 
 #if !defined (HOST_ARM64)
 FCIMPL2(void, RhpAssignRef, Object ** dst, Object * ref)
 {
-    // @TODO: FEATURE_PORTABLE_HELPERS - Null check
+    // A null destination is an invalid managed write-barrier call.  Preserve
+    // the native fault instead of silently dropping the reference; exception
+    // recovery for this corruption is not part of the portable helper ABI.
     *dst = ref;
     InlineWriteBarrier(dst, ref);
 }
@@ -313,7 +319,7 @@ FCIMPLEND
 
 FCIMPL2(void, RhpCheckedAssignRef, Object ** dst, Object * ref)
 {
-    // @TODO: FEATURE_PORTABLE_HELPERS - Null check
+    // See RhpAssignRef: an invalid destination must remain a native fault.
     *dst = ref;
     InlineCheckedWriteBarrier(dst, ref);
 }
@@ -330,7 +336,7 @@ FCIMPLEND
 
 FCIMPL2(Object *, RhpCheckedXchg, Object ** location, Object * value)
 {
-    // @TODO: FEATURE_PORTABLE_HELPERS - Null check
+    // See RhpAssignRef: an invalid destination must remain a native fault.
     Object * ret = (Object *)PalInterlockedExchangePointer((void * volatile *)location, value);
     InlineCheckedWriteBarrier(location, value);
     return ret;

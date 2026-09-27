@@ -14,9 +14,12 @@ namespace Internal.TypeSystem
         {
             get
             {
-                // TODO Eventually implement via working with a RuntimeMethod that refers to the actual implementation.
-                // https://github.com/dotnet/corert/issues/3772
-                throw new NotImplementedException();
+                // Array methods are synthetic runtime methods and have no
+                // metadata MethodHandle from which MethodNameAndSignature can
+                // be constructed. Callers that need metadata identity must use
+                // the owning array method's Name and Signature instead.
+                throw new NotSupportedException(
+                    "Array methods do not expose a metadata MethodNameAndSignature.");
             }
         }
     }

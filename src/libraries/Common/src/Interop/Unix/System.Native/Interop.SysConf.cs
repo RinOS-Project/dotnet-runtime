@@ -10,7 +10,9 @@ internal static partial class Interop
         internal enum SysConfName
         {
             _SC_CLK_TCK = 1,
-            _SC_PAGESIZE = 2
+            _SC_PAGESIZE = 2,
+            _SC_PHYS_PAGES = 3,
+            _SC_AVPHYS_PAGES = 4
         }
 
         [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_SysConf", SetLastError = true)]

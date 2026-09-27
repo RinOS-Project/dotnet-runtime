@@ -1161,6 +1161,20 @@ int64_t SystemNative_SysConf(int32_t name)
             return sysconf(_SC_CLK_TCK);
         case PAL_SC_PAGESIZE:
             return sysconf(_SC_PAGESIZE);
+        case PAL_SC_PHYS_PAGES:
+#if defined(_SC_PHYS_PAGES)
+            return sysconf(_SC_PHYS_PAGES);
+#else
+            errno = ENOTSUP;
+            return -1;
+#endif
+        case PAL_SC_AVPHYS_PAGES:
+#if defined(_SC_AVPHYS_PAGES)
+            return sysconf(_SC_AVPHYS_PAGES);
+#else
+            errno = ENOTSUP;
+            return -1;
+#endif
         default:
             break; // fall through to error
     }

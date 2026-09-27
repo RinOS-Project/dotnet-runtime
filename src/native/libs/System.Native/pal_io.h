@@ -300,6 +300,8 @@ typedef enum
 {
     PAL_SC_CLK_TCK = 1,  // Number of clock ticks per second
     PAL_SC_PAGESIZE = 2, // Size of a page in bytes
+    PAL_SC_PHYS_PAGES = 3, // Number of physical memory pages
+    PAL_SC_AVPHYS_PAGES = 4, // Number of available physical memory pages
 } SysConfName;
 
 /**

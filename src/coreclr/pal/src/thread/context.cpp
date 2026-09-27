@@ -851,7 +851,8 @@ void CONTEXTToNativeContext(CONST CONTEXT *lpContext, native_context_t *native)
 #endif
     }
 
-    // TODO: Enable for all Unix systems
+    // RinOS exposes fixed-size legacy FXSAVE storage in its thread-context
+    // ABI; AVX/YMM/XSTATE extensions require an explicit ABI addition.
 #if defined(XSTATE_SUPPORTED)
     if ((lpContext->ContextFlags & CONTEXT_XSTATE) == CONTEXT_XSTATE)
     {
@@ -1219,7 +1220,8 @@ void CONTEXTFromNativeContext(const native_context_t *native, LPCONTEXT lpContex
 #if defined(HOST_AMD64) || defined(HOST_ARM64)
     if ((contextFlags & CONTEXT_XSTATE) == CONTEXT_XSTATE)
     {
-    // TODO: Enable for all Unix systems
+    // Keep RinOS on the fixed-size legacy FXSAVE contract until the product
+    // thread-context ABI grows an explicit AVX/YMM/XSTATE payload.
 #if defined(XSTATE_SUPPORTED)
 #if defined(HOST_AMD64)
         if (FPREG_HasYmmRegisters(native))

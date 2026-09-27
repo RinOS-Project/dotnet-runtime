@@ -35,10 +35,10 @@ namespace System.Net.NetworkInformation
             throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
 
         public override UdpStatistics GetUdpIPv4Statistics() =>
-            throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
+            new RinOSUdpStatistics(System.Net.Sockets.AddressFamily.InterNetwork);
 
         public override UdpStatistics GetUdpIPv6Statistics() =>
-            throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
+            new RinOSUdpStatistics(System.Net.Sockets.AddressFamily.InterNetworkV6);
 
         public override IcmpV4Statistics GetIcmpV4Statistics() =>
             throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);

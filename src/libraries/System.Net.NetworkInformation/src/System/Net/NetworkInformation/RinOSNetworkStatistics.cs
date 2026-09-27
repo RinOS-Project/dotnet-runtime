@@ -183,4 +183,70 @@ namespace System.Net.NetworkInformation
         public override long ReceivedPacketsWithUnknownProtocol => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
         public override int NumberOfRoutes => RinOSNetworkStatisticsSnapshot.UnsupportedMetricInt();
     }
+
+    internal sealed class RinOSUdpStatistics : UdpStatistics
+    {
+        private const uint AddressFamilyIPv4 = 4u;
+        private const uint AddressFamilyIPv6 = 6u;
+        private const uint DatagramsSentFlag = 0x00000001u;
+        private const uint DatagramsReceivedFlag = 0x00000002u;
+        private const uint IncomingDiscardedFlag = 0x00000004u;
+        private const uint IncomingErrorsFlag = 0x00000008u;
+        private const uint ListenersFlag = 0x00000010u;
+
+        private readonly Interop.Sys.RinOSNetworkUdpGlobalStatistics _snapshot;
+
+        internal unsafe RinOSUdpStatistics(AddressFamily family)
+        {
+            uint addressFamily = family == AddressFamily.InterNetwork
+                ? AddressFamilyIPv4
+                : family == AddressFamily.InterNetworkV6
+                    ? AddressFamilyIPv6
+                    : 0u;
+            Interop.Sys.RinOSNetworkUdpGlobalStatistics snapshot = default;
+            if (addressFamily == 0u ||
+                Interop.Sys.GetRinOSNetworkUdpGlobalStatistics(
+                    addressFamily, &snapshot) != 0 ||
+                snapshot.Version != 1u ||
+                snapshot.StructSize != 64u ||
+                snapshot.DeviceGeneration == 0u ||
+                snapshot.AddressFamily != addressFamily ||
+                (snapshot.SupportedFlags & ~0x0000001Fu) != 0u)
+            {
+                throw new NetworkInformationException(
+                    "RinOS did not provide a current UDP-statistics snapshot.");
+            }
+            _snapshot = snapshot;
+        }
+
+        private long Read(ulong value, uint flag) =>
+            (_snapshot.SupportedFlags & flag) != 0u
+                ? Clamp(value)
+                : RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+
+        private int ReadListeners() =>
+            (_snapshot.SupportedFlags & ListenersFlag) != 0u
+                ? ClampToInt(_snapshot.UdpListeners)
+                : RinOSNetworkStatisticsSnapshot.UnsupportedMetricInt();
+
+        private static long Clamp(ulong value) =>
+            value > long.MaxValue ? long.MaxValue : (long)value;
+
+        private static int ClampToInt(ulong value) =>
+            value > int.MaxValue ? int.MaxValue : (int)value;
+
+        public override long DatagramsReceived =>
+            Read(_snapshot.DatagramsReceived, DatagramsReceivedFlag);
+
+        public override long DatagramsSent =>
+            Read(_snapshot.DatagramsSent, DatagramsSentFlag);
+
+        public override long IncomingDatagramsDiscarded =>
+            Read(_snapshot.IncomingDatagramsDiscarded, IncomingDiscardedFlag);
+
+        public override long IncomingDatagramsWithErrors =>
+            Read(_snapshot.IncomingDatagramsWithErrors, IncomingErrorsFlag);
+
+        public override int UdpListeners => ReadListeners();
+    }
 }

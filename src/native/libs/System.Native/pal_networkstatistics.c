@@ -56,6 +56,48 @@ int32_t SystemNative_GetRinOSNetworkIpGlobalStatistics(
 #endif
 }
 
+int32_t SystemNative_GetRinOSNetworkUdpGlobalStatistics(
+    uint32_t addressFamily, RinOSNetworkUdpGlobalStatistics* retStats)
+{
+    if (retStats == NULL)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    memset(retStats, 0, sizeof(*retStats));
+#if defined(TARGET_RINOS)
+    RinNetUdpGlobalStatisticsV1 statistics = {0};
+    if (rin_net_get_udp_global_statistics(addressFamily, &statistics) != 0 ||
+        statistics.version != RIN_NET_UDP_GLOBAL_STATISTICS_VERSION ||
+        statistics.struct_size != sizeof(statistics) ||
+        statistics.device_generation == 0u ||
+        statistics.address_family != addressFamily ||
+        (statistics.supported_flags &
+         ~RIN_NET_UDP_GLOBAL_STATISTICS_KNOWN_FLAGS) != 0u)
+    {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    retStats->Version = statistics.version;
+    retStats->StructSize = statistics.struct_size;
+    retStats->DeviceGeneration = statistics.device_generation;
+    retStats->AddressFamily = statistics.address_family;
+    retStats->SupportedFlags = statistics.supported_flags;
+    retStats->DatagramsSent = statistics.datagrams_sent;
+    retStats->DatagramsReceived = statistics.datagrams_received;
+    retStats->IncomingDatagramsDiscarded = statistics.incoming_datagrams_discarded;
+    retStats->IncomingDatagramsWithErrors = statistics.incoming_datagrams_with_errors;
+    retStats->UdpListeners = statistics.udp_listeners;
+    return 0;
+#else
+    (void)addressFamily;
+    errno = ENOTSUP;
+    return -1;
+#endif
+}
+
 // These functions are only used for platforms which support
 // using sysctl to gather protocol statistics information.
 // Currently, this is all keyed off of whether the include tcp_var.h

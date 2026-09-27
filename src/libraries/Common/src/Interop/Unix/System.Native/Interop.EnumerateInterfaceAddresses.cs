@@ -82,6 +82,21 @@ internal static partial class Interop
             public ulong ReceivedPacketsForwarded;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RinOSNetworkUdpGlobalStatistics
+        {
+            public uint Version;
+            public uint StructSize;
+            public ulong DeviceGeneration;
+            public uint AddressFamily;
+            public uint SupportedFlags;
+            public ulong DatagramsSent;
+            public ulong DatagramsReceived;
+            public ulong IncomingDatagramsDiscarded;
+            public ulong IncomingDatagramsWithErrors;
+            public ulong UdpListeners;
+        }
+
         [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_EnumerateInterfaceAddresses")]
         public static unsafe partial int EnumerateInterfaceAddresses(
             void* context,
@@ -103,6 +118,9 @@ internal static partial class Interop
 
         [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_GetRinOSNetworkIpGlobalStatistics", SetLastError = true)]
         public static unsafe partial int GetRinOSNetworkIpGlobalStatistics(uint addressFamily, RinOSNetworkIpGlobalStatistics* info);
+
+        [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_GetRinOSNetworkUdpGlobalStatistics", SetLastError = true)]
+        public static unsafe partial int GetRinOSNetworkUdpGlobalStatistics(uint addressFamily, RinOSNetworkUdpGlobalStatistics* info);
 
     }
 }

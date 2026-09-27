@@ -60,6 +60,9 @@ namespace System.Net.NetworkInformation
 
         private static long Clamp(ulong value) =>
             value > long.MaxValue ? long.MaxValue : (long)value;
+
+        internal static long UnsupportedMetric() =>
+            throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
     }
 
     internal sealed class RinOSIPInterfaceStatistics : IPInterfaceStatistics
@@ -73,14 +76,14 @@ namespace System.Net.NetworkInformation
 
         public override long BytesReceived => _snapshot.BytesReceived;
         public override long BytesSent => _snapshot.BytesSent;
-        public override long IncomingPacketsDiscarded => 0;
+        public override long IncomingPacketsDiscarded => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
         public override long IncomingPacketsWithErrors => _snapshot.IncomingPacketsWithErrors;
-        public override long IncomingUnknownProtocolPackets => 0;
-        public override long NonUnicastPacketsReceived => 0;
-        public override long NonUnicastPacketsSent => 0;
-        public override long OutgoingPacketsDiscarded => 0;
+        public override long IncomingUnknownProtocolPackets => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+        public override long NonUnicastPacketsReceived => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+        public override long NonUnicastPacketsSent => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+        public override long OutgoingPacketsDiscarded => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
         public override long OutgoingPacketsWithErrors => _snapshot.OutgoingPacketsWithErrors;
-        public override long OutputQueueLength => 0;
+        public override long OutputQueueLength => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
         public override long UnicastPacketsReceived => _snapshot.UnicastPacketsReceived;
         public override long UnicastPacketsSent => _snapshot.UnicastPacketsSent;
     }
@@ -96,14 +99,14 @@ namespace System.Net.NetworkInformation
 
         public override long BytesReceived => _snapshot.BytesReceived;
         public override long BytesSent => _snapshot.BytesSent;
-        public override long IncomingPacketsDiscarded => 0;
+        public override long IncomingPacketsDiscarded => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
         public override long IncomingPacketsWithErrors => _snapshot.IncomingPacketsWithErrors;
-        public override long IncomingUnknownProtocolPackets => 0;
-        public override long NonUnicastPacketsReceived => 0;
-        public override long NonUnicastPacketsSent => 0;
-        public override long OutgoingPacketsDiscarded => 0;
+        public override long IncomingUnknownProtocolPackets => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+        public override long NonUnicastPacketsReceived => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+        public override long NonUnicastPacketsSent => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
+        public override long OutgoingPacketsDiscarded => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
         public override long OutgoingPacketsWithErrors => _snapshot.OutgoingPacketsWithErrors;
-        public override long OutputQueueLength => 0;
+        public override long OutputQueueLength => RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
         public override long UnicastPacketsReceived => _snapshot.UnicastPacketsReceived;
         public override long UnicastPacketsSent => _snapshot.UnicastPacketsSent;
     }

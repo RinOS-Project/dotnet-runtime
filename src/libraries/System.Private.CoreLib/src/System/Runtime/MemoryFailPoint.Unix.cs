@@ -21,7 +21,7 @@ namespace System.Runtime
             // report success without an owned source of truth.
             long pageSize = Interop.Sys.SysConf(Interop.Sys.SysConfName._SC_PAGESIZE);
             long availablePages = Interop.Sys.SysConf(Interop.Sys.SysConfName._SC_AVPHYS_PAGES);
-            if (pageSize <= 0 || availablePages <= 0)
+            if (pageSize <= 0 || availablePages < 0)
             {
                 availPageFile = 0;
                 totalAddressSpaceFree = 0;

@@ -33,13 +33,43 @@
 
 #if defined(FEATURE_PORTABLE_HELPERS)
 EXTERN_C void* RhpGcAlloc(MethodTable *pEEType, uint32_t uFlags, intptr_t numElements, void * pTransitionFrame);
+EXTERN_C void RhExceptionHandling_FailedAllocation(MethodTable *pEEType, bool fIsOverflow);
+
+static bool TryComputeArraySize(MethodTable* pArrayEEType, intptr_t numElements, size_t* pSize)
+{
+    if (numElements < 0)
+    {
+        RhExceptionHandling_FailedAllocation(pArrayEEType, true /* fIsOverflow */);
+        return false;
+    }
+
+    const size_t baseSize = (size_t)pArrayEEType->GetBaseSize();
+    const size_t componentSize = (size_t)pArrayEEType->RawGetComponentSize();
+    const size_t elementCount = (size_t)numElements;
+    if (componentSize != 0 && elementCount > (SIZE_MAX - baseSize) / componentSize)
+    {
+        RhExceptionHandling_FailedAllocation(pArrayEEType, true /* fIsOverflow */);
+        return false;
+    }
+
+    size_t size = baseSize + (elementCount * componentSize);
+    const size_t alignmentMask = sizeof(uintptr_t) - 1;
+    if (size > SIZE_MAX - alignmentMask)
+    {
+        RhExceptionHandling_FailedAllocation(pArrayEEType, true /* fIsOverflow */);
+        return false;
+    }
+
+    *pSize = ALIGN_UP(size, sizeof(uintptr_t));
+    return true;
+}
 
 static Object* AllocateObject(MethodTable* pEEType, uint32_t uFlags, intptr_t numElements)
 {
     Object* pObject = (Object*)RhpGcAlloc(pEEType, uFlags, numElements, nullptr);
     if (pObject == nullptr)
     {
-        ASSERT_UNCONDITIONALLY("NYI");  // TODO: Throw OOM
+        RhExceptionHandling_FailedAllocation(pEEType, false /* fIsOverflow */);
     }
 
     return pObject;
@@ -93,11 +123,6 @@ FCIMPL2(Array *, RhpNewArrayFast, MethodTable * pArrayEEType, intptr_t numElemen
     Thread * pCurThread = ThreadStore::GetCurrentThread();
     gc_alloc_context * acontext = pCurThread->GetAllocContext();
 
-    if (numElements < 0)
-    {
-        ASSERT_UNCONDITIONALLY("NYI");  // TODO: Throw overflow
-    }
-
 #ifndef HOST_64BIT
     // if the element count is <= 0x10000, no overflow is possible because the component size is
     // <= 0xffff, and thus the product is <= 0xffff0000, and the base size is only ~12 bytes
@@ -108,8 +133,11 @@ FCIMPL2(Array *, RhpNewArrayFast, MethodTable * pArrayEEType, intptr_t numElemen
     }
 #endif // !HOST_64BIT
 
-    size_t size = (size_t)pArrayEEType->GetBaseSize() + ((size_t)numElements * (size_t)pArrayEEType->RawGetComponentSize());
-    size = ALIGN_UP(size, sizeof(uintptr_t));
+    size_t size;
+    if (!TryComputeArraySize(pArrayEEType, numElements, &size))
+    {
+        return nullptr;
+    }
 
     uint8_t* alloc_ptr = acontext->alloc_ptr;
     uint8_t* combined_limit = pCurThread->GetEEAllocContext()->GetCombinedLimit();
@@ -225,11 +253,6 @@ FCIMPL2(Array*, RhpNewArrayFastAlign8, MethodTable* pArrayEEType, intptr_t numEl
     Thread* pCurThread = ThreadStore::GetCurrentThread();
     gc_alloc_context* acontext = pCurThread->GetAllocContext();
 
-    if (numElements < 0)
-    {
-        ASSERT_UNCONDITIONALLY("NYI");  // TODO: Throw overflow
-    }
-
     // if the element count is <= 0x10000, no overflow is possible because the component size is
     // <= 0xffff, and thus the product is <= 0xffff0000, and the base size is only ~12 bytes
     if (numElements > 0x10000)
@@ -238,9 +261,11 @@ FCIMPL2(Array*, RhpNewArrayFastAlign8, MethodTable* pArrayEEType, intptr_t numEl
         return (Array*)AllocateObject(pArrayEEType, GC_ALLOC_ALIGN8, numElements);
     }
 
-    uint32_t baseSize = pArrayEEType->GetBaseSize();
-    size_t size = (size_t)baseSize + ((size_t)numElements * (size_t)pArrayEEType->RawGetComponentSize());
-    size = ALIGN_UP(size, sizeof(uintptr_t));
+    size_t size;
+    if (!TryComputeArraySize(pArrayEEType, numElements, &size))
+    {
+        return nullptr;
+    }
 
     uint8_t* alloc_ptr = acontext->alloc_ptr;
     int requiresAlignObject = ((uint32_t)alloc_ptr) & 7;

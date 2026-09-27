@@ -376,7 +376,7 @@ namespace Internal.JitInterface
                     }
                     break;
                 default:
-                    throw new NotImplementedException("ReadyToRun: " + id.ToString());
+                    return false;
             }
             return true;
         }
@@ -843,12 +843,11 @@ namespace Internal.JitInterface
         {
             MethodDesc method = HandleToObject(ftn);
 
-            // TODO: Implement MapMethodDeclToMethodImpl from CoreCLR
-            if (method.IsVirtual &&
-                method.OwningType is MetadataType mdType &&
-                mdType.VirtualMethodImplsForType.Length > 0)
+            if (method.IsVirtual)
             {
-                throw new NotImplementedException("getFunctionEntryPoint");
+                MethodDesc methodImpl = method.OwningType.FindVirtualFunctionTargetMethodOnObjectType(method);
+                if (methodImpl != null)
+                    method = methodImpl;
             }
 
             pResult = CreateConstLookupToSymbol(_compilation.NodeFactory.MethodEntrypoint(method));
@@ -1937,7 +1936,7 @@ namespace Internal.JitInterface
 
         private unsafe HRESULT allocPgoInstrumentationBySchema(CORINFO_METHOD_STRUCT_* ftnHnd, PgoInstrumentationSchema* pSchema, uint countSchemaItems, byte** pInstrumentationData)
         {
-            throw new NotImplementedException("allocPgoInstrumentationBySchema");
+            return HRESULT.E_NOTIMPL;
         }
 
 #pragma warning disable CA1822 // Mark members as static
@@ -1959,15 +1958,13 @@ namespace Internal.JitInterface
 
         private void getGSCookie(IntPtr* pCookieVal, IntPtr** ppCookieVal)
         {
-            if (ppCookieVal != null)
-            {
-                *ppCookieVal = (IntPtr*)ObjectToHandle(_compilation.NodeFactory.ExternVariable(new Utf8String("__security_cookie"u8)));
-                *pCookieVal = IntPtr.Zero;
-            }
-            else
-            {
-                throw new NotImplementedException("getGSCookie");
-            }
+            if (pCookieVal == null)
+                throw new ArgumentNullException(nameof(pCookieVal));
+            if (ppCookieVal == null)
+                throw new ArgumentNullException(nameof(ppCookieVal));
+
+            *ppCookieVal = (IntPtr*)ObjectToHandle(_compilation.NodeFactory.ExternVariable(new Utf8String("__security_cookie"u8)));
+            *pCookieVal = IntPtr.Zero;
         }
 
         private bool pInvokeMarshalingRequired(CORINFO_METHOD_STRUCT_* handle, CORINFO_SIG_INFO* callSiteSig)

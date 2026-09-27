@@ -297,7 +297,7 @@ namespace System.Net
                 if (statusCode >= NegotiateAuthenticationStatusCode.GenericFailure)
                 {
                     Dispose();
-                    _isAuthenticated = true;
+                    _isAuthenticated = false;
                     _tokenBuffer = null;
                     return null;
                 }

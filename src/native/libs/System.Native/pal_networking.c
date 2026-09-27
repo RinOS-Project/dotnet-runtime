@@ -1027,7 +1027,7 @@ static int32_t GetIPv4PacketInformation(struct cmsghdr* controlMessage, IPPacket
     assert(controlMessage != NULL);
     assert(packetInfo != NULL);
 
-    if (controlMessage->cmsg_len < sizeof(struct in_pktinfo))
+    if (controlMessage->cmsg_len < CMSG_LEN(sizeof(struct in_pktinfo)))
     {
         assert(false && "expected a control message large enough to hold an in_pktinfo value");
         return 0;
@@ -1068,7 +1068,7 @@ static int32_t GetIPv6PacketInformation(struct cmsghdr* controlMessage, IPPacket
     assert(controlMessage != NULL);
     assert(packetInfo != NULL);
 
-    if (controlMessage->cmsg_len < sizeof(struct in6_pktinfo))
+    if (controlMessage->cmsg_len < CMSG_LEN(sizeof(struct in6_pktinfo)))
     {
         assert(false && "expected a control message large enough to hold an in6_pktinfo value");
         return 0;

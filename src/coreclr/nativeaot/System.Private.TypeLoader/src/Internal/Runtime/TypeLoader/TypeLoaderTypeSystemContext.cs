@@ -38,7 +38,12 @@ namespace Internal.Runtime.TypeLoader
 
         protected internal sealed override bool IsIDynamicInterfaceCastableInterface(DefType type)
         {
-            throw new NotImplementedException();
+            // Runtime interfaces can be represented by NoMetadataType, so the
+            // metadata-only implementation in MetadataTypeSystemContext cannot
+            // be used here. The CoreLib interface has a stable runtime handle
+            // even when the consuming type itself was loaded from native layout.
+            return type.GetTypeDefinition().GetRuntimeTypeHandle().Equals(
+                typeof(System.Runtime.InteropServices.IDynamicInterfaceCastable).TypeHandle);
         }
 
         protected override RuntimeInterfacesAlgorithm GetRuntimeInterfacesAlgorithmForNonPointerArrayType(ArrayType type)

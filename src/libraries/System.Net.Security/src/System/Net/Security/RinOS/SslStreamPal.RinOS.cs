@@ -524,7 +524,12 @@ namespace System.Net.Security
                 throw new PlatformNotSupportedException(
                     "RinTLS does not support disabling hostname verification.");
             }
-            if (sslAuthenticationOptions.CertificateRevocationCheckMode != X509RevocationMode.NoCheck)
+            // CertificateChainPolicy takes precedence over CertificateRevocationCheckMode in
+            // the public Ssl*AuthenticationOptions API. Reject both paths while RinTLS has no
+            // revocation transport or managed chain-policy projection, rather than silently
+            // accepting a policy that the product verifier cannot enforce.
+            if (sslAuthenticationOptions.CertificateRevocationCheckMode != X509RevocationMode.NoCheck ||
+                chainPolicy?.RevocationMode != X509RevocationMode.NoCheck)
             {
                 throw new PlatformNotSupportedException(
                     "RinTLS certificate revocation checking is not available yet.");

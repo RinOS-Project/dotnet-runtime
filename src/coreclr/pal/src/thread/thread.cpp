@@ -1018,7 +1018,8 @@ CorUnix::InternalSetThreadPriority(
 #if SET_SCHEDPARAM_NEEDS_PRIVS
         if (EPERM == st)
         {
-            // UNIXTODO: Should log a warning to the event log
+            // RinOS/Unix has no portable event-log sink here. Preserve the
+            // managed priority state and keep the diagnostic trace instead.
             TRACE("Caller does not have OS privileges to call pthread_setschedparam\n");
             pTargetThread->m_iThreadPriority = iNewPriority;
             goto InternalSetThreadPriorityExit;

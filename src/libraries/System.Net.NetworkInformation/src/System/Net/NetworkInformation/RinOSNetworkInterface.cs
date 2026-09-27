@@ -14,6 +14,9 @@ namespace System.Net.NetworkInformation
     /// </summary>
     internal sealed class RinOSNetworkInterface : UnixNetworkInterface
     {
+        private const int InterfaceNameCapacity = 16;
+        private const int HardwareAddressCapacity = 12;
+
         private readonly RinOSIPInterfaceProperties _ipProperties;
         private readonly OperationalStatus _operationalStatus;
         private readonly bool _supportsMulticast;
@@ -58,12 +61,24 @@ namespace System.Net.NetworkInformation
             globalMemory = (IntPtr)interfaceList;
             try
             {
+                if (interfaceCount < 0 || addressCount < 0 ||
+                    (interfaceCount != 0 && interfaceList == null) ||
+                    (addressCount != 0 && addressList == null))
+                {
+                    throw new NetworkInformationException(
+                        "RinOS returned an invalid network-interface snapshot.");
+                }
+
+                string? primaryName = hasPrimaryInfo
+                    ? ReadFixedUtf8Name((byte*)&primaryInfo.Name)
+                    : null;
+
                 NetworkInterface[] result = new NetworkInterface[interfaceCount];
                 Dictionary<int, RinOSNetworkInterface> byIndex = new Dictionary<int, RinOSNetworkInterface>(interfaceCount);
 
                 for (int i = 0; i < interfaceCount; i++)
                 {
-                    string name = Utf8StringMarshaller.ConvertToManaged((byte*)&interfaceList->Name)!;
+                    string name = ReadFixedUtf8Name((byte*)&interfaceList->Name);
                     RinOSNetworkInterface networkInterface = new RinOSNetworkInterface(
                         name,
                         interfaceList->InterfaceIndex,
@@ -74,10 +89,16 @@ namespace System.Net.NetworkInformation
                         interfaceList->SupportsMulticast != 0,
                         hasPrimaryInfo && string.Equals(
                             name,
-                            Utf8StringMarshaller.ConvertToManaged((byte*)&primaryInfo.Name),
+                            primaryName,
                             StringComparison.Ordinal)
                             ? primaryInfo
                             : null);
+
+                    if (interfaceList->NumAddressBytes > HardwareAddressCapacity)
+                    {
+                        throw new NetworkInformationException(
+                            "RinOS returned an oversized hardware address.");
+                    }
 
                     if (interfaceList->NumAddressBytes > 0)
                     {
@@ -93,8 +114,9 @@ namespace System.Net.NetworkInformation
                 for (int i = 0; i < addressCount; i++)
                 {
                     Interop.Sys.IpAddressInfo addressInfo = *addressList;
-                    int addressLength = checked((int)addressInfo.NumAddressBytes);
-                    if (addressLength is 4 or 16 && byIndex.TryGetValue(addressInfo.InterfaceIndex, out RinOSNetworkInterface? networkInterface))
+                    int addressLength = GetAddressLength(addressInfo.NumAddressBytes);
+                    ValidatePrefixLength(addressLength, addressInfo.PrefixLength);
+                    if (byIndex.TryGetValue(addressInfo.InterfaceIndex, out RinOSNetworkInterface? networkInterface))
                     {
                         IPAddress address = new IPAddress(((ReadOnlySpan<byte>)addressInfo.AddressBytes)[..addressLength]);
                         if (addressLength == 16 && address.IsIPv6LinkLocal)
@@ -113,6 +135,39 @@ namespace System.Net.NetworkInformation
             finally
             {
                 Marshal.FreeHGlobal(globalMemory);
+            }
+        }
+
+        private static unsafe string ReadFixedUtf8Name(byte* name)
+        {
+            int terminator = new ReadOnlySpan<byte>(name, InterfaceNameCapacity).IndexOf((byte)0);
+            if (terminator <= 0)
+            {
+                throw new NetworkInformationException(
+                    "RinOS returned an invalid network-interface name.");
+            }
+
+            return Utf8StringMarshaller.ConvertToManaged(name)!;
+        }
+
+        private static int GetAddressLength(byte length)
+        {
+            if (length is not (4 or 16))
+            {
+                throw new NetworkInformationException(
+                    "RinOS returned an unsupported network address length.");
+            }
+
+            return length;
+        }
+
+        private static void ValidatePrefixLength(int addressLength, byte prefixLength)
+        {
+            int maximum = addressLength * 8;
+            if (prefixLength > maximum)
+            {
+                throw new NetworkInformationException(
+                    "RinOS returned an invalid network prefix length.");
             }
         }
 

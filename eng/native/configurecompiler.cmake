@@ -556,11 +556,11 @@ endif(CLR_CMAKE_HOST_WIN32)
 # freestanding link options.
 if (CLR_CMAKE_HOST_WIN32 AND RINOS_CROSS_COMPONENTS_HOST AND NOT MSVC)
   add_link_options(
-    "$<$<CONFIG:Debug>:libucrtd.lib>"
-    "$<$<CONFIG:Checked>:libucrtd.lib>"
-    "$<$<CONFIG:Release>:ucrt.lib>"
-    "$<$<CONFIG:RelWithDebInfo>:ucrt.lib>"
-    "$<$<CONFIG:MinSizeRel>:ucrt.lib>"
+    "$<$<CONFIG:Debug>:-llibucrtd.lib>"
+    "$<$<CONFIG:Checked>:-llibucrtd.lib>"
+    "$<$<CONFIG:Release>:-lucrt.lib>"
+    "$<$<CONFIG:RelWithDebInfo>:-lucrt.lib>"
+    "$<$<CONFIG:MinSizeRel>:-lucrt.lib>"
   )
 endif()
 

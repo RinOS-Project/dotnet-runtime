@@ -166,6 +166,11 @@ int32_t CryptoNative_RinTlsGetPeerCertificateLength(void* handle,
                                                     int32_t* length);
 int32_t CryptoNative_RinTlsCopyPeerCertificate(void* handle, uint8_t* destination,
                                                int32_t capacity);
+int32_t CryptoNative_RinTlsGetPeerCertificateChainLength(void* handle,
+                                                         int32_t* length);
+int32_t CryptoNative_RinTlsCopyPeerCertificateChain(void* handle,
+                                                    uint8_t* destination,
+                                                    int32_t capacity);
 
 static const Entry s_cryptoNative[] =
 {
@@ -238,6 +243,8 @@ static const Entry s_cryptoNative[] =
     DllImportEntry(CryptoNative_RinTlsGetError)
     DllImportEntry(CryptoNative_RinTlsGetPeerCertificateLength)
     DllImportEntry(CryptoNative_RinTlsCopyPeerCertificate)
+    DllImportEntry(CryptoNative_RinTlsGetPeerCertificateChainLength)
+    DllImportEntry(CryptoNative_RinTlsCopyPeerCertificateChain)
 };
 
 EXTERN_C const void* CryptoResolveDllImport(const char* name);

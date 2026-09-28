@@ -558,7 +558,7 @@ namespace System.Net.Security
                 throw new RinTlsException(error);
             }
 
-            RinSslHandle handle = new RinSslHandle(raw);
+            RinSslHandle handle = new RinSslHandle(raw, trustedTime);
             try
             {
                 if (sslAuthenticationOptions.CipherSuitesPolicy is { } cipherPolicy)
@@ -661,15 +661,11 @@ namespace System.Net.Security
                 return;
             }
 
-            // RinTLS currently verifies the peer chain, hostname, validity window and
-            // trust anchors inside the product TLS session. Do not silently discard
-            // managed chain-policy inputs that would change that decision.
-            if (chainPolicy.ApplicationPolicy.Count != 0 ||
-                chainPolicy.CertificatePolicy.Count != 0)
-            {
-                throw new PlatformNotSupportedException(
-                    "RinTLS does not support certificate or application policy OIDs yet.");
-            }
+            // RinTLS verifies the peer chain, hostname, validity window and trust
+            // anchors in the product session. Policy OIDs are evaluated by the
+            // managed X509Chain after the product exposes the authenticated peer
+            // chain; inputs that would alter product-side path selection remain
+            // fail-closed below.
             if (chainPolicy.ExtraStore.Count != 0)
             {
                 throw new PlatformNotSupportedException(

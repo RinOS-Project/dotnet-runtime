@@ -10,13 +10,16 @@ namespace System.Net.Security
     {
         private GCHandle _clientCertificateState;
         private bool _clientCertificateConfigured;
+        private readonly ulong _trustedUnixTime;
 
-        internal RinSslHandle(IntPtr handle)
+        internal RinSslHandle(IntPtr handle, ulong trustedUnixTime)
             : base(handle, ownsHandle: true)
         {
+            _trustedUnixTime = trustedUnixTime;
         }
 
         internal bool ClientCertificateConfigured => _clientCertificateConfigured;
+        internal ulong TrustedUnixTime => _trustedUnixTime;
 
         internal IntPtr AttachClientCertificateState(object state)
         {

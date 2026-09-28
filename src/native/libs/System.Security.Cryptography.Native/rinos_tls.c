@@ -413,3 +413,31 @@ int32_t CryptoNative_RinTlsCopyPeerCertificate(void* handle, uint8_t* destinatio
     return rintls_get_peer_certificate(adapter->context, destination,
                                        (rin_size_t)capacity, &length);
 }
+
+int32_t CryptoNative_RinTlsGetPeerCertificateChainLength(void* handle,
+                                                         int32_t* length)
+{
+    rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;
+    rin_size_t required = 0u;
+    int result;
+    if (length) *length = 0;
+    if (!adapter || !length) return RINTLS_ERR_MEMORY;
+    result = rintls_get_peer_certificate_chain(adapter->context, RIN_NULL, 0u,
+                                               &required);
+    if (result != RINTLS_ERR_MEMORY) return result;
+    if (required > 0x7fffffffU) return RINTLS_ERR_MEMORY;
+    *length = (int32_t)required;
+    return RINTLS_OK;
+}
+
+int32_t CryptoNative_RinTlsCopyPeerCertificateChain(void* handle,
+                                                    uint8_t* destination,
+                                                    int32_t capacity)
+{
+    rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;
+    rin_size_t length = 0u;
+    if (!adapter || capacity < 0 || (capacity != 0 && !destination))
+        return RINTLS_ERR_MEMORY;
+    return rintls_get_peer_certificate_chain(adapter->context, destination,
+                                             (rin_size_t)capacity, &length);
+}

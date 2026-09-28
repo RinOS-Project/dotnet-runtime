@@ -109,6 +109,16 @@ namespace System.Net.Security
             private static partial unsafe int CopyPeerCertificateNative(
                 IntPtr handle, byte* destination, int capacity);
 
+            [LibraryImport(Libraries.CryptoNative,
+                EntryPoint = "CryptoNative_RinTlsGetPeerCertificateChainLength")]
+            private static partial int GetPeerCertificateChainLengthNative(
+                IntPtr handle, out int length);
+
+            [LibraryImport(Libraries.CryptoNative,
+                EntryPoint = "CryptoNative_RinTlsCopyPeerCertificateChain")]
+            private static partial unsafe int CopyPeerCertificateChainNative(
+                IntPtr handle, byte* destination, int capacity);
+
             internal static IntPtr Create(string hostname, uint options,
                                           ulong trustedTime, out int error)
                 => CreateNative(0, hostname, options, trustedTime, out error);
@@ -239,13 +249,29 @@ namespace System.Net.Security
                                                   out length);
 
             internal static unsafe int CopyPeerCertificate(RinSslHandle handle,
-                                                           Span<byte> destination)
+                                                            Span<byte> destination)
             {
                 fixed (byte* destinationPtr = destination)
                 {
                     return CopyPeerCertificateNative(handle.DangerousGetHandle(),
                                                      destinationPtr,
                                                      destination.Length);
+                }
+            }
+
+            internal static int GetPeerCertificateChainLength(RinSslHandle handle,
+                                                               out int length)
+                => GetPeerCertificateChainLengthNative(handle.DangerousGetHandle(),
+                                                       out length);
+
+            internal static unsafe int CopyPeerCertificateChain(
+                RinSslHandle handle, Span<byte> destination)
+            {
+                fixed (byte* destinationPtr = destination)
+                {
+                    return CopyPeerCertificateChainNative(
+                        handle.DangerousGetHandle(), destinationPtr,
+                        destination.Length);
                 }
             }
         }

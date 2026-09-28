@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Text;
 
 using Internal.IL;
+using Internal.JitInterface;
 using Internal.Text;
 using Internal.TypeSystem;
 

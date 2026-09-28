@@ -14,6 +14,7 @@ namespace ILCompiler.DependencyAnalysis
         private readonly ObjectData _data;
 
         public MethodDesc Method => _owningMethod;
+        public byte[] Data => _data.Data;
 
         public MethodExceptionHandlingInfoNode(MethodDesc owningMethod, ObjectData data)
         {

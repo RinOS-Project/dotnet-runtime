@@ -4,9 +4,16 @@
     <_IsPublishing>true</_IsPublishing>
     <RuntimeIdentifier>$(NETCoreSdkRuntimeIdentifier)</RuntimeIdentifier>
     <PublishDir>$(RuntimeBinDir)$(BuildArchitecture)/crossgen2/</PublishDir>
+    <!-- RinOS cross-builds disable apphost generation for the target graph.
+         crossgen2_inbuild is a host-side tool, so publish it framework
+         dependent and non-single-file in that graph instead of triggering
+         NETSDK1067/NETSDK1098. -->
     <SelfContained>true</SelfContained>
+    <SelfContained Condition="'$(TargetOS)' == 'rinos' or '$(UseAppHost)' == 'false'">false</SelfContained>
     <PublishTrimmed>true</PublishTrimmed>
     <PublishSingleFile>true</PublishSingleFile>
+    <PublishTrimmed Condition="'$(TargetOS)' == 'rinos' or '$(UseAppHost)' == 'false'">false</PublishTrimmed>
+    <PublishSingleFile Condition="'$(TargetOS)' == 'rinos' or '$(UseAppHost)' == 'false'">false</PublishSingleFile>
     <TrimmerSingleWarn>false</TrimmerSingleWarn>
   </PropertyGroup>
 

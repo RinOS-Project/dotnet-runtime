@@ -652,7 +652,7 @@ function(add_linker_flag Flag)
 endfunction()
 
 function(link_natvis_sources_for_target targetName linkKind)
-    if (NOT CLR_CMAKE_HOST_WIN32)
+    if (NOT CLR_CMAKE_HOST_WIN32 OR RINOS_CROSS_COMPONENTS_HOST)
         return()
     endif()
     foreach(source ${ARGN})

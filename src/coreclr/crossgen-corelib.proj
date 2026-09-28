@@ -184,7 +184,14 @@
 
     <Message Importance="High" Text="$(CrossGenDllCmd)" />
 
-    <Exec Command="$(CrossGenDllCmd)" />
+    <!-- RinOS crossgen2 is a framework-dependent host tool. Its host-side
+         JIT/JitInterface DLLs are emitted beside Crossgen2InBuildDir, so keep
+         that directory as the native loader's working directory. -->
+    <Exec Command="$(CrossGenDllCmd)"
+          Condition="'$(TargetOS)' == 'rinos'"
+          WorkingDirectory="$(Crossgen2InBuildDir)" />
+    <Exec Command="$(CrossGenDllCmd)"
+          Condition="'$(TargetOS)' != 'rinos'" />
 
     <Message Importance="High" Text="Crossgenning of System.Private.CoreLib succeeded." />
     <Message Importance="High" Text="Product binaries are available at $(BinDir)" />

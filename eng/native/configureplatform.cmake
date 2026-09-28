@@ -13,7 +13,13 @@ set(PRERELEASE 1)
 # CMake's host identity for cross builds; otherwise the target would be
 # misclassified as the host and CoreCLR would select the wrong build tools and
 # feature probes (for example, it would treat RinOS as a native host).
-if(CMAKE_CROSSCOMPILING)
+# Cross-component JIT builds are host PE builds with target-only CoreCLR
+# conditionals. CMake is intentionally not cross-compiling in that mode, so
+# use the actual host identity instead of allowing the RinOS target OS to
+# select HOST_UNIX/POSIX implementations.
+if(CLR_CROSS_COMPONENTS_BUILD AND NOT CMAKE_CROSSCOMPILING)
+    set(CLR_CMAKE_HOST_OS ${CMAKE_HOST_SYSTEM_NAME})
+elseif(CMAKE_CROSSCOMPILING)
     set(CLR_CMAKE_HOST_OS ${CMAKE_HOST_SYSTEM_NAME})
 else()
     set(CLR_CMAKE_HOST_OS ${CMAKE_SYSTEM_NAME})

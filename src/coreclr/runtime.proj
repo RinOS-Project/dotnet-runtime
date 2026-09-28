@@ -24,10 +24,10 @@
           DependsOnTargets="$(BuildRuntimeDependsOnTargets)"
           BeforeTargets="Build">
     <ItemGroup>
-      <!-- Crossgen2 and its JIT/JitInterface are host tools. They still carry
-           TargetOS=rinos for the target ABI, but must use the host compiler
-           and linker rather than the RinOS target toolchain. -->
-      <_CMakeArgs Include="$(CMakeArgs)" Condition="'$(ClrCrossComponentsBuild)' != 'true'" />
+      <!-- Crossgen2 and its JIT/JitInterface are host tools. The RinOS
+           toolchain detects the cross-component build and keeps the host
+           PE/DLL ABI while supplying RinOS target headers and definitions. -->
+      <_CMakeArgs Include="$(CMakeArgs)" />
       <_CoreClrBuildArg Include="@(_CMakeArgs->'-cmakeargs &quot;%(Identity)&quot;')" />
       <_CoreClrBuildArg Condition="'$(TargetArchitecture)' != ''" Include="-$(TargetArchitecture)" />
       <_CoreClrBuildArg Include="-$(Configuration.ToLower())" />

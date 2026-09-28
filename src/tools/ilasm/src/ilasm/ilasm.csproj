@@ -8,9 +8,15 @@
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendTargetFrameworkToOutputPath Condition="'$(BuildingInsideVisualStudio)' == 'true'">true</AppendTargetFrameworkToOutputPath>
+    <!-- RinOS cross-builds run this host-side tool on the build machine.
+         Keep the publish graph framework dependent and disable AOT/single-file
+         output when the target graph has no compatible apphost. -->
     <SelfContained>true</SelfContained>
+    <SelfContained Condition="'$(TargetOS)' == 'rinos' or '$(UseAppHost)' == 'false'">false</SelfContained>
     <PublishTrimmed>true</PublishTrimmed>
+    <PublishTrimmed Condition="'$(TargetOS)' == 'rinos' or '$(UseAppHost)' == 'false'">false</PublishTrimmed>
     <AotOrSingleFile>true</AotOrSingleFile>
+    <AotOrSingleFile Condition="'$(TargetOS)' == 'rinos' or '$(UseAppHost)' == 'false'">false</AotOrSingleFile>
     <UseBootstrapLayout Condition="'$(UseBootstrap)' == 'true'">true</UseBootstrapLayout>
     <Nullable>enable</Nullable>
   </PropertyGroup>

@@ -6,7 +6,7 @@ project(CoreCLR)
 include(../../eng/native/configurepaths.cmake)
 include(${CLR_ENG_NATIVE_DIR}/configurecompiler.cmake)
 
-if(CLR_CMAKE_TARGET_RINOS)
+if(CLR_CMAKE_TARGET_RINOS AND NOT CLR_CROSS_COMPONENTS_BUILD)
   enable_language(ASM)
 endif()
 

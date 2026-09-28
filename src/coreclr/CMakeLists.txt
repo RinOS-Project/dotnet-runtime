@@ -268,6 +268,11 @@ if(CLR_CROSS_COMPONENTS_BUILD AND (CLR_CMAKE_TARGET_ARCH_WASM OR CLR_CMAKE_TARGE
   add_subdirectory(utilcode)
   add_subdirectory(gcinfo)
   add_subdirectory(jit)
+  if(CLR_CMAKE_TARGET_RINOS AND NOT TARGET eventing_headers)
+    # The host-only JIT graph returns before vm/eventing is added, but a few
+    # shared utility targets retain the upstream dependency edge.
+    add_custom_target(eventing_headers)
+  endif()
   return()
 endif()
 

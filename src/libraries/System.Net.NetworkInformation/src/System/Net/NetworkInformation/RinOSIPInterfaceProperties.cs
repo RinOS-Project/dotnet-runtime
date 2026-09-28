@@ -13,7 +13,6 @@ namespace System.Net.NetworkInformation
         private readonly RinOSIPv6InterfaceProperties _ipv6Properties;
         private readonly GatewayIPAddressInformationCollection _gatewayAddresses;
         private readonly InternalIPAddressCollection _dnsAddresses;
-        private readonly InternalIPAddressCollection _emptyAddresses = new InternalIPAddressCollection();
 
         internal RinOSIPInterfaceProperties(
             RinOSNetworkInterface networkInterface,
@@ -26,15 +25,19 @@ namespace System.Net.NetworkInformation
             _dnsAddresses = CreateDnsAddresses(primaryInfo);
         }
 
-        public override bool IsDynamicDnsEnabled => false;
+        public override bool IsDynamicDnsEnabled =>
+            throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
 
-        public override IPAddressInformationCollection AnycastAddresses => new IPAddressInformationCollection();
+        public override IPAddressInformationCollection AnycastAddresses =>
+            throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
 
         public override GatewayIPAddressInformationCollection GatewayAddresses => _gatewayAddresses;
 
-        public override IPAddressCollection DhcpServerAddresses => _emptyAddresses;
+        public override IPAddressCollection DhcpServerAddresses =>
+            throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
 
-        public override IPAddressCollection WinsServersAddresses => _emptyAddresses;
+        public override IPAddressCollection WinsServersAddresses =>
+            throw new PlatformNotSupportedException(SR.net_InformationUnavailableOnPlatform);
 
         public override bool IsDnsEnabled => _dnsAddresses.Count != 0;
 

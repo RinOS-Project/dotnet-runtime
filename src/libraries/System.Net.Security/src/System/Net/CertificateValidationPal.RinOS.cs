@@ -70,7 +70,7 @@ namespace System.Net
                 if (chainValid)
                 {
                     RinOSRevocationStatus status = RinOSRevocationClient.CheckPeer(
-                        handle, revocationMode, revocationFlag,
+                        handle, chain, revocationMode, revocationFlag,
                         chain.ChainPolicy.UrlRetrievalTimeout);
                     if (status != RinOSRevocationStatus.Good)
                     {

@@ -127,10 +127,23 @@ namespace System.Net.Security
                 out int length);
 
             [LibraryImport(Libraries.CryptoNative,
+                EntryPoint = "CryptoNative_RinTlsGetPeerRevocationEndpointAt")]
+            private static partial unsafe int GetPeerRevocationEndpointAtNative(
+                IntPtr handle, int certificateIndex, int source,
+                byte* destination, int capacity, out int length);
+
+            [LibraryImport(Libraries.CryptoNative,
                 EntryPoint = "CryptoNative_RinTlsVerifyPeerRevocation")]
             private static partial unsafe int VerifyPeerRevocationNative(
                 IntPtr handle, int source, byte* response, int responseLength,
                 ulong sequence, out int status);
+
+            [LibraryImport(Libraries.CryptoNative,
+                EntryPoint = "CryptoNative_RinTlsVerifyPeerRevocationAt")]
+            private static partial unsafe int VerifyPeerRevocationAtNative(
+                IntPtr handle, int certificateIndex, int source,
+                byte* response, int responseLength, ulong sequence,
+                out int status);
 
             internal static IntPtr Create(string hostname, uint options,
                                           ulong trustedTime, out int error)
@@ -319,6 +332,37 @@ namespace System.Net.Security
                 }
             }
 
+            internal static unsafe string? GetPeerRevocationEndpoint(
+                RinSslHandle handle, int certificateIndex, int source)
+            {
+                Span<byte> endpoint = stackalloc byte[256];
+                fixed (byte* endpointPtr = endpoint)
+                {
+                    int result = GetPeerRevocationEndpointAtNative(
+                        handle.DangerousGetHandle(), certificateIndex, source,
+                        endpointPtr, endpoint.Length, out int length);
+                    if (result != 0)
+                    {
+                        throw new AuthenticationException(
+                            "RinTLS could not expose the peer revocation endpoint.");
+                    }
+
+                    if (length == 0)
+                    {
+                        return null;
+                    }
+
+                    if ((uint)length >= (uint)endpoint.Length)
+                    {
+                        throw new AuthenticationException(
+                            "RinTLS returned an invalid revocation endpoint length.");
+                    }
+
+                    return System.Text.Encoding.ASCII.GetString(
+                        endpoint.Slice(0, length));
+                }
+            }
+
             internal static unsafe int VerifyPeerRevocation(
                 RinSslHandle handle, int source, ReadOnlySpan<byte> response,
                 ulong sequence, out int status)
@@ -327,6 +371,19 @@ namespace System.Net.Security
                 {
                     return VerifyPeerRevocationNative(
                         handle.DangerousGetHandle(), source,
+                        response.IsEmpty ? null : responsePtr, response.Length,
+                        sequence, out status);
+                }
+            }
+
+            internal static unsafe int VerifyPeerRevocation(
+                RinSslHandle handle, int certificateIndex, int source,
+                ReadOnlySpan<byte> response, ulong sequence, out int status)
+            {
+                fixed (byte* responsePtr = response)
+                {
+                    return VerifyPeerRevocationAtNative(
+                        handle.DangerousGetHandle(), certificateIndex, source,
                         response.IsEmpty ? null : responsePtr, response.Length,
                         sequence, out status);
                 }

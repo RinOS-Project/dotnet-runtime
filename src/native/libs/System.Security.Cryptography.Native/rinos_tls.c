@@ -442,9 +442,9 @@ int32_t CryptoNative_RinTlsCopyPeerCertificateChain(void* handle,
                                              (rin_size_t)capacity, &length);
 }
 
-int32_t CryptoNative_RinTlsGetPeerRevocationEndpoint(
-    void* handle, int32_t source, uint8_t* destination, int32_t capacity,
-    int32_t* length)
+int32_t CryptoNative_RinTlsGetPeerRevocationEndpointAt(
+    void* handle, int32_t certificate_index, int32_t source,
+    uint8_t* destination, int32_t capacity, int32_t* length)
 {
     rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;
     rintls_revocation_endpoints endpoints;
@@ -453,13 +453,15 @@ int32_t CryptoNative_RinTlsGetPeerRevocationEndpoint(
     int result;
 
     if (length) *length = 0;
-    if (!adapter || capacity < 0 || (capacity != 0 && !destination) ||
+    if (!adapter || certificate_index < 0 || capacity < 0 ||
+        (capacity != 0 && !destination) ||
         !length || (source != (int32_t)RINTLS_REVOCATION_SOURCE_OCSP &&
                     source != (int32_t)RINTLS_REVOCATION_SOURCE_CRL))
         return RINTLS_ERR_MEMORY;
 
     rintls_memset(&endpoints, 0, sizeof(endpoints));
-    result = rintls_get_peer_revocation_endpoints(adapter->context, &endpoints);
+    result = rintls_get_peer_revocation_endpoints_at(
+        adapter->context, (u32)certificate_index, &endpoints);
     if (result != RINTLS_OK) return result;
     selected = source == (int32_t)RINTLS_REVOCATION_SOURCE_OCSP
         ? endpoints.ocsp_url : endpoints.crl_url;
@@ -481,29 +483,39 @@ int32_t CryptoNative_RinTlsGetPeerRevocationEndpoint(
     return RINTLS_OK;
 }
 
-int32_t CryptoNative_RinTlsVerifyPeerRevocation(
-    void* handle, int32_t source, const uint8_t* response,
-    int32_t response_length, uint64_t sequence, int32_t* status)
+int32_t CryptoNative_RinTlsGetPeerRevocationEndpoint(
+    void* handle, int32_t source, uint8_t* destination, int32_t capacity,
+    int32_t* length)
+{
+    return CryptoNative_RinTlsGetPeerRevocationEndpointAt(
+        handle, 0, source, destination, capacity, length);
+}
+
+int32_t CryptoNative_RinTlsVerifyPeerRevocationAt(
+    void* handle, int32_t certificate_index, int32_t source,
+    const uint8_t* response, int32_t response_length, uint64_t sequence,
+    int32_t* status)
 {
     rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;
     rintls_revocation_evidence evidence;
     int result;
 
     if (status) *status = 0;
-    if (!adapter || response_length <= 0 || !response || sequence == 0u ||
+    if (!adapter || certificate_index < 0 || response_length <= 0 ||
+        !response || sequence == 0u ||
         !status || (source != (int32_t)RINTLS_REVOCATION_SOURCE_OCSP &&
                     source != (int32_t)RINTLS_REVOCATION_SOURCE_CRL))
         return RINTLS_ERR_MEMORY;
 
     rintls_memset(&evidence, 0, sizeof(evidence));
     if (source == (int32_t)RINTLS_REVOCATION_SOURCE_OCSP) {
-        result = rintls_verify_peer_ocsp(
-            adapter->context, response, (rin_size_t)response_length, sequence,
-            &evidence);
+        result = rintls_verify_peer_ocsp_at(
+            adapter->context, (u32)certificate_index, response,
+            (rin_size_t)response_length, sequence, &evidence);
     } else {
-        result = rintls_verify_peer_crl(
-            adapter->context, response, (rin_size_t)response_length, sequence,
-            &evidence);
+        result = rintls_verify_peer_crl_at(
+            adapter->context, (u32)certificate_index, response,
+            (rin_size_t)response_length, sequence, &evidence);
     }
     if (result == RINTLS_OK &&
         (evidence.status == RINTLS_REVOCATION_STATUS_GOOD ||
@@ -514,4 +526,12 @@ int32_t CryptoNative_RinTlsVerifyPeerRevocation(
     }
     rintls_secure_zero(&evidence, sizeof(evidence));
     return result;
+}
+
+int32_t CryptoNative_RinTlsVerifyPeerRevocation(
+    void* handle, int32_t source, const uint8_t* response,
+    int32_t response_length, uint64_t sequence, int32_t* status)
+{
+    return CryptoNative_RinTlsVerifyPeerRevocationAt(
+        handle, 0, source, response, response_length, sequence, status);
 }

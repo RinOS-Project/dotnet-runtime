@@ -40,6 +40,7 @@ namespace System.Net.Security
 
         internal static RinOSRevocationStatus CheckPeer(
             RinSslHandle handle,
+            X509Chain chain,
             X509RevocationMode mode,
             X509RevocationFlag flag,
             TimeSpan timeout)
@@ -49,11 +50,6 @@ namespace System.Net.Security
                 return RinOSRevocationStatus.Good;
             }
 
-            // RinTLS currently exposes a leaf/issuer-bound evidence verifier.
-            // Both ExcludeRoot and EndCertificateOnly select the peer leaf in
-            // the supported path; the former also describes SslStream's
-            // default policy.  Remain fail-closed for a scope that includes
-            // an intermediate certificate or for an offline cache lookup.
             if (mode != X509RevocationMode.Online ||
                 (flag != X509RevocationFlag.ExcludeRoot &&
                  flag != X509RevocationFlag.EndCertificateOnly))
@@ -62,11 +58,72 @@ namespace System.Net.Security
             }
 
             int timeoutMilliseconds = GetTimeoutMilliseconds(timeout);
+            int elementCount = chain.ChainElements.Count;
+            if (elementCount == 0 || elementCount > 16)
+            {
+                return RinOSRevocationStatus.Unknown;
+            }
+
+            int[] certificateIndexes = new int[elementCount];
+            int certificateCount = 0;
+            if (flag == X509RevocationFlag.EndCertificateOnly)
+            {
+                certificateIndexes[certificateCount++] = 0;
+            }
+            else
+            {
+                for (int index = 0; index < elementCount; index++)
+                {
+                    // A self-signed final element is the managed trust anchor,
+                    // not a certificate sent by the peer.  It has no adjacent
+                    // issuer in the TLS Certificate message and is excluded
+                    // by the ExcludeRoot policy.
+                    if (index == elementCount - 1 &&
+                        IsSelfSigned(chain.ChainElements[index].Certificate))
+                    {
+                        continue;
+                    }
+
+                    certificateIndexes[certificateCount++] = index;
+                }
+            }
+
+            if (certificateCount == 0)
+            {
+                return RinOSRevocationStatus.Unknown;
+            }
+
+            for (int index = 0; index < certificateCount; index++)
+            {
+                RinOSRevocationStatus status = CheckCertificate(
+                    handle, certificateIndexes[index], timeoutMilliseconds);
+                if (status != RinOSRevocationStatus.Good)
+                {
+                    return status;
+                }
+            }
+
+            return RinOSRevocationStatus.Good;
+        }
+
+        private static RinOSRevocationStatus CheckCertificate(
+            RinSslHandle handle, int certificateIndex, int timeoutMilliseconds)
+        {
             int[] sources = { checked((int)OcspSource), checked((int)CrlSource) };
+            bool sawGood = false;
             foreach (int source in sources)
             {
-                string? endpoint = Interop.RinTls.GetPeerRevocationEndpoint(
-                    handle, source);
+                string? endpoint;
+                try
+                {
+                    endpoint = Interop.RinTls.GetPeerRevocationEndpoint(
+                        handle, certificateIndex, source);
+                }
+                catch (AuthenticationException)
+                {
+                    return RinOSRevocationStatus.Unknown;
+                }
+
                 if (endpoint is null ||
                     !TryFetch(endpoint, (uint)source, timeoutMilliseconds,
                               out byte[] response))
@@ -74,33 +131,47 @@ namespace System.Net.Security
                     continue;
                 }
 
-                long sequence = Interlocked.Increment(ref s_nextEvidenceSequence);
-                if (sequence <= 0)
+                try
                 {
-                    return RinOSRevocationStatus.Unknown;
-                }
+                    long sequence = Interlocked.Increment(
+                        ref s_nextEvidenceSequence);
+                    if (sequence <= 0)
+                    {
+                        return RinOSRevocationStatus.Unknown;
+                    }
 
-                int verifyResult = Interop.RinTls.VerifyPeerRevocation(
-                    handle, source, response, (ulong)sequence,
-                    out int nativeStatus);
-                if (verifyResult != 0)
-                {
-                    continue;
-                }
+                    int verifyResult = Interop.RinTls.VerifyPeerRevocation(
+                        handle, certificateIndex, source, response,
+                        (ulong)sequence, out int nativeStatus);
+                    if (verifyResult != 0)
+                    {
+                        continue;
+                    }
 
-                if (nativeStatus == (int)RinOSRevocationStatus.Revoked)
-                {
-                    return RinOSRevocationStatus.Revoked;
-                }
+                    if (nativeStatus == (int)RinOSRevocationStatus.Revoked)
+                    {
+                        return RinOSRevocationStatus.Revoked;
+                    }
 
-                if (nativeStatus == (int)RinOSRevocationStatus.Good)
+                    if (nativeStatus == (int)RinOSRevocationStatus.Good)
+                    {
+                        sawGood = true;
+                    }
+                }
+                finally
                 {
-                    return RinOSRevocationStatus.Good;
+                    CryptographicOperations.ZeroMemory(response);
                 }
             }
 
-            return RinOSRevocationStatus.Unknown;
+            return sawGood
+                ? RinOSRevocationStatus.Good
+                : RinOSRevocationStatus.Unknown;
         }
+
+        private static bool IsSelfSigned(X509Certificate2 certificate)
+            => certificate.SubjectName.RawData.AsSpan().SequenceEqual(
+                certificate.IssuerName.RawData);
 
         private static int GetTimeoutMilliseconds(TimeSpan timeout)
         {

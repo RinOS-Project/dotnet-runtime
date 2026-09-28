@@ -11,6 +11,11 @@ namespace System.Net
 {
     internal static partial class CertificateValidationPal
     {
+        // Keep the managed allocation bounded by RinTLS's Certificate message
+        // limit. The native PAL validates the same limit, but this boundary
+        // must remain fail-closed if a future product adapter regresses.
+        private const int MaxPeerCertificateBytes = 8 * 1024;
+
         internal static SslPolicyErrors VerifyCertificateProperties(
             SafeDeleteContext? securityContext,
             X509Chain chain,
@@ -43,9 +48,12 @@ namespace System.Net
             {
                 return null;
             }
-            if (result != 0 || length <= 0)
+            if (result != 0 || length <= 0 || length > MaxPeerCertificateBytes)
             {
-                throw new AuthenticationException($"RinTLS certificate error {result}.");
+                throw new AuthenticationException(
+                    result != 0
+                        ? $"RinTLS certificate error {result}."
+                        : "RinTLS peer certificate exceeds the managed size limit.");
             }
 
             byte[] der = new byte[length];

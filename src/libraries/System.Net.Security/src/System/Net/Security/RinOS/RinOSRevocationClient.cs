@@ -50,11 +50,13 @@ namespace System.Net.Security
             }
 
             // RinTLS currently exposes a leaf/issuer-bound evidence verifier.
-            // The PAL accepts the same ExcludeRoot scope used by SslStream's
-            // default policy and remains fail-closed for an unimplemented
-            // caller-selected scope or offline cache.
+            // Both ExcludeRoot and EndCertificateOnly select the peer leaf in
+            // the supported path; the former also describes SslStream's
+            // default policy.  Remain fail-closed for a scope that includes
+            // an intermediate certificate or for an offline cache lookup.
             if (mode != X509RevocationMode.Online ||
-                flag != X509RevocationFlag.ExcludeRoot)
+                (flag != X509RevocationFlag.ExcludeRoot &&
+                 flag != X509RevocationFlag.EndCertificateOnly))
             {
                 return RinOSRevocationStatus.Unknown;
             }

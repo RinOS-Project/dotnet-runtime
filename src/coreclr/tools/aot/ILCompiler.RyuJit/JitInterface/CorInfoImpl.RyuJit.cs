@@ -2520,7 +2520,7 @@ namespace Internal.JitInterface
         {
             CorInfoWasmType[] typeArray = new ReadOnlySpan<CorInfoWasmType>(types, (int)typesSize).ToArray();
 
-            WasmTypeNode typeNode = new WasmTypeNode(WasmFuncType.FromCorInfoSignature(typeArray));
+            WasmTypeNode typeNode = _compilation.NodeFactory.WasmTypeNode(typeArray);
             return (CORINFO_WASM_TYPE_SYMBOL_STRUCT_*)ObjectToHandle(typeNode);
         }
 

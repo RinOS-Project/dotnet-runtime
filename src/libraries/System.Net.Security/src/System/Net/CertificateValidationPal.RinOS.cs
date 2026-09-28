@@ -68,8 +68,8 @@ namespace System.Net
         }
 
         internal static bool IsLocalCertificateUsed(SafeFreeCredentials? _,
-                                                    SafeDeleteContext? __)
-            => false;
+                                                    SafeDeleteContext? securityContext)
+            => securityContext is RinSslHandle handle && handle.ClientCertificateConfigured;
 
         internal static string[] GetRequestCertificateAuthorities(
             SafeDeleteContext _)

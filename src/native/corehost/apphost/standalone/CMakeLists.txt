@@ -34,6 +34,11 @@ if(CLR_CMAKE_TARGET_RINOS)
     # Keep the linked ELF private to the packaging step.  A RinOS apphost is
     # distributed only as a signed .rin image, never as an installable ELF.
     set_target_properties(apphost PROPERTIES OUTPUT_NAME "apphost.elf")
+    # RinOS libc functions are resolved by the process-owned libc/RLL loader
+    # boundary after packaging.  Preserve their GOT/PLT imports in the
+    # intermediate ELF instead of making lld treat this freestanding link as
+    # a self-contained hosted executable.
+    target_link_options(apphost PRIVATE "LINKER:--unresolved-symbols=ignore-all")
 endif()
 
 target_link_libraries(apphost PRIVATE fxr_resolver)

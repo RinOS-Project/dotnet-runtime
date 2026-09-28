@@ -4,6 +4,19 @@ project(corehost)
 include(../../../eng/native/configurepaths.cmake)
 include(${CLR_ENG_NATIVE_DIR}/configurecompiler.cmake)
 
+if(CLR_CMAKE_TARGET_RINOS AND NOT CLR_CROSS_COMPONENTS_BUILD)
+    # Corehost is configured as a separate native project from CoreCLR, so it
+    # does not inherit CoreCLR's target-only RinOS libc/SDK include paths or
+    # freestanding compiler flags.  Connect the same target boundary here;
+    # otherwise a clean cross configure falls back to Clang's empty RinOS
+    # sysroot and fails on standard headers such as stdlib.h and unistd.h.
+    include_directories(SYSTEM ${RINOS_DOTNET_TARGET_INCLUDE_DIRS})
+    add_compile_options(${RINOS_DOTNET_C_FLAGS})
+    foreach(_RINOS_CXX_FLAG IN LISTS RINOS_DOTNET_CXX_FLAGS)
+        add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:${_RINOS_CXX_FLAG}>")
+    endforeach()
+endif()
+
 set(COREHOST_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
 option(CLR_CMAKE_BUILD_HOST_PRODUCT "Build host product components" ON)
@@ -157,7 +170,11 @@ if (NOT "${ASAN_RUNTIME}" STREQUAL "")
     endif()
 endif()
 
-if(CLR_CMAKE_HOST_WIN32)
+# These components are Windows-host interop artifacts.  A Windows build of
+# the RinOS target still has CLR_CMAKE_HOST_WIN32 set, but ijwhost/comhost are
+# not part of the RinOS host graph and otherwise pull PE/COM headers and MASM
+# sources into the target build.
+if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
     add_subdirectory(ijwhost)
     if(CLR_CMAKE_BUILD_HOST_PRODUCT)
         add_subdirectory(comhost)

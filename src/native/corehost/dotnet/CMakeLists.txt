@@ -26,6 +26,9 @@ if(CLR_CMAKE_TARGET_RINOS)
     # The linker output is an intermediate ELF image.  The final .rin image is
     # produced by the signed packaging step below; never confuse the two.
     set_target_properties(dotnet PROPERTIES OUTPUT_NAME "dotnet.elf")
+    # Keep target libc calls as loader-owned GOT/PLT imports for the later
+    # signed RIN v3 packaging boundary.
+    target_link_options(dotnet PRIVATE "LINKER:--unresolved-symbols=ignore-all")
 endif()
 
 target_link_libraries(dotnet PRIVATE hostmisc fxr_resolver)

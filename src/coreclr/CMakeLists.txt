@@ -6,6 +6,14 @@ project(CoreCLR)
 include(../../eng/native/configurepaths.cmake)
 include(${CLR_ENG_NATIVE_DIR}/configurecompiler.cmake)
 
+if(CLR_CROSS_COMPONENTS_BUILD)
+  # Target and host cross-component graphs intentionally reuse the same
+  # CoreCLR build directory.  CMake directory properties survive a reconfigure,
+  # so remove target-only options left by the preceding RinOS configure before
+  # generating the host JIT graph.
+  set_property(DIRECTORY PROPERTY COMPILE_OPTIONS "")
+endif()
+
 if(CLR_CMAKE_TARGET_RINOS AND NOT CLR_CROSS_COMPONENTS_BUILD)
   include_directories(SYSTEM ${RINOS_DOTNET_TARGET_INCLUDE_DIRS})
   add_compile_options(${RINOS_DOTNET_C_FLAGS})

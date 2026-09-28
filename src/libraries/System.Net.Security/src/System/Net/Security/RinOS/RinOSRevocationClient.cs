@@ -170,8 +170,35 @@ namespace System.Net.Security
         }
 
         private static bool IsSelfSigned(X509Certificate2 certificate)
-            => certificate.SubjectName.RawData.AsSpan().SequenceEqual(
-                certificate.IssuerName.RawData);
+        {
+            // Matching issuer and subject names means only self-issued.  The
+            // final element may be excluded from ExcludeRoot only after the
+            // product verifier confirms the certificate signature with its
+            // own key; otherwise a same-DN non-self-signed certificate could
+            // bypass revocation by being mistaken for the trust anchor.
+            if (!certificate.SubjectName.RawData.AsSpan().SequenceEqual(
+                    certificate.IssuerName.RawData))
+            {
+                return false;
+            }
+
+            try
+            {
+                return Interop.RinTls.IsSelfSigned(certificate);
+            }
+            catch (AuthenticationException)
+            {
+                return false;
+            }
+            catch (CryptographicException)
+            {
+                return false;
+            }
+            catch (PlatformNotSupportedException)
+            {
+                return false;
+            }
+        }
 
         private static int GetTimeoutMilliseconds(TimeSpan timeout)
         {

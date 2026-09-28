@@ -3,6 +3,7 @@
 
 using System;
 using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
 using System.Runtime.InteropServices;
 
 namespace System.Net.Security
@@ -144,6 +145,12 @@ namespace System.Net.Security
                 IntPtr handle, int certificateIndex, int source,
                 byte* response, int responseLength, ulong sequence,
                 out int status);
+
+            [LibraryImport(Libraries.CryptoNative,
+                EntryPoint = "CryptoNative_RinOSX509VerifySignature")]
+            private static partial unsafe int VerifyCertificateSignatureNative(
+                byte* certificateDer, int certificateLength,
+                byte* issuerDer, int issuerLength);
 
             internal static IntPtr Create(string hostname, uint options,
                                           ulong trustedTime, out int error)
@@ -386,6 +393,22 @@ namespace System.Net.Security
                         handle.DangerousGetHandle(), certificateIndex, source,
                         response.IsEmpty ? null : responsePtr, response.Length,
                         sequence, out status);
+                }
+            }
+
+            internal static unsafe bool IsSelfSigned(X509Certificate2 certificate)
+            {
+                ArgumentNullException.ThrowIfNull(certificate);
+                byte[] der = certificate.RawData;
+                if (der.Length == 0 || der.Length > 8 * 1024)
+                {
+                    return false;
+                }
+
+                fixed (byte* derPtr = der)
+                {
+                    return VerifyCertificateSignatureNative(
+                        derPtr, der.Length, derPtr, der.Length) != 0;
                 }
             }
         }

@@ -34,7 +34,7 @@ include_directories(${CLR_SRC_NATIVE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 
 add_library(minipal_objects OBJECT ${SOURCES})
 
-if(CLR_CMAKE_TARGET_RINOS)
+if(CLR_CMAKE_TARGET_RINOS AND NOT CLR_CROSS_COMPONENTS_BUILD)
     # minipal's HOST_* switches describe the OS whose primitives are being
     # compiled.  A Windows host cross build must take the target's POSIX path.
     target_compile_options(minipal_objects PRIVATE -UHOST_WINDOWS -DHOST_UNIX)
@@ -50,7 +50,7 @@ endif()
 add_library(aotminipal STATIC ${SOURCES})
 set_target_properties(aotminipal PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
 
-if(CLR_CMAKE_TARGET_RINOS)
+if(CLR_CMAKE_TARGET_RINOS AND NOT CLR_CROSS_COMPONENTS_BUILD)
     target_compile_options(aotminipal PRIVATE -UHOST_WINDOWS -DHOST_UNIX)
 endif()
 

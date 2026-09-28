@@ -12,6 +12,7 @@
     <SelfContained Condition="'$(TargetOS)' == 'rinos' or '$(UseAppHost)' == 'false'">false</SelfContained>
     <PublishTrimmed>true</PublishTrimmed>
     <PublishSingleFile>true</PublishSingleFile>
+    <PublishTrimmed Condition="'$(TargetOS)' == 'rinos' or '$(UseAppHost)' == 'false'">false</PublishTrimmed>
     <PublishSingleFile Condition="'$(TargetOS)' == 'rinos' or '$(UseAppHost)' == 'false'">false</PublishSingleFile>
     <TrimmerSingleWarn>false</TrimmerSingleWarn>
   </PropertyGroup>

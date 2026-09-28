@@ -303,7 +303,11 @@ namespace System.Net.Security
                     ProtocolType.Unspecified);
                 socket.SendTimeout = timeoutMilliseconds;
                 socket.ReceiveTimeout = timeoutMilliseconds;
-                socket.Connect(new UnixDomainSocketEndPoint(WorkerdSocketPath));
+                using CancellationTokenSource connectCancellation =
+                    new CancellationTokenSource(timeoutMilliseconds);
+                socket.ConnectAsync(
+                    new UnixDomainSocketEndPoint(WorkerdSocketPath),
+                    connectCancellation.Token).GetAwaiter().GetResult();
                 SendAll(socket, message);
 
                 byte[] header = new byte[32];
@@ -349,7 +353,8 @@ namespace System.Net.Security
                 ex is ObjectDisposedException ||
                 ex is InvalidOperationException ||
                 ex is PlatformNotSupportedException ||
-                ex is ArgumentException)
+                ex is ArgumentException ||
+                ex is OperationCanceledException)
             {
                 return false;
             }

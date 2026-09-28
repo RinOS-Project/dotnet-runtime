@@ -51,9 +51,12 @@ namespace System.Security.Cryptography.X509Certificates
         internal static RinOSChainPal Build(
             ICertificatePal certificate,
             X509Certificate2Collection? extraStore,
+            OidCollection? applicationPolicy,
+            OidCollection? certificatePolicy,
             X509Certificate2Collection? customTrustStore,
             X509ChainTrustMode trustMode,
             X509RevocationMode revocationMode,
+            X509RevocationFlag revocationFlag,
             DateTime verificationTime)
         {
             List<X509Certificate2> ownedCertificates = new List<X509Certificate2>();
@@ -206,16 +209,16 @@ namespace System.Security.Cryptography.X509Certificates
                     current = issuer;
                 }
 
-                if (revocationMode != X509RevocationMode.NoCheck)
-                {
-                    foreach (List<X509ChainStatus> statuses in elementStatuses)
-                    {
-                        AddStatus(
-                            statuses,
-                            X509ChainStatusFlags.RevocationStatusUnknown,
-                            "RinOS does not provide a revocation-data transport in this PAL.");
-                    }
-                }
+                AddRevocationStatuses(
+                    chainCertificates,
+                    elementStatuses,
+                    revocationMode,
+                    revocationFlag);
+                ApplyPolicyStatuses(
+                    chainCertificates,
+                    elementStatuses,
+                    applicationPolicy,
+                    certificatePolicy);
 
                 X509ChainElement[] chainElements = new X509ChainElement[chainCertificates.Count];
                 List<X509ChainStatus> allStatuses = new List<X509ChainStatus>();
@@ -316,6 +319,117 @@ namespace System.Security.Cryptography.X509Certificates
             });
         }
 
+        private static void AddRevocationStatuses(
+            List<X509Certificate2> chainCertificates,
+            List<List<X509ChainStatus>> elementStatuses,
+            X509RevocationMode revocationMode,
+            X509RevocationFlag revocationFlag)
+        {
+            if (revocationMode == X509RevocationMode.NoCheck)
+            {
+                return;
+            }
+
+            int lastIndex = chainCertificates.Count - 1;
+            for (int index = 0; index < chainCertificates.Count; index++)
+            {
+                bool include = revocationFlag switch
+                {
+                    X509RevocationFlag.EndCertificateOnly => index == 0,
+                    X509RevocationFlag.ExcludeRoot =>
+                        index != lastIndex ||
+                        !chainCertificates[index].SubjectName.RawData.Span.SequenceEqual(
+                            chainCertificates[index].IssuerName.RawData.Span),
+                    X509RevocationFlag.EntireChain => true,
+                    _ => throw new ArgumentOutOfRangeException(nameof(revocationFlag)),
+                };
+
+                if (include)
+                {
+                    AddStatus(
+                        elementStatuses[index],
+                        X509ChainStatusFlags.RevocationStatusUnknown,
+                        "RinOS does not provide a revocation-data transport in this PAL.");
+                }
+            }
+        }
+
+        private static void ApplyPolicyStatuses(
+            List<X509Certificate2> chainCertificates,
+            List<List<X509ChainStatus>> elementStatuses,
+            OidCollection? applicationPolicy,
+            OidCollection? certificatePolicy)
+        {
+            CertificatePolicyChain.ErrorVector encodingErrors;
+            CertificatePolicyChain.ErrorVector usageErrors = default;
+            bool hasPolicy = applicationPolicy is { Count: > 0 } ||
+                certificatePolicy is { Count: > 0 };
+            bool isPartialChain = HasStatus(
+                elementStatuses[^1], X509ChainStatusFlags.PartialChain);
+
+            if (hasPolicy)
+            {
+                CertificatePolicyChain policyChain = CertificatePolicyChain.Build(
+                    chainCertificates,
+                    chainCertificates.Count,
+                    isPartialChain,
+                    ref encodingErrors);
+
+                if (certificatePolicy is not null)
+                {
+                    policyChain.MatchCertificatePolicies(certificatePolicy, ref usageErrors);
+                }
+
+                if (applicationPolicy is not null)
+                {
+                    policyChain.MatchApplicationPolicies(applicationPolicy, ref usageErrors);
+                }
+            }
+            else
+            {
+                encodingErrors = CertificatePolicyChain.CheckEncodingOnly(
+                    chainCertificates, chainCertificates.Count);
+            }
+
+            for (int index = 0; index < chainCertificates.Count; index++)
+            {
+                if (encodingErrors[index])
+                {
+                    AddStatus(
+                        elementStatuses[index],
+                        X509ChainStatusFlags.InvalidPolicyConstraints,
+                        "The certificate policy extension is invalid.");
+                    AddStatus(
+                        elementStatuses[index],
+                        X509ChainStatusFlags.InvalidExtension,
+                        "The certificate policy extension has invalid DER encoding.");
+                }
+
+                if (usageErrors[index])
+                {
+                    AddStatus(
+                        elementStatuses[index],
+                        X509ChainStatusFlags.NotValidForUsage,
+                        "The requested certificate policy is not present in the chain.");
+                }
+            }
+        }
+
+        private static bool HasStatus(
+            List<X509ChainStatus> statuses,
+            X509ChainStatusFlags status)
+        {
+            foreach (X509ChainStatus existing in statuses)
+            {
+                if (existing.Status == status)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static void DisposeCertificates(List<X509Certificate2> certificates)
         {
             foreach (X509Certificate2 certificate in certificates)
@@ -349,15 +463,8 @@ namespace System.Security.Cryptography.X509Certificates
             bool disableAia)
         {
             _ = useMachineContext;
-            _ = revocationFlag;
             _ = timeout;
             _ = disableAia;
-
-            if (applicationPolicy is { Count: > 0 } || certificatePolicy is { Count: > 0 })
-            {
-                throw new PlatformNotSupportedException(
-                    "RinOS chain verification does not yet implement application or certificate policy OIDs.");
-            }
 
             if (trustMode != X509ChainTrustMode.System && trustMode != X509ChainTrustMode.CustomRootTrust)
             {
@@ -367,9 +474,12 @@ namespace System.Security.Cryptography.X509Certificates
             return RinOSChainPal.Build(
                 cert,
                 extraStore,
+                applicationPolicy,
+                certificatePolicy,
                 customTrustStore,
                 trustMode,
                 revocationMode,
+                revocationFlag,
                 verificationTime);
         }
     }

@@ -434,6 +434,7 @@
     <Compile Include="System\Net\Security\StreamSizes.RinOS.cs" />
     <Compile Include="System\Net\Security\RinOS\Interop.RinTls.cs" />
     <Compile Include="System\Net\Security\RinOS\RinSslHandle.cs" />
+    <Compile Include="System\Net\Security\RinOS\RinOSRevocationClient.cs" />
     <Compile Include="$(CommonPath)System\Net\Security\Unix\SafeDeleteSslContext.cs"
              Link="Common\System\Net\Security\Unix\SafeDeleteSslContext.cs" />
     <Compile Include="$(CommonPath)System\Net\Security\SslKeyLogger.cs"

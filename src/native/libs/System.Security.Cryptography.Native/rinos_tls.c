@@ -441,3 +441,77 @@ int32_t CryptoNative_RinTlsCopyPeerCertificateChain(void* handle,
     return rintls_get_peer_certificate_chain(adapter->context, destination,
                                              (rin_size_t)capacity, &length);
 }
+
+int32_t CryptoNative_RinTlsGetPeerRevocationEndpoint(
+    void* handle, int32_t source, uint8_t* destination, int32_t capacity,
+    int32_t* length)
+{
+    rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;
+    rintls_revocation_endpoints endpoints;
+    const char* selected = RIN_NULL;
+    rin_size_t selected_length = 0u;
+    int result;
+
+    if (length) *length = 0;
+    if (!adapter || capacity < 0 || (capacity != 0 && !destination) ||
+        !length || (source != (int32_t)RINTLS_REVOCATION_SOURCE_OCSP &&
+                    source != (int32_t)RINTLS_REVOCATION_SOURCE_CRL))
+        return RINTLS_ERR_MEMORY;
+
+    rintls_memset(&endpoints, 0, sizeof(endpoints));
+    result = rintls_get_peer_revocation_endpoints(adapter->context, &endpoints);
+    if (result != RINTLS_OK) return result;
+    selected = source == (int32_t)RINTLS_REVOCATION_SOURCE_OCSP
+        ? endpoints.ocsp_url : endpoints.crl_url;
+    while (selected_length < RINTLS_MAX_REVOCATION_URL_BYTES &&
+           selected[selected_length] != '\0') {
+        ++selected_length;
+    }
+    if (selected_length == RINTLS_MAX_REVOCATION_URL_BYTES ||
+        selected_length > (rin_size_t)capacity -
+                           (selected_length < (rin_size_t)capacity ? 1u : 0u)) {
+        return RINTLS_ERR_MEMORY;
+    }
+    if (selected_length != 0u)
+        rintls_memcpy(destination, selected, selected_length);
+    if (capacity > (int32_t)selected_length)
+        destination[selected_length] = 0;
+    *length = (int32_t)selected_length;
+    rintls_secure_zero(&endpoints, sizeof(endpoints));
+    return RINTLS_OK;
+}
+
+int32_t CryptoNative_RinTlsVerifyPeerRevocation(
+    void* handle, int32_t source, const uint8_t* response,
+    int32_t response_length, uint64_t sequence, int32_t* status)
+{
+    rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;
+    rintls_revocation_evidence evidence;
+    int result;
+
+    if (status) *status = 0;
+    if (!adapter || response_length <= 0 || !response || sequence == 0u ||
+        !status || (source != (int32_t)RINTLS_REVOCATION_SOURCE_OCSP &&
+                    source != (int32_t)RINTLS_REVOCATION_SOURCE_CRL))
+        return RINTLS_ERR_MEMORY;
+
+    rintls_memset(&evidence, 0, sizeof(evidence));
+    if (source == (int32_t)RINTLS_REVOCATION_SOURCE_OCSP) {
+        result = rintls_verify_peer_ocsp(
+            adapter->context, response, (rin_size_t)response_length, sequence,
+            &evidence);
+    } else {
+        result = rintls_verify_peer_crl(
+            adapter->context, response, (rin_size_t)response_length, sequence,
+            &evidence);
+    }
+    if (result == RINTLS_OK &&
+        (evidence.status == RINTLS_REVOCATION_STATUS_GOOD ||
+         evidence.status == RINTLS_REVOCATION_STATUS_REVOKED)) {
+        *status = (int32_t)evidence.status;
+    } else if (result == RINTLS_OK) {
+        result = RINTLS_ERR_CERTIFICATE;
+    }
+    rintls_secure_zero(&evidence, sizeof(evidence));
+    return result;
+}

@@ -44,7 +44,42 @@ namespace System.Net
             chain.ChainPolicy.VerificationTime =
                 DateTimeOffset.FromUnixTimeSeconds((long)handle.TrustedUnixTime).UtcDateTime;
             chain.ChainPolicy.VerificationTimeIgnored = false;
-            return chain.Build(remoteCertificate)
+
+            X509RevocationMode revocationMode = chain.ChainPolicy.RevocationMode;
+            X509RevocationFlag revocationFlag = chain.ChainPolicy.RevocationFlag;
+            bool chainValid;
+            if (revocationMode == X509RevocationMode.NoCheck)
+            {
+                chainValid = chain.Build(remoteCertificate);
+            }
+            else
+            {
+                // RinOSChainPal deliberately does not perform network I/O.
+                // Build the authenticated managed chain first, then ask the
+                // RinTLS/workerd boundary for signed revocation evidence.
+                chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                try
+                {
+                    chainValid = chain.Build(remoteCertificate);
+                }
+                finally
+                {
+                    chain.ChainPolicy.RevocationMode = revocationMode;
+                }
+
+                if (chainValid)
+                {
+                    RinOSRevocationStatus status = RinOSRevocationClient.CheckPeer(
+                        handle, revocationMode, revocationFlag,
+                        chain.ChainPolicy.UrlRetrievalTimeout);
+                    if (status != RinOSRevocationStatus.Good)
+                    {
+                        chainValid = false;
+                    }
+                }
+            }
+
+            return chainValid
                 ? SslPolicyErrors.None
                 : SslPolicyErrors.RemoteCertificateChainErrors;
         }

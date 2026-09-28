@@ -525,15 +525,19 @@ namespace System.Net.Security
                     "RinTLS does not support disabling hostname verification.");
             }
             ValidateChainPolicy(chainPolicy);
-            // CertificateChainPolicy takes precedence over CertificateRevocationCheckMode in
-            // the public Ssl*AuthenticationOptions API. Reject both paths while RinTLS has no
-            // revocation transport or managed chain-policy projection, rather than silently
-            // accepting a policy that the product verifier cannot enforce.
-            if (sslAuthenticationOptions.CertificateRevocationCheckMode != X509RevocationMode.NoCheck ||
-                chainPolicy?.RevocationMode != X509RevocationMode.NoCheck)
+            // CertificateChainPolicy takes precedence over
+            // CertificateRevocationCheckMode in the public API. Online
+            // revocation is now projected through the dedicated workerd
+            // transport and RinTLS evidence verifier; Offline still has no
+            // product cache and therefore remains fail-closed.
+            if ((sslAuthenticationOptions.CertificateRevocationCheckMode != X509RevocationMode.NoCheck &&
+                 sslAuthenticationOptions.CertificateRevocationCheckMode != X509RevocationMode.Online) ||
+                (chainPolicy?.RevocationMode != null &&
+                 chainPolicy.RevocationMode != X509RevocationMode.NoCheck &&
+                 chainPolicy.RevocationMode != X509RevocationMode.Online))
             {
                 throw new PlatformNotSupportedException(
-                    "RinTLS certificate revocation checking is not available yet.");
+                    "RinTLS supports only online certificate revocation checking.");
             }
             if (sslAuthenticationOptions.ApplicationProtocols is { Count: > 0 } protocols)
             {
@@ -681,10 +685,11 @@ namespace System.Net.Security
                 throw new PlatformNotSupportedException(
                     "RinTLS does not support managed revocation-scope selection yet.");
             }
-            if (chainPolicy.UrlRetrievalTimeout != TimeSpan.Zero)
+            if (chainPolicy.UrlRetrievalTimeout < TimeSpan.Zero ||
+                chainPolicy.UrlRetrievalTimeout > TimeSpan.FromSeconds(30))
             {
                 throw new PlatformNotSupportedException(
-                    "RinTLS does not support managed certificate URL retrieval yet.");
+                    "RinTLS certificate URL retrieval timeout must be between zero and 30 seconds.");
             }
             if (chainPolicy.CustomTrustStore.Count != 0 &&
                 chainPolicy.TrustMode != X509ChainTrustMode.CustomRootTrust)

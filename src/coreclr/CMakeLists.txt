@@ -216,9 +216,10 @@ if(FEATURE_STANDALONE_GC)
   add_definitions(-DFEATURE_STANDALONE_GC)
 endif(FEATURE_STANDALONE_GC)
 
-# For wasm cross-component builds, only the JIT and jitinterface are needed.
-# Skip subsystems (GC, VM, debug, etc.) that don't support wasm as a target.
-if(CLR_CROSS_COMPONENTS_BUILD AND CLR_CMAKE_TARGET_ARCH_WASM)
+# For cross-component builds, only the JIT and jitinterface are needed.
+# Skip subsystems (GC, VM, debug, etc.) that are target-runtime components;
+# the crossgen2 host must not configure or link them.
+if(CLR_CROSS_COMPONENTS_BUILD AND (CLR_CMAKE_TARGET_ARCH_WASM OR CLR_CMAKE_TARGET_RINOS))
   include_directories("inc")
   include_directories("minipal")
   if (CLR_CMAKE_HOST_UNIX)

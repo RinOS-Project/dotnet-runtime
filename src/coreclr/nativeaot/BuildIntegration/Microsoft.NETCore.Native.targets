@@ -397,8 +397,20 @@ The .NET Foundation licenses this file to you under the MIT license.
       <Copy SourceFiles="@(NativeObjects)" DestinationFolder="$(NativeOutputPath)" />
   </Target>
 
+  <ItemGroup>
+    <!-- A signed RinOS output is stale when any packaging input changes. Keep
+         these as target inputs so key rotation or packager updates cannot
+         silently reuse the previous .rin/.rll image. -->
+    <_RinOSNativePackagingInput Include="$(RinOSNativePackager)"
+        Condition="'$(_targetOS)' == 'rinos' and '$(NativeLib)' != 'Static' and '$(RinOSNativePackager)' != ''" />
+    <_RinOSNativePackagingInput Include="$(RinOSSignKey)"
+        Condition="'$(_targetOS)' == 'rinos' and '$(NativeLib)' != 'Static' and '$(RinOSSignKey)' != ''" />
+    <_RinOSNativePackagingInput Include="$(RinOSPublicKey)"
+        Condition="'$(_targetOS)' == 'rinos' and '$(NativeLib)' != 'Static' and '$(RinOSPublicKey)' != ''" />
+  </ItemGroup>
+
   <Target Name="LinkNative"
-      Inputs="$(NativeObject);@(NativeLibrary)"
+      Inputs="$(NativeObject);@(NativeLibrary);@(_RinOSNativePackagingInput)"
       Outputs="$(_LinkNativeOutputs)"
       DependsOnTargets="$(LinkNativeDependsOn)">
 

@@ -151,7 +151,12 @@
       Text="Generating native image of System.Private.CoreLib for $(OSPlatformConfig). Logging to $(CrossGenCoreLibLog)" />
 
     <PropertyGroup>
-      <CrossGenDllCmd>@(Crossgen2Files->Metadata('OutputPath')->WithMetadataValue('Filename','crossgen2')->WithMetadataValue('Extension','$(ExeSuffix)'))</CrossGenDllCmd>
+      <!-- A RinOS cross-build publishes crossgen2 as a framework-dependent
+           host tool, so there is no target apphost to expose through the
+           ProjectReference OutputPath metadata. Invoke the generated DLL
+           with the host dotnet instead. -->
+      <CrossGenDllCmd Condition="'$(TargetOS)' != 'rinos'">@(Crossgen2Files->Metadata('OutputPath')->WithMetadataValue('Filename','crossgen2')->WithMetadataValue('Extension','$(ExeSuffix)'))</CrossGenDllCmd>
+      <CrossGenDllCmd Condition="'$(TargetOS)' == 'rinos'">&quot;$(DotNetCli)&quot; &quot;$(Crossgen2InBuildDir)crossgen2.dll&quot;</CrossGenDllCmd>
       <CrossGenDllCmd>$(CrossGenDllCmd) -o:$(CrossgenCoreLibOutputPath)</CrossGenDllCmd>
       <CrossGenDllCmd>$(CrossGenDllCmd) -r:$([MSBuild]::NormalizePath('$(BinDir)', 'IL', '*.dll'))</CrossGenDllCmd>
       <CrossGenDllCmd>$(CrossGenDllCmd) --targetarch:$(TargetArchitecture)</CrossGenDllCmd>

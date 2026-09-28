@@ -527,17 +527,19 @@ namespace System.Net.Security
             ValidateChainPolicy(chainPolicy);
             // CertificateChainPolicy takes precedence over
             // CertificateRevocationCheckMode in the public API. Online
-            // revocation is now projected through the dedicated workerd
-            // transport and RinTLS evidence verifier; Offline still has no
-            // product cache and therefore remains fail-closed.
+            // revocation is projected through the dedicated workerd
+            // transport and RinTLS evidence verifier; Offline performs only
+            // a lookup in the bounded cache populated by that verifier.
             if ((sslAuthenticationOptions.CertificateRevocationCheckMode != X509RevocationMode.NoCheck &&
-                 sslAuthenticationOptions.CertificateRevocationCheckMode != X509RevocationMode.Online) ||
+                 sslAuthenticationOptions.CertificateRevocationCheckMode != X509RevocationMode.Online &&
+                 sslAuthenticationOptions.CertificateRevocationCheckMode != X509RevocationMode.Offline) ||
                 (chainPolicy?.RevocationMode != null &&
                  chainPolicy.RevocationMode != X509RevocationMode.NoCheck &&
-                 chainPolicy.RevocationMode != X509RevocationMode.Online))
+                 chainPolicy.RevocationMode != X509RevocationMode.Online &&
+                 chainPolicy.RevocationMode != X509RevocationMode.Offline))
             {
                 throw new PlatformNotSupportedException(
-                    "RinTLS supports only online certificate revocation checking.");
+                    "RinTLS supports only online or offline certificate revocation checking.");
             }
             if (sslAuthenticationOptions.ApplicationProtocols is { Count: > 0 } protocols)
             {

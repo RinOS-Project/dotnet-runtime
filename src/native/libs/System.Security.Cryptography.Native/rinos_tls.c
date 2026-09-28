@@ -4,6 +4,8 @@
 #include <stdint.h>
 
 #include "rintls.h"
+#include "crypto/sha256.h"
+#include "rin_certificate_revocation_cache.h"
 
 /* System.Net.Security drives RinTLS with a bounded, non-blocking buffer pair.
  * No socket is owned by this adapter: the managed Socket remains responsible
@@ -22,6 +24,107 @@ typedef struct rinos_tls_adapter {
     rin_size_t output_length;
     int closed;
 } rinos_tls_adapter;
+
+static RinCertificateRevocationCacheV1 g_rinos_revocation_cache;
+static volatile uint32_t g_rinos_revocation_cache_lock;
+static int g_rinos_revocation_cache_initialized;
+
+static void rinos_revocation_cache_lock(void)
+{
+    while (__sync_lock_test_and_set(&g_rinos_revocation_cache_lock, 1u) != 0u) {
+    }
+}
+
+static void rinos_revocation_cache_unlock(void)
+{
+    __sync_lock_release(&g_rinos_revocation_cache_lock);
+}
+
+static int rinos_revocation_cache_ensure_locked(void)
+{
+    if (g_rinos_revocation_cache_initialized) return 1;
+    if (rin_certificate_revocation_cache_initialize(
+            &g_rinos_revocation_cache, 1u) !=
+        RIN_CERTIFICATE_REVOCATION_CACHE_OK)
+        return 0;
+    g_rinos_revocation_cache_initialized = 1;
+    return 1;
+}
+
+static void rinos_revocation_cache_put(
+    uint64_t trusted_unix_time, const rintls_revocation_evidence* source)
+{
+    RinCertificateRevocationPolicyV1 policy;
+    RinCertificateRevocationEvidenceV1 evidence;
+
+    if (!source || trusted_unix_time == 0u ||
+        (source->status != RINTLS_REVOCATION_STATUS_GOOD &&
+         source->status != RINTLS_REVOCATION_STATUS_REVOKED))
+        return;
+    if (rin_certificate_revocation_policy_initialize(
+            &policy, trusted_unix_time) != RIN_CERTIFICATE_REVOCATION_OK)
+        return;
+    rintls_memset(&evidence, 0, sizeof(evidence));
+    rintls_memcpy(&evidence, source, sizeof(evidence));
+    rinos_revocation_cache_lock();
+    if (rinos_revocation_cache_ensure_locked()) {
+        (void)rin_certificate_revocation_cache_put(
+            &g_rinos_revocation_cache, &policy,
+            evidence.certificate_sha256, evidence.issuer_sha256, &evidence);
+    }
+    rinos_revocation_cache_unlock();
+    rintls_secure_zero(&evidence, sizeof(evidence));
+    rintls_secure_zero(&policy, sizeof(policy));
+}
+
+static int rinos_revocation_cache_lookup(
+    const uint8_t* certificate_der, int32_t certificate_length,
+    const uint8_t* issuer_der, int32_t issuer_length,
+    uint64_t trusted_unix_time, int32_t* status)
+{
+    RinCertificateRevocationPolicyV1 policy;
+    RinCertificateRevocationEvidenceV1 evidence;
+    uint8_t certificate_sha256[32];
+    uint8_t issuer_sha256[32];
+    RinCertificateRevocationCacheResult result;
+
+    if (status) *status = 0;
+    if (!certificate_der || certificate_length <= 0 ||
+        (uint32_t)certificate_length > RINTLS_MAX_CERT_SIZE ||
+        !issuer_der || issuer_length <= 0 ||
+        (uint32_t)issuer_length > RINTLS_MAX_CERT_SIZE ||
+        trusted_unix_time == 0u || !status)
+        return RINTLS_ERR_MEMORY;
+    if (rin_certificate_revocation_policy_initialize(
+            &policy, trusted_unix_time) != RIN_CERTIFICATE_REVOCATION_OK)
+        return RINTLS_ERR_CERTIFICATE;
+    sha256(certificate_der, (rin_size_t)certificate_length,
+           certificate_sha256);
+    sha256(issuer_der, (rin_size_t)issuer_length, issuer_sha256);
+    rintls_memset(&evidence, 0, sizeof(evidence));
+    rinos_revocation_cache_lock();
+    result = rinos_revocation_cache_ensure_locked()
+        ? rin_certificate_revocation_cache_lookup(
+            &g_rinos_revocation_cache, &policy, certificate_sha256,
+            issuer_sha256, &evidence)
+        : RIN_CERTIFICATE_REVOCATION_CACHE_UNAVAILABLE;
+    rinos_revocation_cache_unlock();
+    rintls_secure_zero(certificate_sha256, sizeof(certificate_sha256));
+    rintls_secure_zero(issuer_sha256, sizeof(issuer_sha256));
+    rintls_secure_zero(&policy, sizeof(policy));
+    if (result == RIN_CERTIFICATE_REVOCATION_CACHE_OK) {
+        *status = (int32_t)RINTLS_REVOCATION_STATUS_GOOD;
+        rintls_secure_zero(&evidence, sizeof(evidence));
+        return RINTLS_OK;
+    }
+    if (result == RIN_CERTIFICATE_REVOCATION_CACHE_REVOKED) {
+        *status = (int32_t)RINTLS_REVOCATION_STATUS_REVOKED;
+        rintls_secure_zero(&evidence, sizeof(evidence));
+        return RINTLS_OK;
+    }
+    rintls_secure_zero(&evidence, sizeof(evidence));
+    return RINTLS_ERR_CERTIFICATE;
+}
 
 static void rinos_move(u8* destination, const u8* source, rin_size_t length)
 {
@@ -494,7 +597,7 @@ int32_t CryptoNative_RinTlsGetPeerRevocationEndpoint(
 int32_t CryptoNative_RinTlsVerifyPeerRevocationAt(
     void* handle, int32_t certificate_index, int32_t source,
     const uint8_t* response, int32_t response_length, uint64_t sequence,
-    int32_t* status)
+    uint64_t trusted_unix_time, int32_t* status)
 {
     rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;
     rintls_revocation_evidence evidence;
@@ -503,6 +606,7 @@ int32_t CryptoNative_RinTlsVerifyPeerRevocationAt(
     if (status) *status = 0;
     if (!adapter || certificate_index < 0 || response_length <= 0 ||
         !response || sequence == 0u ||
+        trusted_unix_time == 0u ||
         !status || (source != (int32_t)RINTLS_REVOCATION_SOURCE_OCSP &&
                     source != (int32_t)RINTLS_REVOCATION_SOURCE_CRL))
         return RINTLS_ERR_MEMORY;
@@ -521,6 +625,7 @@ int32_t CryptoNative_RinTlsVerifyPeerRevocationAt(
         (evidence.status == RINTLS_REVOCATION_STATUS_GOOD ||
          evidence.status == RINTLS_REVOCATION_STATUS_REVOKED)) {
         *status = (int32_t)evidence.status;
+        rinos_revocation_cache_put(trusted_unix_time, &evidence);
     } else if (result == RINTLS_OK) {
         result = RINTLS_ERR_CERTIFICATE;
     }
@@ -530,10 +635,12 @@ int32_t CryptoNative_RinTlsVerifyPeerRevocationAt(
 
 int32_t CryptoNative_RinTlsVerifyPeerRevocation(
     void* handle, int32_t source, const uint8_t* response,
-    int32_t response_length, uint64_t sequence, int32_t* status)
+    int32_t response_length, uint64_t sequence, uint64_t trusted_unix_time,
+    int32_t* status)
 {
     return CryptoNative_RinTlsVerifyPeerRevocationAt(
-        handle, 0, source, response, response_length, sequence, status);
+        handle, 0, source, response, response_length, sequence,
+        trusted_unix_time, status);
 }
 
 int32_t CryptoNative_RinOSX509GetRevocationEndpoint(
@@ -617,9 +724,20 @@ int32_t CryptoNative_RinOSX509VerifyRevocation(
         (evidence.status == RINTLS_REVOCATION_STATUS_GOOD ||
          evidence.status == RINTLS_REVOCATION_STATUS_REVOKED)) {
         *status = (int32_t)evidence.status;
+        rinos_revocation_cache_put(trusted_unix_time, &evidence);
     } else if (result == RINTLS_OK) {
         result = RINTLS_ERR_CERTIFICATE;
     }
     rintls_secure_zero(&evidence, sizeof(evidence));
     return result;
+}
+
+int32_t CryptoNative_RinOSX509LookupRevocation(
+    const uint8_t* certificate_der, int32_t certificate_length,
+    const uint8_t* issuer_der, int32_t issuer_length,
+    uint64_t trusted_unix_time, int32_t* status)
+{
+    return rinos_revocation_cache_lookup(
+        certificate_der, certificate_length, issuer_der, issuer_length,
+        trusted_unix_time, status);
 }

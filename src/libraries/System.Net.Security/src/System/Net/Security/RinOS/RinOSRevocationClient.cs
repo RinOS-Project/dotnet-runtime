@@ -50,7 +50,8 @@ namespace System.Net.Security
                 return RinOSRevocationStatus.Good;
             }
 
-            if (mode != X509RevocationMode.Online ||
+            if ((mode != X509RevocationMode.Online &&
+                 mode != X509RevocationMode.Offline) ||
                 (flag != X509RevocationFlag.ExcludeRoot &&
                  flag != X509RevocationFlag.EndCertificateOnly &&
                  flag != X509RevocationFlag.EntireChain))
@@ -101,8 +102,35 @@ namespace System.Net.Security
                 X509Certificate2 certificate =
                     chain.ChainElements[certificateIndex].Certificate;
                 RinOSRevocationStatus status;
-                if (flag == X509RevocationFlag.EntireChain &&
-                    certificateIndex == elementCount - 1)
+                if (mode == X509RevocationMode.Offline)
+                {
+                    X509Certificate2 issuer;
+                    if (certificateIndex == elementCount - 1)
+                    {
+                        // Offline EntireChain includes the managed trust
+                        // anchor, which is looked up under its own digest.
+                        if (flag != X509RevocationFlag.EntireChain ||
+                            !IsSelfSigned(certificate))
+                        {
+                            return RinOSRevocationStatus.Unknown;
+                        }
+                        issuer = certificate;
+                    }
+                    else
+                    {
+                        if (certificateIndex + 1 >= elementCount)
+                        {
+                            return RinOSRevocationStatus.Unknown;
+                        }
+                        issuer = chain.ChainElements[certificateIndex + 1]
+                            .Certificate;
+                    }
+
+                    status = CheckCachedCertificate(
+                        certificate, issuer, handle.TrustedUnixTime);
+                }
+                else if (flag == X509RevocationFlag.EntireChain &&
+                         certificateIndex == elementCount - 1)
                 {
                     // A trust anchor is not present in the peer's TLS
                     // Certificate message.  Require a product-verified
@@ -179,7 +207,8 @@ namespace System.Net.Security
 
                     int verifyResult = Interop.RinTls.VerifyPeerRevocation(
                         handle, certificateIndex, source, response,
-                        (ulong)sequence, out int nativeStatus);
+                        (ulong)sequence, handle.TrustedUnixTime,
+                        out int nativeStatus);
                     if (verifyResult != 0)
                     {
                         continue;
@@ -216,6 +245,43 @@ namespace System.Net.Security
             return sawGood
                 ? RinOSRevocationStatus.Good
                 : RinOSRevocationStatus.Unknown;
+        }
+
+        private static RinOSRevocationStatus CheckCachedCertificate(
+            X509Certificate2 certificate, X509Certificate2 issuer,
+            ulong trustedUnixTime)
+        {
+            try
+            {
+                int result = Interop.RinTls.LookupCachedRevocation(
+                    certificate, issuer, trustedUnixTime, out int nativeStatus);
+                if (result != 0)
+                {
+                    return RinOSRevocationStatus.Unknown;
+                }
+
+                return nativeStatus == (int)RinOSRevocationStatus.Good
+                    ? RinOSRevocationStatus.Good
+                    : nativeStatus == (int)RinOSRevocationStatus.Revoked
+                        ? RinOSRevocationStatus.Revoked
+                        : RinOSRevocationStatus.Unknown;
+            }
+            catch (AuthenticationException)
+            {
+                return RinOSRevocationStatus.Unknown;
+            }
+            catch (DllNotFoundException)
+            {
+                return RinOSRevocationStatus.Unknown;
+            }
+            catch (EntryPointNotFoundException)
+            {
+                return RinOSRevocationStatus.Unknown;
+            }
+            catch (BadImageFormatException)
+            {
+                return RinOSRevocationStatus.Unknown;
+            }
         }
 
         private static RinOSRevocationStatus CheckCertificate(

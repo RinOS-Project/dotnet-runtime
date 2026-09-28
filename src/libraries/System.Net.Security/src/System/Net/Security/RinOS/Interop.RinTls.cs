@@ -137,14 +137,14 @@ namespace System.Net.Security
                 EntryPoint = "CryptoNative_RinTlsVerifyPeerRevocation")]
             private static partial unsafe int VerifyPeerRevocationNative(
                 IntPtr handle, int source, byte* response, int responseLength,
-                ulong sequence, out int status);
+                ulong sequence, ulong trustedUnixTime, out int status);
 
             [LibraryImport(Libraries.CryptoNative,
                 EntryPoint = "CryptoNative_RinTlsVerifyPeerRevocationAt")]
             private static partial unsafe int VerifyPeerRevocationAtNative(
                 IntPtr handle, int certificateIndex, int source,
                 byte* response, int responseLength, ulong sequence,
-                out int status);
+                ulong trustedUnixTime, out int status);
 
             [LibraryImport(Libraries.CryptoNative,
                 EntryPoint = "CryptoNative_RinOSX509GetRevocationEndpoint")]
@@ -159,6 +159,13 @@ namespace System.Net.Security
                 byte* issuerDer, int issuerLength, int source,
                 byte* response, int responseLength, ulong trustedUnixTime,
                 ulong sequence, out int status);
+
+            [LibraryImport(Libraries.CryptoNative,
+                EntryPoint = "CryptoNative_RinOSX509LookupRevocation")]
+            private static partial unsafe int LookupCachedRevocationNative(
+                byte* certificateDer, int certificateLength,
+                byte* issuerDer, int issuerLength, ulong trustedUnixTime,
+                out int status);
 
             [LibraryImport(Libraries.CryptoNative,
                 EntryPoint = "CryptoNative_RinOSX509VerifySignature")]
@@ -386,27 +393,28 @@ namespace System.Net.Security
 
             internal static unsafe int VerifyPeerRevocation(
                 RinSslHandle handle, int source, ReadOnlySpan<byte> response,
-                ulong sequence, out int status)
+                ulong sequence, ulong trustedUnixTime, out int status)
             {
                 fixed (byte* responsePtr = response)
                 {
                     return VerifyPeerRevocationNative(
                         handle.DangerousGetHandle(), source,
                         response.IsEmpty ? null : responsePtr, response.Length,
-                        sequence, out status);
+                        sequence, trustedUnixTime, out status);
                 }
             }
 
             internal static unsafe int VerifyPeerRevocation(
                 RinSslHandle handle, int certificateIndex, int source,
-                ReadOnlySpan<byte> response, ulong sequence, out int status)
+                ReadOnlySpan<byte> response, ulong sequence,
+                ulong trustedUnixTime, out int status)
             {
                 fixed (byte* responsePtr = response)
                 {
                     return VerifyPeerRevocationAtNative(
                         handle.DangerousGetHandle(), certificateIndex, source,
                         response.IsEmpty ? null : responsePtr, response.Length,
-                        sequence, out status);
+                        sequence, trustedUnixTime, out status);
                 }
             }
 
@@ -468,6 +476,30 @@ namespace System.Net.Security
                         issuerDer.Length, source,
                         response.IsEmpty ? null : responsePtr, response.Length,
                         trustedUnixTime, sequence, out status);
+                }
+            }
+
+            internal static unsafe int LookupCachedRevocation(
+                X509Certificate2 certificate, X509Certificate2 issuer,
+                ulong trustedUnixTime, out int status)
+            {
+                ArgumentNullException.ThrowIfNull(certificate);
+                ArgumentNullException.ThrowIfNull(issuer);
+                byte[] certificateDer = certificate.RawData;
+                byte[] issuerDer = issuer.RawData;
+                if (certificateDer.Length == 0 || certificateDer.Length > 8 * 1024 ||
+                    issuerDer.Length == 0 || issuerDer.Length > 8 * 1024)
+                {
+                    status = 0;
+                    return -1;
+                }
+
+                fixed (byte* certificatePtr = certificateDer)
+                fixed (byte* issuerPtr = issuerDer)
+                {
+                    return LookupCachedRevocationNative(
+                        certificatePtr, certificateDer.Length, issuerPtr,
+                        issuerDer.Length, trustedUnixTime, out status);
                 }
             }
 

@@ -50,6 +50,7 @@ if (CLR_CMAKE_TARGET_RINOS)
     include_directories(
         "${RINOS_REPO_ROOT}/public-base/libs/rintls"
         "${RINOS_REPO_ROOT}/public-base/libs/rintls/crypto"
+        "${RINOS_REPO_ROOT}/src/shared"
         "${RINOS_REPO_ROOT}/libs/bearssl/inc"
         "${RINOS_REPO_ROOT}/libs/bearssl/src"
     )
@@ -75,6 +76,8 @@ if (CLR_CMAKE_TARGET_RINOS)
         rinos_rsa.c
         rinos_tls.c
         rinos_x509.c
+        "${RINOS_REPO_ROOT}/src/shared/rin_certificate_revocation.c"
+        "${RINOS_REPO_ROOT}/src/shared/rin_certificate_revocation_cache.c"
         "${RINOS_REPO_ROOT}/public-base/libs/rintls/rintls.c"
         "${RINOS_REPO_ROOT}/public-base/libs/rintls/crypto/aes.c"
         "${RINOS_REPO_ROOT}/public-base/libs/rintls/crypto/bignum.c"

@@ -547,6 +547,23 @@ if (CLR_CMAKE_HOST_WIN32)
   set(STATIC_MT_CPP_LIB  "libcpmt$<$<OR:$<CONFIG:Debug>,$<CONFIG:Checked>>:d>.lib")
 endif(CLR_CMAKE_HOST_WIN32)
 
+# The Windows cross-component graph is driven by Clang rather than the MSVC
+# compiler frontend.  Consequently the MSVC runtime defaults below are not
+# installed by CMake's `if(MSVC)` branch, while host components still link the
+# static libcmt/libvcruntime libraries explicitly.  Add the matching UCRT
+# import/static library at the shared directory boundary so every host
+# cross-component target resolves the C runtime without inheriting RinOS
+# freestanding link options.
+if (CLR_CMAKE_HOST_WIN32 AND RINOS_CROSS_COMPONENTS_HOST AND NOT MSVC)
+  add_link_options(
+    "$<$<CONFIG:Debug>:libucrtd.lib>"
+    "$<$<CONFIG:Checked>:libucrtd.lib>"
+    "$<$<CONFIG:Release>:ucrt.lib>"
+    "$<$<CONFIG:RelWithDebInfo>:ucrt.lib>"
+    "$<$<CONFIG:MinSizeRel>:ucrt.lib>"
+  )
+endif()
+
 # Unconditionally define _FILE_OFFSET_BITS as 64 on all platforms.
 add_definitions(-D_FILE_OFFSET_BITS=64)
 # Unconditionally define _TIME_BITS as 64 on all platforms.

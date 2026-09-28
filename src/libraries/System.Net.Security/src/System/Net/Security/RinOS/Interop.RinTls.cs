@@ -147,6 +147,20 @@ namespace System.Net.Security
                 out int status);
 
             [LibraryImport(Libraries.CryptoNative,
+                EntryPoint = "CryptoNative_RinOSX509GetRevocationEndpoint")]
+            private static partial unsafe int GetCertificateRevocationEndpointNative(
+                byte* certificateDer, int certificateLength, int source,
+                byte* destination, int capacity, out int length);
+
+            [LibraryImport(Libraries.CryptoNative,
+                EntryPoint = "CryptoNative_RinOSX509VerifyRevocation")]
+            private static partial unsafe int VerifyCertificateRevocationNative(
+                byte* certificateDer, int certificateLength,
+                byte* issuerDer, int issuerLength, int source,
+                byte* response, int responseLength, ulong trustedUnixTime,
+                ulong sequence, out int status);
+
+            [LibraryImport(Libraries.CryptoNative,
                 EntryPoint = "CryptoNative_RinOSX509VerifySignature")]
             private static partial unsafe int VerifyCertificateSignatureNative(
                 byte* certificateDer, int certificateLength,
@@ -393,6 +407,67 @@ namespace System.Net.Security
                         handle.DangerousGetHandle(), certificateIndex, source,
                         response.IsEmpty ? null : responsePtr, response.Length,
                         sequence, out status);
+                }
+            }
+
+            internal static unsafe string? GetCertificateRevocationEndpoint(
+                X509Certificate2 certificate, int source)
+            {
+                ArgumentNullException.ThrowIfNull(certificate);
+                byte[] der = certificate.RawData;
+                if (der.Length == 0 || der.Length > 8 * 1024)
+                {
+                    throw new AuthenticationException(
+                        "RinTLS certificate exceeds the revocation size limit.");
+                }
+
+                Span<byte> endpoint = stackalloc byte[256];
+                fixed (byte* derPtr = der)
+                fixed (byte* endpointPtr = endpoint)
+                {
+                    int result = GetCertificateRevocationEndpointNative(
+                        derPtr, der.Length, source, endpointPtr,
+                        endpoint.Length, out int length);
+                    if (result != 0)
+                    {
+                        throw new AuthenticationException(
+                            "RinTLS could not expose the certificate revocation endpoint.");
+                    }
+
+                    if (length == 0)
+                    {
+                        return null;
+                    }
+
+                    if ((uint)length >= (uint)endpoint.Length)
+                    {
+                        throw new AuthenticationException(
+                            "RinTLS returned an invalid certificate revocation endpoint length.");
+                    }
+
+                    return System.Text.Encoding.ASCII.GetString(
+                        endpoint.Slice(0, length));
+                }
+            }
+
+            internal static unsafe int VerifyCertificateRevocation(
+                X509Certificate2 certificate, X509Certificate2 issuer,
+                int source, ReadOnlySpan<byte> response, ulong trustedUnixTime,
+                ulong sequence, out int status)
+            {
+                ArgumentNullException.ThrowIfNull(certificate);
+                ArgumentNullException.ThrowIfNull(issuer);
+                byte[] certificateDer = certificate.RawData;
+                byte[] issuerDer = issuer.RawData;
+                fixed (byte* certificatePtr = certificateDer)
+                fixed (byte* issuerPtr = issuerDer)
+                fixed (byte* responsePtr = response)
+                {
+                    return VerifyCertificateRevocationNative(
+                        certificatePtr, certificateDer.Length, issuerPtr,
+                        issuerDer.Length, source,
+                        response.IsEmpty ? null : responsePtr, response.Length,
+                        trustedUnixTime, sequence, out status);
                 }
             }
 

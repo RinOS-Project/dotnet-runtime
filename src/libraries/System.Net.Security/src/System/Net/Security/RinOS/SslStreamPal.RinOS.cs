@@ -681,10 +681,11 @@ namespace System.Net.Security
                     "RinTLS does not support overriding certificate-chain verification flags.");
             }
             if (chainPolicy.RevocationFlag != X509RevocationFlag.ExcludeRoot &&
-                chainPolicy.RevocationFlag != X509RevocationFlag.EndCertificateOnly)
+                chainPolicy.RevocationFlag != X509RevocationFlag.EndCertificateOnly &&
+                chainPolicy.RevocationFlag != X509RevocationFlag.EntireChain)
             {
                 throw new PlatformNotSupportedException(
-                    "RinTLS supports only leaf revocation evidence; the selected scope includes additional certificates.");
+                    "RinTLS supports only EndCertificateOnly, ExcludeRoot, and EntireChain revocation scopes.");
             }
             if (chainPolicy.UrlRetrievalTimeout < TimeSpan.Zero ||
                 chainPolicy.UrlRetrievalTimeout > TimeSpan.FromSeconds(30))

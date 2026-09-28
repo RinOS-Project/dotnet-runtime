@@ -52,7 +52,8 @@ namespace System.Net.Security
 
             if (mode != X509RevocationMode.Online ||
                 (flag != X509RevocationFlag.ExcludeRoot &&
-                 flag != X509RevocationFlag.EndCertificateOnly))
+                 flag != X509RevocationFlag.EndCertificateOnly &&
+                 flag != X509RevocationFlag.EntireChain))
             {
                 return RinOSRevocationStatus.Unknown;
             }
@@ -78,7 +79,8 @@ namespace System.Net.Security
                     // not a certificate sent by the peer.  It has no adjacent
                     // issuer in the TLS Certificate message and is excluded
                     // by the ExcludeRoot policy.
-                    if (index == elementCount - 1 &&
+                    if (flag == X509RevocationFlag.ExcludeRoot &&
+                        index == elementCount - 1 &&
                         IsSelfSigned(chain.ChainElements[index].Certificate))
                     {
                         continue;
@@ -95,8 +97,31 @@ namespace System.Net.Security
 
             for (int index = 0; index < certificateCount; index++)
             {
-                RinOSRevocationStatus status = CheckCertificate(
-                    handle, certificateIndexes[index], timeoutMilliseconds);
+                int certificateIndex = certificateIndexes[index];
+                X509Certificate2 certificate =
+                    chain.ChainElements[certificateIndex].Certificate;
+                RinOSRevocationStatus status;
+                if (flag == X509RevocationFlag.EntireChain &&
+                    certificateIndex == elementCount - 1)
+                {
+                    // A trust anchor is not present in the peer's TLS
+                    // Certificate message.  Require a product-verified
+                    // self-signature and use the bounded standalone verifier;
+                    // an unverified anchor is not treated as unrevoked.
+                    if (!IsSelfSigned(certificate))
+                    {
+                        return RinOSRevocationStatus.Unknown;
+                    }
+
+                    status = CheckCertificate(
+                        certificate, certificate, handle.TrustedUnixTime,
+                        timeoutMilliseconds);
+                }
+                else
+                {
+                    status = CheckCertificate(
+                        handle, certificateIndex, timeoutMilliseconds);
+                }
                 if (status != RinOSRevocationStatus.Good)
                 {
                     return status;
@@ -169,6 +194,98 @@ namespace System.Net.Security
                     {
                         sawGood = true;
                     }
+                }
+                catch (DllNotFoundException)
+                {
+                    return RinOSRevocationStatus.Unknown;
+                }
+                catch (EntryPointNotFoundException)
+                {
+                    return RinOSRevocationStatus.Unknown;
+                }
+                catch (BadImageFormatException)
+                {
+                    return RinOSRevocationStatus.Unknown;
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(response);
+                }
+            }
+
+            return sawGood
+                ? RinOSRevocationStatus.Good
+                : RinOSRevocationStatus.Unknown;
+        }
+
+        private static RinOSRevocationStatus CheckCertificate(
+            X509Certificate2 certificate, X509Certificate2 issuer,
+            ulong trustedUnixTime, int timeoutMilliseconds)
+        {
+            int[] sources = { checked((int)OcspSource), checked((int)CrlSource) };
+            bool sawGood = false;
+            foreach (int source in sources)
+            {
+                string? endpoint;
+                try
+                {
+                    endpoint = Interop.RinTls.GetCertificateRevocationEndpoint(
+                        certificate, source);
+                }
+                catch (AuthenticationException)
+                {
+                    return RinOSRevocationStatus.Unknown;
+                }
+                catch (DllNotFoundException)
+                {
+                    return RinOSRevocationStatus.Unknown;
+                }
+                catch (EntryPointNotFoundException)
+                {
+                    return RinOSRevocationStatus.Unknown;
+                }
+                catch (BadImageFormatException)
+                {
+                    return RinOSRevocationStatus.Unknown;
+                }
+
+                if (endpoint is null ||
+                    !TryFetch(endpoint, (uint)source, timeoutMilliseconds,
+                              out byte[] response))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    long sequence = Interlocked.Increment(
+                        ref s_nextEvidenceSequence);
+                    if (sequence <= 0)
+                    {
+                        return RinOSRevocationStatus.Unknown;
+                    }
+
+                    int verifyResult = Interop.RinTls.VerifyCertificateRevocation(
+                        certificate, issuer, source, response,
+                        trustedUnixTime, (ulong)sequence, out int nativeStatus);
+                    if (verifyResult != 0)
+                    {
+                        continue;
+                    }
+
+                    if (nativeStatus == (int)RinOSRevocationStatus.Revoked)
+                    {
+                        return RinOSRevocationStatus.Revoked;
+                    }
+
+                    if (nativeStatus == (int)RinOSRevocationStatus.Good)
+                    {
+                        sawGood = true;
+                    }
+                }
+                catch (AuthenticationException)
+                {
+                    return RinOSRevocationStatus.Unknown;
                 }
                 catch (DllNotFoundException)
                 {

@@ -184,6 +184,15 @@ int32_t CryptoNative_RinTlsVerifyPeerRevocationAt(
     void* handle, int32_t certificate_index, int32_t source,
     const uint8_t* response, int32_t response_length, uint64_t sequence,
     int32_t* status);
+int32_t CryptoNative_RinOSX509GetRevocationEndpoint(
+    const uint8_t* certificate_der, int32_t certificate_length,
+    int32_t source, uint8_t* destination, int32_t capacity,
+    int32_t* length);
+int32_t CryptoNative_RinOSX509VerifyRevocation(
+    const uint8_t* certificate_der, int32_t certificate_length,
+    const uint8_t* issuer_der, int32_t issuer_length, int32_t source,
+    const uint8_t* response, int32_t response_length,
+    uint64_t trusted_unix_time, uint64_t sequence, int32_t* status);
 
 static const Entry s_cryptoNative[] =
 {
@@ -262,6 +271,8 @@ static const Entry s_cryptoNative[] =
     DllImportEntry(CryptoNative_RinTlsGetPeerRevocationEndpointAt)
     DllImportEntry(CryptoNative_RinTlsVerifyPeerRevocation)
     DllImportEntry(CryptoNative_RinTlsVerifyPeerRevocationAt)
+    DllImportEntry(CryptoNative_RinOSX509GetRevocationEndpoint)
+    DllImportEntry(CryptoNative_RinOSX509VerifyRevocation)
 };
 
 EXTERN_C const void* CryptoResolveDllImport(const char* name);

@@ -172,6 +172,7 @@
       <BuildArgs>$(BuildArgs) runtimeflavor $(RuntimeFlavor)</BuildArgs>
       <BuildArgs>$(BuildArgs) runtimeconfiguration $(RuntimeConfiguration)</BuildArgs>
       <BuildArgs Condition="'$(EnableNativeSanitizers)' != ''">$(BuildArgs) -fsanitize=$(EnableNativeSanitizers)</BuildArgs>
+      <BuildArgs Condition="'$(CMakeArgs)' != ''">$(BuildArgs) -cmakeargs "$(CMakeArgs)"</BuildArgs>
       <BuildArgs>$(BuildArgs) -cmakeargs "-DCLR_CMAKE_BUILD_HOST_TESTS=$(BuildNativeHostTests.ToUpper())"</BuildArgs>
       <BuildArgs>$(BuildArgs) -cmakeargs "-DCLR_CMAKE_BUILD_HOST_PRODUCT=$(BuildNativeHostProduct.ToUpper())"</BuildArgs>
     </PropertyGroup>

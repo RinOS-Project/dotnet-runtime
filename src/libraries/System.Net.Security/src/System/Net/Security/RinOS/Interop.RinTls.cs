@@ -467,6 +467,12 @@ namespace System.Net.Security
                 ArgumentNullException.ThrowIfNull(issuer);
                 byte[] certificateDer = certificate.RawData;
                 byte[] issuerDer = issuer.RawData;
+                if (certificateDer.Length == 0 || certificateDer.Length > 8 * 1024 ||
+                    issuerDer.Length == 0 || issuerDer.Length > 8 * 1024)
+                {
+                    status = 0;
+                    return -1;
+                }
                 fixed (byte* certificatePtr = certificateDer)
                 fixed (byte* issuerPtr = issuerDer)
                 fixed (byte* responsePtr = response)

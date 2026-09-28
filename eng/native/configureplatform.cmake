@@ -1,5 +1,40 @@
 include(${CMAKE_CURRENT_LIST_DIR}/functions.cmake)
 
+# The RinOS target toolchain uses freestanding linker templates.  The host
+# cross-component graph is deliberately configured in the same CoreCLR
+# project, but it produces a Windows PE JIT and must use the host CRT/startup
+# libraries.  Clear target-only linker options that may have been installed by
+# an earlier target configure pass before CMake materializes host link rules.
+if(CLR_CROSS_COMPONENTS_BUILD AND RINOS_CROSS_COMPONENTS_HOST)
+    foreach(_rinos_host_link_variable IN ITEMS
+            CMAKE_C_FLAGS
+            CMAKE_CXX_FLAGS
+            CMAKE_EXE_LINKER_FLAGS
+            CMAKE_SHARED_LINKER_FLAGS
+            CMAKE_MODULE_LINKER_FLAGS
+            CMAKE_C_LINK_FLAGS
+            CMAKE_CXX_LINK_FLAGS
+            CMAKE_SHARED_LIBRARY_C_FLAGS
+            CMAKE_SHARED_LIBRARY_CXX_FLAGS
+            CMAKE_SHARED_MODULE_C_FLAGS
+            CMAKE_SHARED_MODULE_CXX_FLAGS
+            CMAKE_C_STANDARD_LIBRARIES
+            CMAKE_CXX_STANDARD_LIBRARIES
+            CMAKE_C_LINK_EXECUTABLE
+            CMAKE_CXX_LINK_EXECUTABLE
+            CMAKE_C_CREATE_SHARED_LIBRARY
+            CMAKE_CXX_CREATE_SHARED_LIBRARY
+            CMAKE_C_CREATE_SHARED_MODULE
+            CMAKE_CXX_CREATE_SHARED_MODULE)
+        if(DEFINED ${_rinos_host_link_variable})
+            string(REPLACE "-nostartfiles" "" ${_rinos_host_link_variable}
+                   "${${_rinos_host_link_variable}}")
+            string(REPLACE "-nostdlib" "" ${_rinos_host_link_variable}
+                   "${${_rinos_host_link_variable}}")
+        endif()
+    endforeach()
+endif()
+
 # If set, indicates that this is not an officially supported release.
 # Release branches should set this to false.
 set(PRERELEASE 1)

@@ -10,9 +10,9 @@
          NETSDK1067/NETSDK1098. -->
     <SelfContained>true</SelfContained>
     <SelfContained Condition="'$(TargetOS)' == 'rinos' or '$(UseAppHost)' == 'false'">false</SelfContained>
-    <PublishSingleFile Condition="'$(TargetOS)' == 'rinos' or '$(UseAppHost)' == 'false'">false</PublishSingleFile>
     <PublishTrimmed>true</PublishTrimmed>
     <PublishSingleFile>true</PublishSingleFile>
+    <PublishSingleFile Condition="'$(TargetOS)' == 'rinos' or '$(UseAppHost)' == 'false'">false</PublishSingleFile>
     <TrimmerSingleWarn>false</TrimmerSingleWarn>
   </PropertyGroup>
 

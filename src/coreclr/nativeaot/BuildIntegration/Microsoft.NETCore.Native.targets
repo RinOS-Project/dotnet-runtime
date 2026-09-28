@@ -105,6 +105,7 @@ The .NET Foundation licenses this file to you under the MIT license.
 
     <NativeObject>$(NativeIntermediateOutputPath)$(TargetName)$(NativeObjectExt)</NativeObject>
     <NativeBinary>$(NativeOutputPath)$(NativeBinaryPrefix)$(TargetName)$(NativeBinaryExt)</NativeBinary>
+    <RinOSNativeDependencyName Condition="'$(_targetOS)' == 'rinos' and '$(NativeBinary)' != ''">$([System.IO.Path]::GetFileName($(NativeBinary)))</RinOSNativeDependencyName>
     <NativeImportLibrary Condition="'$(NativeImportLibrary)' == '' and '$(_targetOS)' == 'win' and '$(NativeLib)' == 'Shared'">$(NativeOutputPath)$(NativeBinaryPrefix)$(TargetName)$(LibFileExt)</NativeImportLibrary>
     <_LinkNativeOutputs>$(NativeBinary)</_LinkNativeOutputs>
     <_LinkNativeOutputs Condition="'$(_targetOS)' == 'win' and '$(NativeLib)' == 'Shared' and '$(NativeImportLibrary)' != ''">$(NativeBinary);$(NativeImportLibrary)</_LinkNativeOutputs>
@@ -219,6 +220,7 @@ The .NET Foundation licenses this file to you under the MIT license.
         <ShimResourceFile>$(NativeIntermediateOutputPath)%(AssemblyName).aggregateexe.res</ShimResourceFile>
         <ShimCompileLinkRspFile>$(NativeIntermediateOutputPath)%(AssemblyName).aggregateexe.rsp</ShimCompileLinkRspFile>
         <ShimBinary>$(NativeOutputPath)%(AssemblyName)$(NativeExecutableExt)</ShimBinary>
+        <ShimElf>$(NativeIntermediateOutputPath)%(AssemblyName).aggregateexe.elf</ShimElf>
         <ShimSymbol>$(NativeOutputPath)%(AssemblyName)$(NativeSymbolExt)</ShimSymbol>
       </_AggregateExecutableReferencePath>
       <_AggregateExecutableShim Include="%(_AggregateExecutableReferencePath.ShimBinary)">

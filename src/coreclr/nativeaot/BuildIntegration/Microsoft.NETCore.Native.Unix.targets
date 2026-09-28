@@ -414,20 +414,20 @@ The .NET Foundation licenses this file to you under the MIT license.
   <Target Name="CreateShimExes"
           Condition="'$(_AggregateExecutable)' == 'true'"
           DependsOnTargets="LinkNative;WriteAggregateExecutableShimRspFiles"
-          Inputs="$(NativeBinary);@(_AggregateExecutableReferencePath->'%(ShimSource)');@(_AggregateExecutableReferencePath->'%(ShimCompileLinkRspFile)')"
+          Inputs="$(NativeBinary);@(_RinOSNativePackagingInput);@(_AggregateExecutableReferencePath->'%(ShimSource)');@(_AggregateExecutableReferencePath->'%(ShimCompileLinkRspFile)');@(_AggregateExecutableReferencePath->'%(ShimElf)')"
           Outputs="@(_AggregateExecutableShim);@(_AggregateExecutableShimSymbol)">
 
-    <Error Condition="'$(_targetOS)' == 'rinos'"
-           Text="RinOS NativeAOT aggregate executable shims are not supported until signed RLL inputs can be linked into a signed RIN64 shim." />
-
-    <Exec Command="&quot;$(CppLinker)&quot; @&quot;%(_AggregateExecutableReferencePath.ShimCompileLinkRspFile)&quot;" />
-    <Exec Condition="'$(StripSymbols)' == 'true' and '$(NativeDebugSymbols)' == 'true' and '$(_IsApplePlatform)' != 'true'"
+    <Exec Condition="'$(_targetOS)' != 'rinos'"
+          Command="&quot;$(CppLinker)&quot; @&quot;%(_AggregateExecutableReferencePath.ShimCompileLinkRspFile)&quot;" />
+    <Exec Condition="'$(_targetOS)' == 'rinos'"
+          Command="&quot;$(RinOSNativePython)&quot; &quot;$(RinOSNativePackager)&quot; --kind executable &quot;%(_AggregateExecutableReferencePath.ShimElf)&quot; &quot;%(_AggregateExecutableReferencePath.ShimBinary)&quot; --sign-key &quot;$(RinOSSignKey)&quot; --public-key &quot;$(RinOSPublicKey)&quot; --dep &quot;$(RinOSNativeDependencyName)&quot; --import &quot;%(_AggregateExecutableReferencePath.EntryPointSymbol)=$(RinOSNativeDependencyName)@function&quot; --required-capabilities &quot;$(RinOSRequiredCapabilities)&quot;" />
+    <Exec Condition="'$(StripSymbols)' == 'true' and '$(NativeDebugSymbols)' == 'true' and '$(_IsApplePlatform)' != 'true' and '$(_targetOS)' != 'rinos'"
           Command="&quot;$(ObjCopyName)&quot; --only-keep-debug &quot;%(_AggregateExecutableReferencePath.ShimBinary)&quot; &quot;%(_AggregateExecutableReferencePath.ShimBinary)$(NativeSymbolExt)&quot;" />
-    <Exec Condition="'$(StripSymbols)' == 'true' and '$(_IsApplePlatform)' != 'true'"
+    <Exec Condition="'$(StripSymbols)' == 'true' and '$(_IsApplePlatform)' != 'true' and '$(_targetOS)' != 'rinos'"
           Command="&quot;$(ObjCopyName)&quot; --strip-debug --strip-unneeded &quot;%(_AggregateExecutableReferencePath.ShimBinary)&quot;" />
-    <Exec Condition="'$(StripSymbols)' == 'true' and '$(NativeDebugSymbols)' == 'true' and '$(_IsApplePlatform)' != 'true'"
+    <Exec Condition="'$(StripSymbols)' == 'true' and '$(NativeDebugSymbols)' == 'true' and '$(_IsApplePlatform)' != 'true' and '$(_targetOS)' != 'rinos'"
           Command="&quot;$(ObjCopyName)&quot; --add-gnu-debuglink=&quot;%(_AggregateExecutableReferencePath.ShimBinary)$(NativeSymbolExt)&quot; &quot;%(_AggregateExecutableReferencePath.ShimBinary)&quot;" />
-    <Exec Condition="'$(StripSymbols)' == 'true' and '$(_IsApplePlatform)' == 'true'"
+    <Exec Condition="'$(StripSymbols)' == 'true' and '$(_IsApplePlatform)' == 'true' and '$(_targetOS)' != 'rinos'"
           IgnoreStandardErrorWarningFormat="true"
           Command="
             dsymutil $(DsymUtilOptions) &quot;%(_AggregateExecutableReferencePath.ShimBinary)&quot; &amp;&amp;
@@ -459,14 +459,21 @@ int main(int argc, char** argv)
       <_AggregateExecutableShimCompilerAndLinkerArg Include="-pie -Wl,-pie" Condition="'$(_IsApplePlatform)' != 'true' and '$(StaticExecutable)' != 'true' and '$(PositionIndependentExecutable)' != 'false'" />
       <!-- binskim error BA3003: The stack protector was not found -->
       <_AggregateExecutableShimCompilerAndLinkerArg Include="-fstack-protector-strong" />
+      <!-- RinOS keeps the NativeAOT entry point unresolved in a freestanding
+           ET_DYN. The signed RLL is described to the RIN v3 loader instead of
+           being passed to lld as if it were an ELF shared object. -->
+      <_AggregateExecutableShimCompilerAndLinkerArg Include="-Wl,--unresolved-symbols=ignore-all" Condition="'$(_targetOS)' == 'rinos'" />
+      <_AggregateExecutableShimCompilerAndLinkerArg Include="-Wl,--emit-relocs" Condition="'$(_targetOS)' == 'rinos'" />
+      <_AggregateExecutableShimCompilerAndLinkerArg Include="-Wl,-e,main" Condition="'$(_targetOS)' == 'rinos'" />
 
-      <_AggregateExecutableShimNativeLibraryArg Include="-L&quot;$(NativeOutputPath)&quot;" Condition="'$(_IsApplePlatform)' != 'true'" />
-      <_AggregateExecutableShimNativeLibraryArg Include="-l:$(NativeBinaryPrefix)$(TargetName)$(NativeBinaryExt)" Condition="'$(_IsApplePlatform)' != 'true'" />
+      <_AggregateExecutableShimNativeLibraryArg Include="-L&quot;$(NativeOutputPath)&quot;" Condition="'$(_IsApplePlatform)' != 'true' and '$(_targetOS)' != 'rinos'" />
+      <_AggregateExecutableShimNativeLibraryArg Include="-l:$(NativeBinaryPrefix)$(TargetName)$(NativeBinaryExt)" Condition="'$(_IsApplePlatform)' != 'true' and '$(_targetOS)' != 'rinos'" />
       <_AggregateExecutableShimNativeLibraryArg Include="&quot;$(NativeBinary)&quot;" Condition="'$(_IsApplePlatform)' == 'true'" />
     </ItemGroup>
 
     <MakeDir Directories="$(NativeIntermediateOutputPath);$(NativeOutputPath)" />
     <WriteLinesToFile File="%(_AggregateExecutableReferencePath.ShimSource)" Lines="$([MSBuild]::Escape('%(_AggregateExecutableReferencePath.ShimSourceCode)'))" Overwrite="true" WriteOnlyWhenDifferent="true" />
-    <WriteLinesToFile File="%(_AggregateExecutableReferencePath.ShimCompileLinkRspFile)" Lines="@(_AggregateExecutableShimCompilerAndLinkerArg);&quot;%(_AggregateExecutableReferencePath.ShimSource)&quot;;@(_AggregateExecutableShimNativeLibraryArg);-o;&quot;%(_AggregateExecutableReferencePath.ShimBinary)&quot;" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <WriteLinesToFile Condition="'$(_targetOS)' == 'rinos'" File="%(_AggregateExecutableReferencePath.ShimCompileLinkRspFile)" Lines="@(_AggregateExecutableShimCompilerAndLinkerArg);&quot;%(_AggregateExecutableReferencePath.ShimSource)&quot;;@(_AggregateExecutableShimNativeLibraryArg);-o;&quot;%(_AggregateExecutableReferencePath.ShimElf)&quot;" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <WriteLinesToFile Condition="'$(_targetOS)' != 'rinos'" File="%(_AggregateExecutableReferencePath.ShimCompileLinkRspFile)" Lines="@(_AggregateExecutableShimCompilerAndLinkerArg);&quot;%(_AggregateExecutableReferencePath.ShimSource)&quot;;@(_AggregateExecutableShimNativeLibraryArg);-o;&quot;%(_AggregateExecutableReferencePath.ShimBinary)&quot;" Overwrite="true" WriteOnlyWhenDifferent="true" />
   </Target>
 </Project>

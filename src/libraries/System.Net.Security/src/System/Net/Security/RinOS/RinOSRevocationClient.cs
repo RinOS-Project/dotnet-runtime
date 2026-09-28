@@ -294,6 +294,8 @@ namespace System.Net.Security
             WriteUInt32(message, 44, 0);
             Buffer.BlockCopy(urlBytes, 0, message, 48, urlBytes.Length);
 
+            byte[] payload = Array.Empty<byte>();
+            bool responseComplete = false;
             try
             {
                 using Socket socket = new Socket(
@@ -322,7 +324,7 @@ namespace System.Net.Security
                     return false;
                 }
 
-                byte[] payload = new byte[checked((int)payloadLength)];
+                payload = new byte[checked((int)payloadLength)];
                 ReceiveExact(socket, payload);
                 int statusCode = ReadInt32(payload, 0);
                 uint transferComplete = ReadUInt32(payload, 4);
@@ -338,6 +340,7 @@ namespace System.Net.Security
 
                 response = new byte[checked((int)bodyLength)];
                 Buffer.BlockCopy(payload, 16, response, 0, response.Length);
+                responseComplete = true;
                 return true;
             }
             catch (Exception ex) when (
@@ -352,6 +355,13 @@ namespace System.Net.Security
             }
             finally
             {
+                if (!responseComplete && response.Length != 0)
+                {
+                    CryptographicOperations.ZeroMemory(response);
+                    response = Array.Empty<byte>();
+                }
+                CryptographicOperations.ZeroMemory(payload);
+                CryptographicOperations.ZeroMemory(urlBytes);
                 CryptographicOperations.ZeroMemory(message);
             }
         }

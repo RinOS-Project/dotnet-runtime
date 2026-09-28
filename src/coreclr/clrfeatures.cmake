@@ -29,10 +29,16 @@ if(CLR_CMAKE_TARGET_RINOS)
   # RinOS exposes EventPipe through its product diagnostic IPC. Keep the
   # feature defaults explicit so a host build cannot accidentally inherit a
   # platform-specific trace configuration.
-  if(NOT DEFINED FEATURE_EVENT_TRACE)
+  if(CLR_CROSS_COMPONENTS_BUILD)
+    # The cross-component graph produces a host-side JIT/jitinterface only.
+    # Event tracing belongs to the target runtime graph; enabling it here
+    # selects the host Windows ETW headers for target RinOS sources.
+    set(FEATURE_EVENT_TRACE 0)
+    set(FEATURE_PERFTRACING 0)
+  elseif(NOT DEFINED FEATURE_EVENT_TRACE)
     set(FEATURE_EVENT_TRACE 1)
   endif()
-  if(NOT DEFINED FEATURE_PERFTRACING)
+  if(NOT DEFINED FEATURE_PERFTRACING AND NOT CLR_CROSS_COMPONENTS_BUILD)
     set(FEATURE_PERFTRACING 1)
   endif()
 endif()

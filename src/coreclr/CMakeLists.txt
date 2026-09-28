@@ -284,10 +284,12 @@ if(CLR_CROSS_COMPONENTS_BUILD AND (CLR_CMAKE_TARGET_ARCH_WASM OR CLR_CMAKE_TARGE
     add_subdirectory(nativeresources)
     add_subdirectory(dlls/mscorrc)
   endif (CLR_CMAKE_HOST_UNIX)
-  # The host-only JIT graph still compiles shared utilcode with event tracing
-  # enabled. Generate the real CoreCLR eventing headers before utilcode rather
-  # than satisfying its dependency with a no-op target.
-  add_subdirectory(vm/eventing)
+  # If a cross-component configuration explicitly enables event tracing,
+  # generate the real CoreCLR eventing headers before utilcode rather than
+  # satisfying its dependency with a no-op target.
+  if(FEATURE_EVENT_TRACE)
+    add_subdirectory(vm/eventing)
+  endif()
   add_subdirectory(utilcode)
   add_subdirectory(gcinfo)
   add_subdirectory(jit)

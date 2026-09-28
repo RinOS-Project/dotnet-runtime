@@ -5,9 +5,10 @@
     <RuntimeIdentifier>$(NETCoreSdkRuntimeIdentifier)</RuntimeIdentifier>
     <PublishDir>$(RuntimeBinDir)$(BuildArchitecture)/ilc/</PublishDir>
     <!-- RinOS cross-builds disable apphost generation for the target graph.
-         This project is a host-side build tool, so let that outer property
-         suppress self-contained publishing instead of triggering NETSDK1067. -->
-    <SelfContained Condition="'$(UseAppHost)' != 'false'">true</SelfContained>
+         This project is a host-side build tool, so publish it framework
+         dependent in that graph instead of triggering NETSDK1067. -->
+    <SelfContained>true</SelfContained>
+    <SelfContained Condition="'$(TargetOS)' == 'rinos' or '$(UseAppHost)' == 'false'">false</SelfContained>
     <PublishTrimmed>true</PublishTrimmed>
     <PublishSingleFile>true</PublishSingleFile>
     <TrimmerSingleWarn>false</TrimmerSingleWarn>

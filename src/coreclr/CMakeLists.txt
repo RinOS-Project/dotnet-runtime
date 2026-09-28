@@ -239,6 +239,7 @@ endif(FEATURE_STANDALONE_GC)
 # the crossgen2 host must not configure or link them.
 if(CLR_CROSS_COMPONENTS_BUILD AND (CLR_CMAKE_TARGET_ARCH_WASM OR CLR_CMAKE_TARGET_RINOS))
   include_directories("inc")
+  include_directories("${GENERATED_INCLUDE_DIR}")
   include_directories("minipal")
   if (CLR_CMAKE_HOST_UNIX)
     include_directories("pal/inc")
@@ -283,14 +284,13 @@ if(CLR_CROSS_COMPONENTS_BUILD AND (CLR_CMAKE_TARGET_ARCH_WASM OR CLR_CMAKE_TARGE
     add_subdirectory(nativeresources)
     add_subdirectory(dlls/mscorrc)
   endif (CLR_CMAKE_HOST_UNIX)
+  # The host-only JIT graph still compiles shared utilcode with event tracing
+  # enabled. Generate the real CoreCLR eventing headers before utilcode rather
+  # than satisfying its dependency with a no-op target.
+  add_subdirectory(vm/eventing)
   add_subdirectory(utilcode)
   add_subdirectory(gcinfo)
   add_subdirectory(jit)
-  if(CLR_CMAKE_TARGET_RINOS AND NOT TARGET eventing_headers)
-    # The host-only JIT graph returns before vm/eventing is added, but a few
-    # shared utility targets retain the upstream dependency edge.
-    add_custom_target(eventing_headers)
-  endif()
   return()
 endif()
 

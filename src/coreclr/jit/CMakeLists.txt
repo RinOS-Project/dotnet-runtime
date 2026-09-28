@@ -676,7 +676,7 @@ function(add_jit jitName)
     endif(CLR_CMAKE_TARGET_WIN32)
 
     target_include_directories(${jitName} PRIVATE ${JIT_SOURCE_DIR})
-    if(DEFINED RINOS_DOTNET_TARGET_INCLUDE_DIRS)
+    if(DEFINED RINOS_DOTNET_TARGET_INCLUDE_DIRS AND NOT RINOS_CROSS_COMPONENTS_HOST)
         target_include_directories(${jitName} SYSTEM PRIVATE ${RINOS_DOTNET_TARGET_INCLUDE_DIRS})
     endif()
     target_precompile_headers(${jitName} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:jitpch.h>")

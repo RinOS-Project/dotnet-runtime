@@ -107,6 +107,10 @@ int32_t CryptoNative_RinOSEcdsaVerifyHash(
     const uint8_t* signature, int32_t signature_length);
 void CryptoNative_RinOSEcdsaDestroy(void* handle);
 
+int32_t CryptoNative_RinOSX509VerifySignature(
+    const uint8_t* certificate_der, int32_t certificate_length,
+    const uint8_t* issuer_der, int32_t issuer_length);
+
 void* CryptoNative_RinOSEcdhCreate(void);
 int32_t CryptoNative_RinOSEcdhGenerateKey(void* handle);
 int32_t CryptoNative_RinOSEcdhImportParameters(
@@ -206,6 +210,7 @@ static const Entry s_cryptoNative[] =
     DllImportEntry(CryptoNative_RinOSEcdsaSignHash)
     DllImportEntry(CryptoNative_RinOSEcdsaVerifyHash)
     DllImportEntry(CryptoNative_RinOSEcdsaDestroy)
+    DllImportEntry(CryptoNative_RinOSX509VerifySignature)
     DllImportEntry(CryptoNative_RinOSEcdhCreate)
     DllImportEntry(CryptoNative_RinOSEcdhGenerateKey)
     DllImportEntry(CryptoNative_RinOSEcdhImportParameters)

@@ -569,38 +569,11 @@ namespace System.Security.Cryptography.X509Certificates
             ArgumentNullException.ThrowIfNull(issuer);
             issuer.ThrowIfDisposed();
 
-            byte[] toBeSigned = GetTbsCertificate();
-            byte[] signature = _certificate.SignatureValue;
-            using AsymmetricAlgorithm publicKey = X509Pal.Instance.DecodePublicKey(
-                new Oid(issuer.KeyAlgorithm),
-                issuer.PublicKeyValue,
-                issuer.KeyAlgorithmParameters,
-                issuer);
-
-            return _certificate.SignatureAlgorithm.AlgorithmId switch
-            {
-                Oids.RsaPkcs1Sha1 => publicKey is RSA rsa &&
-                    rsa.VerifyData(toBeSigned, signature, HashAlgorithmName.SHA1, RSASignaturePadding.Pkcs1),
-                Oids.RsaPkcs1Sha256 => publicKey is RSA rsa &&
-                    rsa.VerifyData(toBeSigned, signature, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1),
-                Oids.RsaPkcs1Sha384 => publicKey is RSA rsa &&
-                    rsa.VerifyData(toBeSigned, signature, HashAlgorithmName.SHA384, RSASignaturePadding.Pkcs1),
-                Oids.RsaPkcs1Sha512 => publicKey is RSA rsa &&
-                    rsa.VerifyData(toBeSigned, signature, HashAlgorithmName.SHA512, RSASignaturePadding.Pkcs1),
-                Oids.ECDsaWithSha256 => publicKey is ECDsa ecdsa &&
-                    ecdsa.VerifyData(toBeSigned, signature, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence),
-                _ => false,
-            };
-        }
-
-        private byte[] GetTbsCertificate()
-        {
-            ValueAsnReader reader = new ValueAsnReader(_certificate.RawData, AsnEncodingRules.DER);
-            ValueAsnReader certificate = reader.ReadSequence();
-            byte[] tbsCertificate = certificate.ReadEncodedValue().ToArray();
-            certificate.ThrowIfNotEmpty();
-            reader.ThrowIfNotEmpty();
-            return tbsCertificate;
+            return Interop.Crypto.RinOSX509VerifySignature(
+                _certificate.RawData,
+                _certificate.RawData.Length,
+                issuer._certificate.RawData,
+                issuer._certificate.RawData.Length) != 0;
         }
     }
 

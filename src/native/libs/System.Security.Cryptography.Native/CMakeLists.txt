@@ -74,6 +74,7 @@ if (CLR_CMAKE_TARGET_RINOS)
         rinos_ecdsa.c
         rinos_rsa.c
         rinos_tls.c
+        rinos_x509.c
         "${RINOS_REPO_ROOT}/public-base/libs/rintls/rintls.c"
         "${RINOS_REPO_ROOT}/public-base/libs/rintls/crypto/aes.c"
         "${RINOS_REPO_ROOT}/public-base/libs/rintls/crypto/bignum.c"

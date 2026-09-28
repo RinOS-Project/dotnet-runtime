@@ -813,6 +813,16 @@ function MSBuild() {
 
   $cmdArgs = "$($buildTool.Command) /m /nologo /clp:Summary /v:$verbosity /nr:$nodeReuse /p:ContinuousIntegrationBuild=$ci"
 
+  # A RinOS target cross-build runs under the product SDK's restricted
+  # desktop token.  The SDK MSBuild server can still be selected by the
+  # dotnet CLI even when node reuse and Roslyn shared compilation are off,
+  # and its LOCAL\\dotnet_* pipe may be inaccessible to that token.  Use the
+  # CLI's explicit build-server switch for the opt-in product path.  Do not
+  # add it to Visual Studio MSBuild, which has no such CLI option.
+  if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1' -and $buildTool.Command -eq 'msbuild') {
+    $cmdArgs += ' --disable-build-servers'
+  }
+
   # Build with MSBuild's multi-threaded mode.
   if ($msbuildMultiThreaded) {
     $cmdArgs += ' -mt'

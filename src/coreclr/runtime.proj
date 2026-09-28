@@ -54,6 +54,11 @@
       <_CoreClrBuildArg Condition="'$(HostCrossOS)' != ''" Include="-hostos $(HostCrossOS)" />
       <_CoreClrBuildArg Include="-targetrid $(TargetRid)" />
       <_CoreClrBuildArg Include="-cmakeargs &quot;-DCLR_DOTNET_RID=$(PortableTargetRid)&quot;" />
+      <!-- Keep this as its own -cmakeargs value. Cross-component projects
+           carry user CMakeArgs separately; concatenating this switch into
+           that property makes build-runtime.cmd pass two -D options as one
+           quoted value on Windows. -->
+      <_CoreClrBuildArg Condition="'$(ClrCrossComponentsBuild)' == 'true'" Include="-cmakeargs &quot;-DCLR_CROSS_COMPONENTS_BUILD=1&quot;" />
       <_CoreClrBuildArg Condition="'$(BuildSubdirectory)' != ''" Include="-subdir $(BuildSubdirectory)" />
       <_CoreClrBuildArg Include="-cmakeargs &quot;-DCLR_DOTNET_HOST_PATH='$(DOTNET_HOST_PATH)'&quot;" />
       <_CoreClrBuildArg Condition="'$(HasCdacBuildTool)' == 'true'" Include="-cmakeargs &quot;-DCDAC_BUILD_TOOL_BINARY_PATH=$(CdacBuildToolPath)&quot;" />

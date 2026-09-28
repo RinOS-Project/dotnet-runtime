@@ -416,7 +416,7 @@
                             NoPgoOptimize=true;
                             CrossBuild=false;
                             BuildSubdirectory=$(BuildArchitecture);
-                            CMakeArgs=$(CMakeArgs) -DCLR_CROSS_COMPONENTS_BUILD=1"
+                            ClrCrossComponentsBuild=true"
       UndefineProperties="EnableNativeSanitizers"
       Category="clr" />
   </ItemGroup>
@@ -457,7 +457,7 @@
                             NoPgoOptimize=true;
                             TargetOS=linux;
                             BuildSubdirectory=$(CrossDacHostArch);
-                            CMakeArgs=$(CMakeArgs) -DCLR_CROSS_COMPONENTS_BUILD=1" Category="clr" />
+                            ClrCrossComponentsBuild=true" Category="clr" />
   </ItemGroup>
 
   <ItemGroup Condition="$(_subset.Contains('+alpinedac+')) and $([MSBuild]::IsOsPlatform(Windows)) and ('$(BuildArchitecture)' == 'x64' or '$(BuildArchitecture)' == 'x86') and '$(TargetArchitecture)' != 'x86'">
@@ -470,7 +470,7 @@
                             NoPgoOptimize=true;
                             TargetOS=alpine;
                             BuildSubdirectory=$(CrossDacHostArch);
-                            CMakeArgs=$(CMakeArgs) -DCLR_CROSS_COMPONENTS_BUILD=1" Category="clr" />
+                            ClrCrossComponentsBuild=true" Category="clr" />
   </ItemGroup>
 
   <ItemGroup Condition="$(_subset.Contains('+crossdacpack+'))">

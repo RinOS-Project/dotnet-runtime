@@ -307,12 +307,25 @@ FCIMPLEND
 EXTERN_C void * ReturnFromUniversalTransitionTailCall;
 void * ReturnFromUniversalTransitionTailCall;
 
+static bool ValidateWriteBarrierDestination(Object ** destination)
+{
+    if (destination != nullptr)
+        return true;
+
+    // A null destination is an invalid managed write-barrier call.  Fail fast
+    // explicitly instead of relying on an incidental native null dereference;
+    // exception recovery for this corruption is not part of the portable
+    // helper ABI.
+    RhFailFast();
+    return false;
+}
+
 #if !defined (HOST_ARM64)
 FCIMPL2(void, RhpAssignRef, Object ** dst, Object * ref)
 {
-    // A null destination is an invalid managed write-barrier call.  Preserve
-    // the native fault instead of silently dropping the reference; exception
-    // recovery for this corruption is not part of the portable helper ABI.
+    if (!ValidateWriteBarrierDestination(dst))
+        return;
+
     *dst = ref;
     InlineWriteBarrier(dst, ref);
 }
@@ -320,7 +333,9 @@ FCIMPLEND
 
 FCIMPL2(void, RhpCheckedAssignRef, Object ** dst, Object * ref)
 {
-    // See RhpAssignRef: an invalid destination must remain a native fault.
+    if (!ValidateWriteBarrierDestination(dst))
+        return;
+
     *dst = ref;
     InlineCheckedWriteBarrier(dst, ref);
 }
@@ -329,6 +344,9 @@ FCIMPLEND
 
 FCIMPL3(Object *, RhpCheckedLockCmpXchg, Object ** location, Object * value, Object * comparand)
 {
+    if (!ValidateWriteBarrierDestination(location))
+        return nullptr;
+
     Object * ret = (Object *)PalInterlockedCompareExchangePointer((void * volatile *)location, value, comparand);
     InlineCheckedWriteBarrier(location, value);
     return ret;
@@ -337,7 +355,9 @@ FCIMPLEND
 
 FCIMPL2(Object *, RhpCheckedXchg, Object ** location, Object * value)
 {
-    // See RhpAssignRef: an invalid destination must remain a native fault.
+    if (!ValidateWriteBarrierDestination(location))
+        return nullptr;
+
     Object * ret = (Object *)PalInterlockedExchangePointer((void * volatile *)location, value);
     InlineCheckedWriteBarrier(location, value);
     return ret;

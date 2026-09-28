@@ -811,7 +811,12 @@ function MSBuild() {
     }
   }
 
-  $cmdArgs = "$($buildTool.Command) /m /nologo /clp:Summary /v:$verbosity /nr:$nodeReuse /p:ContinuousIntegrationBuild=$ci"
+  # The RinOS cross-build runs under a restricted desktop token.  Even with
+  # node reuse disabled, the default /m creates child MSBuild nodes that
+  # communicate over LOCAL\dotnet_* pipes.  Keep that product-owned path
+  # single-node so it does not require the inaccessible child-node ACL.
+  $maxNodeCount = if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1') { '/m:1' } else { '/m' }
+  $cmdArgs = "$($buildTool.Command) $maxNodeCount /nologo /clp:Summary /v:$verbosity /nr:$nodeReuse /p:ContinuousIntegrationBuild=$ci"
 
   # A RinOS target cross-build runs under the product SDK's restricted
   # desktop token.  The SDK MSBuild server can still be selected by the

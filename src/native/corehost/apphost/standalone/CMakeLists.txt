@@ -31,6 +31,13 @@ list(APPEND SOURCES ${HEADERS})
 add_executable(apphost ${SOURCES} ${RESOURCES})
 
 if(CLR_CMAKE_TARGET_RINOS)
+    if(NOT DEFINED RINOS_REPO_ROOT)
+        message(FATAL_ERROR "RINOS_REPO_ROOT is required for RinOS corehost startup")
+    endif()
+    target_sources(apphost PRIVATE
+        "${RINOS_REPO_ROOT}/src/apps/common/crt0_64.S"
+        "${RINOS_REPO_ROOT}/libs/rinruntime/stack_protector.c"
+        "${CMAKE_CURRENT_LIST_DIR}/../../rinos_startup.c")
     # Keep the linked ELF private to the packaging step.  A RinOS apphost is
     # distributed only as a signed .rin image, never as an installable ELF.
     set_target_properties(apphost PROPERTIES OUTPUT_NAME "apphost.elf")
@@ -39,6 +46,9 @@ if(CLR_CMAKE_TARGET_RINOS)
     # intermediate ELF instead of making lld treat this freestanding link as
     # a self-contained hosted executable.
     target_link_options(apphost PRIVATE "LINKER:--unresolved-symbols=ignore-all")
+    target_link_options(apphost PRIVATE "LINKER:-e,_start")
+    target_link_options(apphost PRIVATE
+        "LINKER:--script=${RINOS_REPO_ROOT}/scripts/linker/app64.ld")
 endif()
 
 target_link_libraries(apphost PRIVATE fxr_resolver)

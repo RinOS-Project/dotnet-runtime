@@ -23,12 +23,24 @@ list(APPEND SOURCES
 add_executable(dotnet ${SOURCES})
 
 if(CLR_CMAKE_TARGET_RINOS)
+    if(NOT DEFINED RINOS_REPO_ROOT)
+        message(FATAL_ERROR "RINOS_REPO_ROOT is required for RinOS corehost startup")
+    endif()
+    target_sources(dotnet PRIVATE
+        "${RINOS_REPO_ROOT}/src/apps/common/crt0_64.S"
+        "${RINOS_REPO_ROOT}/libs/rinruntime/stack_protector.c"
+        "${CMAKE_CURRENT_LIST_DIR}/../rinos_startup.c"
+        "${CMAKE_CURRENT_LIST_DIR}/../rinos_startup_dotnet.cpp")
+    target_compile_definitions(dotnet PRIVATE RINOS_COREHOST_DOTNET)
     # The linker output is an intermediate ELF image.  The final .rin image is
     # produced by the signed packaging step below; never confuse the two.
     set_target_properties(dotnet PROPERTIES OUTPUT_NAME "dotnet.elf")
     # Keep target libc calls as loader-owned GOT/PLT imports for the later
     # signed RIN v3 packaging boundary.
     target_link_options(dotnet PRIVATE "LINKER:--unresolved-symbols=ignore-all")
+    target_link_options(dotnet PRIVATE "LINKER:-e,_start")
+    target_link_options(dotnet PRIVATE
+        "LINKER:--script=${RINOS_REPO_ROOT}/scripts/linker/app64.ld")
 endif()
 
 target_link_libraries(dotnet PRIVATE hostmisc fxr_resolver)

@@ -5,6 +5,7 @@ include(../../../eng/native/configurepaths.cmake)
 include(${CLR_ENG_NATIVE_DIR}/configurecompiler.cmake)
 
 if(CLR_CMAKE_TARGET_RINOS AND NOT CLR_CROSS_COMPONENTS_BUILD)
+    enable_language(ASM)
     # Corehost is configured as a separate native project from CoreCLR, so it
     # does not inherit CoreCLR's target-only RinOS libc/SDK include paths or
     # freestanding compiler flags.  Connect the same target boundary here;

@@ -5,10 +5,16 @@
     <!-- Use portable/base RIDs to ensure restore works for AOT tools, avoiding opaque distro-specific TargetRid in source-build scenarios -->
     <RuntimeIdentifier>$(PortableOS)-$(TargetArchitecture)</RuntimeIdentifier>
     <PublishDir>$(RuntimeBinDir)crossgen2-published/</PublishDir>
+    <!-- RinOS cross-builds run this host-side tool on the build machine.
+         Keep the publish graph framework dependent and disable AOT/single-file
+         output when the target graph has no compatible apphost. -->
     <SelfContained>true</SelfContained>
+    <SelfContained Condition="'$(TargetOS)' == 'rinos' or '$(UseAppHost)' == 'false'">false</SelfContained>
     <PublishTrimmed>true</PublishTrimmed>
+    <PublishTrimmed Condition="'$(TargetOS)' == 'rinos' or '$(UseAppHost)' == 'false'">false</PublishTrimmed>
     <TrimmerSingleWarn>false</TrimmerSingleWarn>
     <AotOrSingleFile>true</AotOrSingleFile>
+    <AotOrSingleFile Condition="'$(TargetOS)' == 'rinos' or '$(UseAppHost)' == 'false'">false</AotOrSingleFile>
     <UseBootstrapLayout Condition="'$(UseBootstrap)' == 'true'">true</UseBootstrapLayout>
   </PropertyGroup>
 

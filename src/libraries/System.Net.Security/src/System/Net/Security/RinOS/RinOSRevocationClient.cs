@@ -303,15 +303,15 @@ namespace System.Net.Security
                     ProtocolType.Unspecified);
                 socket.SendTimeout = timeoutMilliseconds;
                 socket.ReceiveTimeout = timeoutMilliseconds;
-                using CancellationTokenSource connectCancellation =
+                using CancellationTokenSource operationCancellation =
                     new CancellationTokenSource(timeoutMilliseconds);
                 socket.ConnectAsync(
                     new UnixDomainSocketEndPoint(WorkerdSocketPath),
-                    connectCancellation.Token).GetAwaiter().GetResult();
-                SendAll(socket, message);
+                    operationCancellation.Token).GetAwaiter().GetResult();
+                SendAll(socket, message, operationCancellation.Token);
 
                 byte[] header = new byte[32];
-                ReceiveExact(socket, header);
+                ReceiveExact(socket, header, operationCancellation.Token);
                 if (ReadUInt32(header, 0) != WorkerdMagic ||
                     ReadUInt32(header, 4) != WorkerdVersion ||
                     ReadUInt32(header, 8) != FetchRevocationCommand ||
@@ -329,7 +329,7 @@ namespace System.Net.Security
                 }
 
                 payload = new byte[checked((int)payloadLength)];
-                ReceiveExact(socket, payload);
+                ReceiveExact(socket, payload, operationCancellation.Token);
                 int statusCode = ReadInt32(payload, 0);
                 uint transferComplete = ReadUInt32(payload, 4);
                 uint success = ReadUInt32(payload, 8);
@@ -399,13 +399,15 @@ namespace System.Net.Security
             return bytes.Length != 0 && bytes.Length <= MaxUrlBytes;
         }
 
-        private static void SendAll(Socket socket, byte[] buffer)
+        private static void SendAll(
+            Socket socket, byte[] buffer, CancellationToken cancellationToken)
         {
             int offset = 0;
             while (offset < buffer.Length)
             {
-                int sent = socket.Send(buffer, offset, buffer.Length - offset,
-                                       SocketFlags.None);
+                int sent = socket.SendAsync(
+                    buffer.AsMemory(offset), SocketFlags.None,
+                    cancellationToken).GetAwaiter().GetResult();
                 if (sent <= 0)
                 {
                     throw new IOException("workerd closed the revocation request.");
@@ -415,14 +417,15 @@ namespace System.Net.Security
             }
         }
 
-        private static void ReceiveExact(Socket socket, byte[] buffer)
+        private static void ReceiveExact(
+            Socket socket, byte[] buffer, CancellationToken cancellationToken)
         {
             int offset = 0;
             while (offset < buffer.Length)
             {
-                int received = socket.Receive(buffer, offset,
-                                              buffer.Length - offset,
-                                              SocketFlags.None);
+                int received = socket.ReceiveAsync(
+                    buffer.AsMemory(offset), SocketFlags.None,
+                    cancellationToken).GetAwaiter().GetResult();
                 if (received <= 0)
                 {
                     throw new IOException("workerd truncated the revocation response.");

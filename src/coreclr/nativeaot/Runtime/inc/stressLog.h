@@ -214,6 +214,38 @@ class StressLog;
 typedef DPTR(StressLog) PTR_StressLog;
 class ThreadStressLog;
 typedef DPTR(ThreadStressLog) PTR_ThreadStressLog;
+// The GC environment forwards structured stress-log messages to the
+// execution engine. Keep the payload layout independent from the CoreCLR
+// stress-log implementation so NativeAOT can preserve the argument count
+// before expanding the message into its variadic logger.
+struct StressLogMsg
+{
+    int m_cArgs;
+    const char* m_format;
+    void* m_args[16];
+
+    explicit StressLogMsg(const char* format)
+        : m_cArgs(0), m_format(format)
+    {
+    }
+
+    template<typename T>
+    static void* ConvertArgument(T arg)
+    {
+        static_assert(sizeof(T) <= sizeof(void*));
+        return (void*)(size_t)arg;
+    }
+
+    template<typename... Ts>
+    StressLogMsg(const char* format, Ts... args)
+        : m_cArgs(sizeof...(args))
+        , m_format(format)
+        , m_args{ ConvertArgument(args)... }
+    {
+        static_assert(sizeof...(args) <= ARRAY_SIZE(m_args));
+    }
+};
+
 struct StressLogChunk;
 typedef DPTR(StressLogChunk) PTR_StressLogChunk;
 struct DacpStressLogEnumCBArgs;

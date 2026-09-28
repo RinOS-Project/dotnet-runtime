@@ -2460,8 +2460,8 @@ lDone: ;
     if (pModuleBaseAddress != NULL && ip != NULL)
     {
         IsIPInModuleData data{
-            static_cast<uintptr_t>(pModuleBaseAddress),
-            static_cast<uintptr_t>(ip),
+            reinterpret_cast<uintptr_t>(pModuleBaseAddress),
+            reinterpret_cast<uintptr_t>(ip),
             FALSE};
         dl_iterate_phdr(&IsIPInModuleCallback, &data);
         param.fRet = data.result;

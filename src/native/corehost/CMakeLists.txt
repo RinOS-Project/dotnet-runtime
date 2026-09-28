@@ -33,6 +33,17 @@ if(CLR_CMAKE_TARGET_RINOS)
         "Package RinOS host outputs as signed RIN/RLL images" OFF)
     set(RINOS_SIGN_KEY "" CACHE FILEPATH "Ed25519 private key for RinOS native packaging")
     set(RINOS_PUBLIC_KEY "" CACHE FILEPATH "Ed25519 public key for RinOS native packaging")
+
+    if(RINOS_ENABLE_NATIVE_PACKAGING)
+        if(NOT RINOS_SIGN_KEY OR IS_DIRECTORY "${RINOS_SIGN_KEY}" OR NOT EXISTS "${RINOS_SIGN_KEY}")
+            message(FATAL_ERROR
+                "RINOS_ENABLE_NATIVE_PACKAGING requires an existing signing-key file: ${RINOS_SIGN_KEY}")
+        endif()
+        if(NOT RINOS_PUBLIC_KEY OR IS_DIRECTORY "${RINOS_PUBLIC_KEY}" OR NOT EXISTS "${RINOS_PUBLIC_KEY}")
+            message(FATAL_ERROR
+                "RINOS_ENABLE_NATIVE_PACKAGING requires an existing public-key file: ${RINOS_PUBLIC_KEY}")
+        endif()
+    endif()
 endif()
 
 if (MSVC)

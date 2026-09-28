@@ -395,9 +395,6 @@ namespace System.Net.NetworkInformation
         private static long Clamp(ulong value) =>
             value > long.MaxValue ? long.MaxValue : (long)value;
 
-        private static long Unsupported() =>
-            RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
-
         public override long AddressMaskRepliesReceived =>
             Read(_snapshot.AddressMaskRepliesReceived, AddressMaskFlag);
         public override long AddressMaskRepliesSent =>
@@ -507,9 +504,6 @@ namespace System.Net.NetworkInformation
 
         private static long Clamp(ulong value) =>
             value > long.MaxValue ? long.MaxValue : (long)value;
-
-        private static long Unsupported() =>
-            RinOSNetworkStatisticsSnapshot.UnsupportedMetric();
 
         public override long DestinationUnreachableMessagesReceived =>
             Read(_snapshot.DestinationUnreachableReceived, DestinationUnreachableReceivedFlag);

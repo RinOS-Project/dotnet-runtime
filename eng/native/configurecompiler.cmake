@@ -550,18 +550,14 @@ endif(CLR_CMAKE_HOST_WIN32)
 # The Windows cross-component graph is driven by Clang rather than the MSVC
 # compiler frontend.  Consequently the MSVC runtime defaults below are not
 # installed by CMake's `if(MSVC)` branch, while host components still link the
-# static libcmt/libvcruntime libraries explicitly.  Add the matching UCRT
-# import/static library at the shared directory boundary so every host
-# cross-component target resolves the C runtime without inheriting RinOS
-# freestanding link options.
+# static libcmt/libvcruntime libraries explicitly.  Reproduce the MSVC
+# Release policy with linker-forwarded flags: suppress the static UCRT pulled
+# by libcmt and select the UCRT import library.  Debug/Checked builds retain
+# the static default.  This keeps every host cross-component target on the
+# Windows CRT without inheriting RinOS freestanding link options.
 if (CLR_CMAKE_HOST_WIN32 AND RINOS_CROSS_COMPONENTS_HOST AND NOT MSVC)
-  add_link_options(
-    "$<$<CONFIG:Debug>:-llibucrtd.lib>"
-    "$<$<CONFIG:Checked>:-llibucrtd.lib>"
-    "$<$<CONFIG:Release>:-lucrt.lib>"
-    "$<$<CONFIG:RelWithDebInfo>:-lucrt.lib>"
-    "$<$<CONFIG:MinSizeRel>:-lucrt.lib>"
-  )
+  add_linker_flag("-Xlinker /NODEFAULTLIB:libucrt.lib" RELEASE RELWITHDEBINFO MINSIZEREL)
+  add_linker_flag("-Xlinker /DEFAULTLIB:ucrt.lib" RELEASE RELWITHDEBINFO MINSIZEREL)
 endif()
 
 # Unconditionally define _FILE_OFFSET_BITS as 64 on all platforms.

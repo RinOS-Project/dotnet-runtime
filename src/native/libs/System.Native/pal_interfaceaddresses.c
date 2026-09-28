@@ -26,6 +26,8 @@
 #endif
 #if defined(TARGET_RINOS)
 #include <rin/net/netif_abi.h>
+extern int rin_net_get_primary_info(RinNetPrimaryInfo* out);
+extern int rin_net_get_ipv6_info(RinNetIPv6Info* out);
 #endif
 #if HAVE_SYS_IOCTL_H
 #include <sys/ioctl.h>
@@ -120,6 +122,22 @@ static void PopulateRinOSInterfaceMetadata(
             : OperationalStatus_Down;
     interfaceInfo->SupportsMulticast =
         (primary->flags & RIN_NETINFO_FLAG_DEVICE_READY) != 0u ? 1u : 0u;
+
+    /* RinOS does not expose a host-style SIOCGIFMTU table.  The NDP
+     * snapshot is the authoritative read-only link metadata owner, so carry
+     * its validated MTU into the existing System.Native interface snapshot.
+     * Keep the zero value when the product owner cannot provide a current
+     * snapshot; managed NetworkInterface then reports the unavailable value
+     * instead of inventing a platform default. */
+    RinNetIPv6Info ipv6 = {0};
+    if (rin_net_get_ipv6_info(&ipv6) == 0 &&
+        ipv6.version == RIN_NET_IPV6_INFO_VERSION &&
+        ipv6.struct_size >= sizeof(ipv6) &&
+        ipv6.device_generation == primary->device_generation &&
+        ipv6.link_mtu != 0u)
+    {
+        interfaceInfo->Mtu = (int32_t)ipv6.link_mtu;
+    }
 
     int hasMac = 0;
     for (size_t index = 0u; index < sizeof(primary->mac); ++index)

@@ -107,7 +107,7 @@ if(CLR_CMAKE_HOST_UNIX)
 endif(CLR_CMAKE_HOST_UNIX)
 
 
-if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
+if(CLR_CMAKE_HOST_WIN32 AND (NOT CLR_CMAKE_TARGET_RINOS OR RINOS_CROSS_COMPONENTS_HOST))
     target_compile_definitions(utilcodestaticnohost PRIVATE _CRTIMP=) # use static version of crt
 
     link_natvis_sources_for_target(utilcodestaticnohost INTERFACE utilcode.natvis)

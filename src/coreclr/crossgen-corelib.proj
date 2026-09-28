@@ -185,11 +185,12 @@
     <Message Importance="High" Text="$(CrossGenDllCmd)" />
 
     <!-- RinOS crossgen2 is a framework-dependent host tool. Its host-side
-         JIT/JitInterface DLLs are emitted beside Crossgen2InBuildDir, so keep
-         that directory as the native loader's working directory. -->
+         JIT/JitInterface DLLs are emitted in the architecture directory that
+         contains Crossgen2InBuildDir, so keep that directory as the native
+         loader's working directory. -->
     <Exec Command="$(CrossGenDllCmd)"
           Condition="'$(TargetOS)' == 'rinos'"
-          WorkingDirectory="$(Crossgen2InBuildDir)" />
+          WorkingDirectory="$([MSBuild]::NormalizePath('$(CoreCLRArtifactsPath)', '$(BuildArchitecture)'))" />
     <Exec Command="$(CrossGenDllCmd)"
           Condition="'$(TargetOS)' != 'rinos'" />
 

@@ -123,6 +123,18 @@ namespace System.Net.Security
                 {
                     return RinOSRevocationStatus.Unknown;
                 }
+                catch (DllNotFoundException)
+                {
+                    return RinOSRevocationStatus.Unknown;
+                }
+                catch (EntryPointNotFoundException)
+                {
+                    return RinOSRevocationStatus.Unknown;
+                }
+                catch (BadImageFormatException)
+                {
+                    return RinOSRevocationStatus.Unknown;
+                }
 
                 if (endpoint is null ||
                     !TryFetch(endpoint, (uint)source, timeoutMilliseconds,
@@ -157,6 +169,18 @@ namespace System.Net.Security
                     {
                         sawGood = true;
                     }
+                }
+                catch (DllNotFoundException)
+                {
+                    return RinOSRevocationStatus.Unknown;
+                }
+                catch (EntryPointNotFoundException)
+                {
+                    return RinOSRevocationStatus.Unknown;
+                }
+                catch (BadImageFormatException)
+                {
+                    return RinOSRevocationStatus.Unknown;
                 }
                 finally
                 {

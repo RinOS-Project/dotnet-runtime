@@ -158,8 +158,9 @@ namespace Internal.Runtime
                 // Keep the source fallback explicit if an unlowered call ever
                 // reaches the runtime instead of exposing an implementation-shaped
                 // NotImplementedException.
-                throw new NotSupportedException(
-                    "SupportsRelativePointers is a NativeAOT compiler intrinsic.");
+                // Test.CoreLib uses the small Runtime.Base exception surface,
+                // which intentionally exposes only the parameterless form.
+                throw new NotSupportedException();
             }
         }
 

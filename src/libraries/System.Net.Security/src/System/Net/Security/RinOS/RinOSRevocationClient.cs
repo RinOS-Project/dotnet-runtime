@@ -198,6 +198,26 @@ namespace System.Net.Security
             {
                 return false;
             }
+            catch (DllNotFoundException)
+            {
+                // A missing product crypto library is not evidence that the
+                // final certificate is self-signed.  Keep ExcludeRoot
+                // fail-closed instead of allowing the anchor to be skipped.
+                return false;
+            }
+            catch (EntryPointNotFoundException)
+            {
+                // The verifier export is part of the RinOS managed/native
+                // contract.  A stale or partial native deployment must not
+                // turn a same-DN certificate into an unrevoked root.
+                return false;
+            }
+            catch (BadImageFormatException)
+            {
+                // Treat an architecture/ABI mismatch like an unavailable
+                // verifier and retain the revocation check.
+                return false;
+            }
         }
 
         private static int GetTimeoutMilliseconds(TimeSpan timeout)

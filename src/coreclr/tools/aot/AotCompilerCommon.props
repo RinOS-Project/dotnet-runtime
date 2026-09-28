@@ -16,11 +16,12 @@
     <_LibPrefix Condition="'$(CrossHostArch)' != 'true'">$(HostLibPrefix)</_LibPrefix>
     <_LibSuffix Condition="'$(CrossHostArch)' == 'true'">$(LibSuffix)</_LibSuffix>
     <_LibSuffix Condition="'$(CrossHostArch)' != 'true'">$(HostLibSuffix)</_LibSuffix>
-    <!-- A RinOS cross-build runs the AOT tool on Windows but consumes the
-         target-owned native libraries.  Their product suffix is .rll, so
-         selecting the host .dll suffix here makes the in-build ILCompiler
-         publish graph look for files that can never be produced. -->
-    <_LibSuffix Condition="'$(TargetOS)' == 'rinos'">.rll</_LibSuffix>
+    <!-- A non-cross-host RinOS build consumes target-owned native libraries,
+         whose product suffix is .rll.  A cross-host RinOS build instead runs
+         the AOT tool on the host and consumes the host JIT/jitinterface from
+         the CrossHostArch directory, so it must retain HostLibSuffix (.dll on
+         Windows). -->
+    <_LibSuffix Condition="'$(TargetOS)' == 'rinos' and '$(CrossHostArch)' == ''">.rll</_LibSuffix>
 
     <TargetArchitectureForSharedLibraries Condition="'$(CrossHostArch)' == ''">$(TargetArchitecture)</TargetArchitectureForSharedLibraries>
     <TargetArchitectureForSharedLibraries Condition="'$(CrossHostArch)' != ''">$(CrossHostArch)</TargetArchitectureForSharedLibraries>

@@ -1614,6 +1614,12 @@ namespace ILCompiler.DependencyAnalysis
 
         private NodeCache<WasmFuncType, WasmTypeNode> _wasmTypeNodes;
 
+        public WasmTypeNode WasmTypeNode(Internal.JitInterface.CorInfoWasmType[] types)
+        {
+            WasmFuncType funcType = WasmFuncType.FromCorInfoSignature(types);
+            return _wasmTypeNodes.GetOrAdd(funcType);
+        }
+
         // TODO-Wasm: Do not use WasmFuncType directly as the key for better
         // memory efficiency on lookup
         public WasmTypeNode WasmTypeNode(MethodDesc desc)

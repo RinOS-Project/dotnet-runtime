@@ -34,6 +34,7 @@
 #if defined(FEATURE_PORTABLE_HELPERS)
 EXTERN_C void* RhpGcAlloc(MethodTable *pEEType, uint32_t uFlags, intptr_t numElements, void * pTransitionFrame);
 EXTERN_C void RhExceptionHandling_FailedAllocation(MethodTable *pEEType, bool fIsOverflow);
+EXTERN_C void FASTCALL RhpGcPoll2(PInvokeTransitionFrame* pFrame);
 
 static bool TryComputeArraySize(MethodTable* pArrayEEType, intptr_t numElements, size_t* pSize)
 {
@@ -416,9 +417,12 @@ FCIMPLEND
 
 FCIMPL0(void, RhpGcPoll)
 {
-    // PortableRuntime has no native probe frame or thread-hijack helper. The
-    // source-level GC polling owner must be added with a target-specific frame
-    // contract before this can do more than remain a no-op.
+    // WASM cannot walk its native stack. Its GC roots are published through the
+    // shadow stack, so a local transition frame is sufficient to enter the
+    // shared trap/wait path without claiming a native register snapshot.
+    PInvokeTransitionFrame frame = {};
+    frame.m_RIP = NULL;
+    RhpGcPoll2(&frame);
 }
 FCIMPLEND
 

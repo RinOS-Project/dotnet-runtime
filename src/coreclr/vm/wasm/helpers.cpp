@@ -1867,25 +1867,17 @@ InterpreterCalliCookie GetCookieForCalliSig(MetaSig metaSig, MethodDesc *pContex
                     thunkKey = "Miiiiip";
                     break;
                 default:
-                    PORTABILITY_ASSERT("GetCookieForCalliSig: unknown thunk for string constructor");
+                    // No pregenerated thunk supports this constructor shape;
+                    // report the unsupported capability to the caller.
                     return nullptr;
             }
         }
 
         InterpreterCalliCookie stringCtorThunk = LookupThunk(thunkKey);
-        if (stringCtorThunk == NULL)
-        {
-            PORTABILITY_ASSERT("GetCookieForCalliSig: unknown thunk signature");
-        }
         return stringCtorThunk;
     }
 
     InterpreterCalliCookie thunk = ComputeCalliSigThunk(metaSig);
-    if (thunk == NULL)
-    {
-        PORTABILITY_ASSERT("GetCookieForCalliSig: unknown thunk signature");
-    }
-
     return thunk;
 }
 
@@ -1995,7 +1987,9 @@ void* GetUnmanagedCallersOnlyThunk(MethodDesc* pMD)
     const ReverseThunkMapValue* value = LookupThunk(pMD);
     if (value == NULL)
     {
-        PORTABILITY_ASSERT("GetUnmanagedCallersOnlyThunk: unknown thunk for unmanaged callers only method");
+        // No reverse thunk provider is available for this signature.  Keep
+        // the query failure-closed instead of asserting and then returning a
+        // null entrypoint only in release builds.
         return NULL;
     }
 

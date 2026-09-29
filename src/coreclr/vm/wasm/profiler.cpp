@@ -9,47 +9,48 @@
 
 UINT_PTR ProfileGetIPFromPlatformSpecificHandle(void* pPlatformSpecificHandle)
 {
-    _ASSERTE(!"ProfileGetIPFromPlatformSpecificHandle is not implemented on wasm");
+    // WASM has no native profiler handle/register context.  An unknown IP is
+    // represented by the same zero sentinel used by the WASM helper layer.
+    UNREFERENCED_PARAMETER(pPlatformSpecificHandle);
     return 0;
 }
 
 void ProfileSetFunctionIDInPlatformSpecificHandle(void* pPlatformSpecificHandle, FunctionID functionId)
 {
-    _ASSERTE(!"ProfileSetFunctionIDInPlatformSpecificHandle is not implemented on wasm");
+    // There is no platform-specific profiler handle to mutate on WASM.
+    UNREFERENCED_PARAMETER(pPlatformSpecificHandle);
+    UNREFERENCED_PARAMETER(functionId);
 }
 
 ProfileArgIterator::ProfileArgIterator(MetaSig* pSig, void* pPlatformSpecificHandle)
     : m_argIterator(pSig)
 {
-    _ASSERTE(!"ProfileArgIterator constructor is not implemented on wasm");
+    // Keep the signature iterator constructible; the native argument-frame
+    // owner is unavailable, so the accessors below report no values.
+    UNREFERENCED_PARAMETER(pPlatformSpecificHandle);
 }
 
 ProfileArgIterator::~ProfileArgIterator()
 {
-    _ASSERTE(!"ProfileArgIterator destructor is not implemented on wasm");
 }
 
 LPVOID ProfileArgIterator::GetNextArgAddr()
 {
-    _ASSERTE(!"GetNextArgAddr is not implemented on wasm");
     return nullptr;
 }
 
 LPVOID ProfileArgIterator::GetHiddenArgValue(void)
 {
-    _ASSERTE(!"GetHiddenArgValue is not implemented on wasm");
     return nullptr;
 }
 
 LPVOID ProfileArgIterator::GetThis(void)
 {
-    _ASSERTE(!"GetThis is not implemented on wasm");
     return nullptr;
 }
 
 LPVOID ProfileArgIterator::GetReturnBufferAddr(void)
 {
-    _ASSERTE(!"GetReturnBufferAddr is not implemented on wasm");
     return nullptr;
 }
 

@@ -17,32 +17,29 @@ extern "C" SIZE_T STDCALL DelayLoad_HelperImpl(TransitionBlock* pTransitionBlock
     return DynamicHelperWorker(pTransitionBlock, (TADDR*)(moduleBase + pImportThunkEntry->RelocOffset), (DWORD)-1, *ppModule, frameFlags);
 }
 
-extern "C" __attribute__((naked)) SIZE_T STDCALL DelayLoad_Helper(TransitionBlock* pTransitionBlock, READYTORUN_IMPORT_THUNK_PORTABLE_ENTRYPOINT* pImportThunkEntry, uint8_t *moduleBase, int32_t rvaOfModuleFixup)
-{
-    asm ("local.get 0\n" /* Capture pTransitionBlock onto the stack for calling DelayLoad_HelperImpl function. This also happens to be the callersFramePointer */
-         "local.get 0\n" /* Capture callersFramePointer onto the stack for setting the __stack_pointer */
-         "global.get __stack_pointer\n" /* Get current value of stack global */
-         "local.set 0\n"  /* Overwrite local 0 with the previous __stack_pointer value so it can be restored after the call */
-         "global.set __stack_pointer\n" /* Set stack global to the initial value of callersFramePointer, which is the current stack pointer for the interpreter call */
-         "local.get 1\n" /* Load pImportThunkEntry argument onto the stack for calling DelayLoad_HelperImpl function*/
-         "local.get 2\n" /* Load moduleBase argument onto the stack for calling DelayLoad_HelperImpl function*/
-         "local.get 3\n" /* Load rvaOfModuleFixup argument onto the stack for calling DelayLoad_HelperImpl function*/
-         "i32.const 0\n" /* Load frameFlags argument onto the stack for calling DelayLoad_MethodCallImpl function. For this variant we want 0 as the flag */
-         "call %0\n" /* Call the actual implementation function */
-         "local.get 0\n" /* Reload the saved previous __stack_pointer value for restoration into the stack global */
-         "global.set __stack_pointer\n"
-         "return" :: "i" (DelayLoad_HelperImpl));
-}
+#define DEFINE_WASM_DELAY_LOAD_HELPER(name, frameFlags) \
+    extern "C" __attribute__((naked)) SIZE_T STDCALL name(TransitionBlock* pTransitionBlock, READYTORUN_IMPORT_THUNK_PORTABLE_ENTRYPOINT* pImportThunkEntry, uint8_t *moduleBase, int32_t rvaOfModuleFixup) \
+    { \
+        asm ("local.get 0\n" /* Capture pTransitionBlock onto the stack for calling DelayLoad_HelperImpl. This also happens to be the callersFramePointer. */ \
+             "local.get 0\n" /* Capture callersFramePointer for restoring __stack_pointer after the call. */ \
+             "global.get __stack_pointer\n" /* Save the current stack global in local 0. */ \
+             "local.set 0\n" \
+             "global.set __stack_pointer\n" /* Use the caller's frame pointer while the VM worker runs. */ \
+             "local.get 1\n" \
+             "local.get 2\n" \
+             "local.get 3\n" \
+             "i32.const " #frameFlags "\n" /* DynamicHelperFrame flags for this helper variant. */ \
+             "call %0\n" \
+             "local.get 0\n" \
+             "global.set __stack_pointer\n" \
+             "return" :: "i" (DelayLoad_HelperImpl)); \
+    }
 
-extern "C" void STDCALL DelayLoad_Helper_Obj()
-{
-    PORTABILITY_ASSERT("DelayLoad_Helper_Obj is not implemented on wasm");
-}
+DEFINE_WASM_DELAY_LOAD_HELPER(DelayLoad_Helper, 0)
+DEFINE_WASM_DELAY_LOAD_HELPER(DelayLoad_Helper_Obj, 1)
+DEFINE_WASM_DELAY_LOAD_HELPER(DelayLoad_Helper_ObjObj, 3)
 
-extern "C" void STDCALL DelayLoad_Helper_ObjObj()
-{
-    PORTABILITY_ASSERT("DelayLoad_Helper_ObjObj is not implemented on wasm");
-}
+#undef DEFINE_WASM_DELAY_LOAD_HELPER
 
 extern "C" void DynamicHelper_GenericDictionaryLookup_Class_SizeCheck_TestForNull();
 extern "C" void DynamicHelper_GenericDictionaryLookup_Class_TestForNull();

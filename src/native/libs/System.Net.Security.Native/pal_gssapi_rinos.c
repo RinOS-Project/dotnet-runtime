@@ -90,6 +90,22 @@ static uint32_t rinos_gss_unavailable(uint32_t* minorStatus)
     return RINOS_GSS_S_UNAVAILABLE;
 }
 
+static uint32_t rinos_gss_map_provider_status(uint32_t providerStatus)
+{
+    switch (providerStatus)
+    {
+        case RIN_AUTH_PROVIDER_OK:
+            return RINOS_GSS_S_COMPLETE;
+        case RIN_AUTH_PROVIDER_CONTINUE_NEEDED:
+            return PAL_GSS_CONTINUE_NEEDED;
+        case RIN_AUTH_PROVIDER_UNAVAILABLE:
+        case RIN_AUTH_PROVIDER_ABI_MISMATCH:
+        default:
+            /* Never leak provider-local status values into the GSS ABI. */
+            return RINOS_GSS_S_UNAVAILABLE;
+    }
+}
+
 static uint32_t rinos_gss_package_bit(uint32_t packageType)
 {
     switch (packageType)
@@ -142,6 +158,20 @@ static uint32_t rinos_gss_finish_provider_buffer(
     const RinAuthProviderV1* provider, uint32_t* minorStatus,
     uint32_t status, PAL_GssBuffer* outBuffer)
 {
+    uint32_t mappedStatus = rinos_gss_map_provider_status(status);
+
+    if (mappedStatus != RINOS_GSS_S_COMPLETE &&
+        mappedStatus != PAL_GSS_CONTINUE_NEEDED)
+    {
+        if (outBuffer != NULL && outBuffer->data != NULL)
+        {
+            provider->release_buffer(provider->context,
+                                     outBuffer->data, outBuffer->length);
+        }
+        rinos_gss_clear_buffer(outBuffer);
+        return rinos_gss_unavailable(minorStatus);
+    }
+
     if (outBuffer == NULL ||
         outBuffer->length > provider->max_token_size ||
         (outBuffer->length != 0u && outBuffer->data == NULL))
@@ -155,7 +185,12 @@ static uint32_t rinos_gss_finish_provider_buffer(
         return rinos_gss_unavailable(minorStatus);
     }
 
-    return status;
+    if (minorStatus != NULL && mappedStatus == RINOS_GSS_S_COMPLETE)
+    {
+        *minorStatus = 0;
+    }
+
+    return mappedStatus;
 }
 
 static uint32_t rinos_gss_release_status(uint32_t* minorStatus, int32_t hadHandle)
@@ -224,9 +259,9 @@ PALEXPORT uint32_t NetSecurityNative_ImportUserName(
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
-        return provider->import_user_name(
+        return rinos_gss_map_provider_status(provider->import_user_name(
             provider->context, minorStatus, inputName, inputNameLen,
-            (void**)outputName);
+            (void**)outputName));
     }
 
     (void)inputName;
@@ -244,9 +279,9 @@ PALEXPORT uint32_t NetSecurityNative_ImportPrincipalName(
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
-        return provider->import_principal_name(
+        return rinos_gss_map_provider_status(provider->import_principal_name(
             provider->context, minorStatus, inputName, inputNameLen,
-            (void**)outputName);
+            (void**)outputName));
     }
 
     (void)inputName;
@@ -263,8 +298,8 @@ PALEXPORT uint32_t NetSecurityNative_ReleaseName(uint32_t* minorStatus, GssName*
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
-        return provider->release_name(
-            provider->context, minorStatus, (void**)inputName);
+        return rinos_gss_map_provider_status(provider->release_name(
+            provider->context, minorStatus, (void**)inputName));
     }
 
     int32_t hadHandle;
@@ -283,8 +318,8 @@ PALEXPORT uint32_t NetSecurityNative_AcquireAcceptorCred(uint32_t* minorStatus, 
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
-        return provider->acquire_acceptor_cred(
-            provider->context, minorStatus, (void**)outputCredHandle);
+        return rinos_gss_map_provider_status(provider->acquire_acceptor_cred(
+            provider->context, minorStatus, (void**)outputCredHandle));
     }
 
     if (outputCredHandle != NULL)
@@ -301,9 +336,9 @@ PALEXPORT uint32_t NetSecurityNative_InitiateCredSpNego(
     if (provider != NULL &&
         (provider->package_mask & RIN_AUTH_PROVIDER_PACKAGE_NEGOTIATE) != 0u)
     {
-        return provider->initiate_cred_spnego(
+        return rinos_gss_map_provider_status(provider->initiate_cred_spnego(
             provider->context, minorStatus, desiredName,
-            (void**)outputCredHandle);
+            (void**)outputCredHandle));
     }
 
     (void)desiredName;
@@ -319,8 +354,8 @@ PALEXPORT uint32_t NetSecurityNative_ReleaseCred(uint32_t* minorStatus, GssCredI
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
-        return provider->release_cred(
-            provider->context, minorStatus, (void**)credHandle);
+        return rinos_gss_map_provider_status(provider->release_cred(
+            provider->context, minorStatus, (void**)credHandle));
     }
 
     int32_t hadHandle;
@@ -482,8 +517,8 @@ PALEXPORT uint32_t NetSecurityNative_DeleteSecContext(uint32_t* minorStatus, Gss
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
-        return provider->delete_sec_context(
-            provider->context, minorStatus, (void**)contextHandle);
+        return rinos_gss_map_provider_status(provider->delete_sec_context(
+            provider->context, minorStatus, (void**)contextHandle));
     }
 
     int32_t hadHandle;
@@ -593,9 +628,9 @@ PALEXPORT uint32_t NetSecurityNative_VerifyMic(
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
-        return provider->verify_mic(
+        return rinos_gss_map_provider_status(provider->verify_mic(
             provider->context, minorStatus, contextHandle, inputBytes,
-            inputLength, tokenBytes, tokenLength);
+            inputLength, tokenBytes, tokenLength));
     }
 
     (void)contextHandle;
@@ -617,9 +652,9 @@ PALEXPORT uint32_t NetSecurityNative_InitiateCredWithPassword(
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL && rinos_gss_supports_package(provider, (uint32_t)packageType))
     {
-        return provider->initiate_cred_with_password(
+        return rinos_gss_map_provider_status(provider->initiate_cred_with_password(
             provider->context, minorStatus, packageType, desiredName,
-            password, passwdLen, (void**)outputCredHandle);
+            password, passwdLen, (void**)outputCredHandle));
     }
 
     (void)packageType;

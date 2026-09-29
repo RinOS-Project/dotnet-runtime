@@ -788,6 +788,9 @@
     <Compile Include="..\..\Common\JitInterface\CorInfoTypes.VarInfo.cs">
       <Link>JitInterface\CorInfoTypes.VarInfo.cs</Link>
     </Compile>
+    <Compile Include="..\..\Common\JitInterface\WasmLowering.cs">
+      <Link>JitInterface\WasmLowering.cs</Link>
+    </Compile>
     <Compile Include="..\..\Common\TypeSystem\TypesDebugInfoWriter\TypesDebugInfoWriter.cs">
       <Link>TypeSystem\TypesDebugInfoWriter\TypesDebugInfoWriter.cs</Link>
     </Compile>

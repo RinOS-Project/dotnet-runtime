@@ -1624,9 +1624,8 @@ namespace ILCompiler.DependencyAnalysis
         // memory efficiency on lookup
         public WasmTypeNode WasmTypeNode(MethodDesc desc)
         {
-            // TODO-Wasm: Construct proper function type based on the passed in MethodDesc
-            // once we have defined lowering rules for signatures in NativeAOT.
-            throw new NotImplementedException("NAOT wasm type signature lowering not yet implemented");
+            WasmFuncType funcType = Internal.JitInterface.WasmLowering.GetSignature(desc).FuncType;
+            return _wasmTypeNodes.GetOrAdd(funcType);
         }
 
         /// <summary>

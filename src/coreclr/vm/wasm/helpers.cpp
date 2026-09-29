@@ -366,9 +366,22 @@ const size_t g_wasmPortableEntryPointThunksCount = sizeof(g_wasmPortableEntryPoi
 // END Logic that will eventually mostly be pregenerated for R2R to interpreter code END
 // -------------------------------------------------
 
+namespace
+{
+[[noreturn]] static void WasmUnsupportedStub(const char* message)
+{
+    // PORTABILITY_ASSERT is a debug-only runtime assertion on WASM.  These
+    // entrypoints are used as executable stubs, so returning in a release
+    // build would continue with an invalid ABI and falsely report success.
+    (void)message;
+    __builtin_trap();
+}
+}
+
 extern "C" void STDCALL CallCountingStubCode()
 {
     PORTABILITY_ASSERT("CallCountingStubCode is not implemented on wasm");
+    WasmUnsupportedStub("CallCountingStubCode is not implemented on wasm");
 }
 
 extern "C" void CallCountingStubCode_End()
@@ -381,16 +394,19 @@ extern "C" void CallCountingStubCode_End()
 extern "C" void STDCALL OnCallCountThresholdReachedStub()
 {
     PORTABILITY_ASSERT("OnCallCountThresholdReachedStub is not implemented on wasm");
+    WasmUnsupportedStub("OnCallCountThresholdReachedStub is not implemented on wasm");
 }
 
 extern "C" void STDCALL ThePreStub()
 {
     PORTABILITY_ASSERT("ThePreStub is not implemented on wasm");
+    WasmUnsupportedStub("ThePreStub is not implemented on wasm");
 }
 
 extern "C" void InterpreterStub()
 {
     PORTABILITY_ASSERT("InterpreterStub is not implemented on wasm");
+    WasmUnsupportedStub("InterpreterStub is not implemented on wasm");
 }
 
 extern "C" UINT_PTR STDCALL GetCurrentIP(void)
@@ -435,11 +451,13 @@ extern "C" __attribute__((naked)) PCODE STDCALL DelayLoad_MethodCall(TransitionB
 extern "C" void STDCALL PInvokeImportThunk()
 {
     PORTABILITY_ASSERT("PInvokeImportThunk is not implemented on wasm");
+    WasmUnsupportedStub("PInvokeImportThunk is not implemented on wasm");
 }
 
 extern "C" void STDCALL StubPrecodeCode()
 {
     PORTABILITY_ASSERT("StubPrecodeCode is not implemented on wasm");
+    WasmUnsupportedStub("StubPrecodeCode is not implemented on wasm");
 }
 
 extern "C" void STDCALL StubPrecodeCode_End()
@@ -451,6 +469,7 @@ extern "C" void STDCALL StubPrecodeCode_End()
 extern "C" void STDCALL FixupPrecodeCode()
 {
     PORTABILITY_ASSERT("FixupPrecodeCode is not implemented on wasm");
+    WasmUnsupportedStub("FixupPrecodeCode is not implemented on wasm");
 }
 
 extern "C" void STDCALL FixupPrecodeCode_End()
@@ -462,6 +481,7 @@ extern "C" void STDCALL FixupPrecodeCode_End()
 extern "C" void RhpInitialInterfaceDispatch()
 {
     PORTABILITY_ASSERT("RhpInitialInterfaceDispatch is not implemented on wasm");
+    WasmUnsupportedStub("RhpInitialInterfaceDispatch is not implemented on wasm");
 }
 
 unsigned FuncEvalFrame::GetFrameAttribs_Impl(void)
@@ -714,16 +734,19 @@ __attribute__((naked)) DWORD_PTR CallFuncletWithoutThrowable(UINT_PTR pFuncletTo
 extern "C" void TheUMEntryPrestub(void)
 {
     PORTABILITY_ASSERT("TheUMEntryPrestub is not implemented on wasm");
+    WasmUnsupportedStub("TheUMEntryPrestub is not implemented on wasm");
 }
 
 extern "C" void STDCALL VarargPInvokeStub(void)
 {
     PORTABILITY_ASSERT("VarargPInvokeStub is not implemented on wasm");
+    WasmUnsupportedStub("VarargPInvokeStub is not implemented on wasm");
 }
 
 extern "C" void STDCALL VarargPInvokeStub_RetBuffArg(void)
 {
     PORTABILITY_ASSERT("VarargPInvokeStub_RetBuffArg is not implemented on wasm");
+    WasmUnsupportedStub("VarargPInvokeStub_RetBuffArg is not implemented on wasm");
 }
 
 extern "C" PCODE CID_VirtualOpenDelegateDispatch(TransitionBlock * pTransitionBlock)
@@ -758,6 +781,7 @@ EXTERN_C VOID STDCALL ResetCurrentContext()
 extern "C" void STDCALL GenericPInvokeCalliHelper(void)
 {
     PORTABILITY_ASSERT("GenericPInvokeCalliHelper is not implemented on wasm");
+    WasmUnsupportedStub("GenericPInvokeCalliHelper is not implemented on wasm");
 }
 
 // Does the pinvoke frame transition; the naked wrappers below have already set the wasm
@@ -909,41 +933,49 @@ extern "C" HRESULT __cdecl CorDBGetInterface(DebugInterface** rcInterface)
 extern "C" void RhpInterfaceDispatch1()
 {
     PORTABILITY_ASSERT("RhpInterfaceDispatch1 is not implemented on wasm");
+    WasmUnsupportedStub("RhpInterfaceDispatch1 is not implemented on wasm");
 }
 
 extern "C" void RhpInterfaceDispatch2()
 {
     PORTABILITY_ASSERT("RhpInterfaceDispatch2 is not implemented on wasm");
+    WasmUnsupportedStub("RhpInterfaceDispatch2 is not implemented on wasm");
 }
 
 extern "C" void RhpInterfaceDispatch4()
 {
     PORTABILITY_ASSERT("RhpInterfaceDispatch4 is not implemented on wasm");
+    WasmUnsupportedStub("RhpInterfaceDispatch4 is not implemented on wasm");
 }
 
 extern "C" void RhpInterfaceDispatch8()
 {
     PORTABILITY_ASSERT("RhpInterfaceDispatch8 is not implemented on wasm");
+    WasmUnsupportedStub("RhpInterfaceDispatch8 is not implemented on wasm");
 }
 
 extern "C" void RhpInterfaceDispatch16()
 {
     PORTABILITY_ASSERT("RhpInterfaceDispatch16 is not implemented on wasm");
+    WasmUnsupportedStub("RhpInterfaceDispatch16 is not implemented on wasm");
 }
 
 extern "C" void RhpInterfaceDispatch32()
 {
     PORTABILITY_ASSERT("RhpInterfaceDispatch32 is not implemented on wasm");
+    WasmUnsupportedStub("RhpInterfaceDispatch32 is not implemented on wasm");
 }
 
 extern "C" void RhpInterfaceDispatch64()
 {
     PORTABILITY_ASSERT("RhpInterfaceDispatch64 is not implemented on wasm");
+    WasmUnsupportedStub("RhpInterfaceDispatch64 is not implemented on wasm");
 }
 
 extern "C" void RhpVTableOffsetDispatch()
 {
     PORTABILITY_ASSERT("RhpVTableOffsetDispatch is not implemented on wasm");
+    WasmUnsupportedStub("RhpVTableOffsetDispatch is not implemented on wasm");
 }
 
 typedef uint8_t CODE_LOCATION;
@@ -953,46 +985,55 @@ CODE_LOCATION RhpCheckedAssignRefAVLocation;
 extern "C" void ThisPtrRetBufPrecodeWorker()
 {
     PORTABILITY_ASSERT("ThisPtrRetBufPrecodeWorker is not implemented on wasm");
+    WasmUnsupportedStub("ThisPtrRetBufPrecodeWorker is not implemented on wasm");
 }
 
 extern "C" void RhpInterfaceDispatchAVLocation1()
 {
     PORTABILITY_ASSERT("RhpInterfaceDispatchAVLocation1 is not implemented on wasm");
+    WasmUnsupportedStub("RhpInterfaceDispatchAVLocation1 is not implemented on wasm");
 }
 
 extern "C" void RhpInterfaceDispatchAVLocation2()
 {
     PORTABILITY_ASSERT("RhpInterfaceDispatchAVLocation2 is not implemented on wasm");
+    WasmUnsupportedStub("RhpInterfaceDispatchAVLocation2 is not implemented on wasm");
 }
 
 extern "C" void RhpInterfaceDispatchAVLocation4()
 {
     PORTABILITY_ASSERT("RhpInterfaceDispatchAVLocation4 is not implemented on wasm");
+    WasmUnsupportedStub("RhpInterfaceDispatchAVLocation4 is not implemented on wasm");
 }
 
 extern "C" void RhpInterfaceDispatchAVLocation8()
 {
     PORTABILITY_ASSERT("RhpInterfaceDispatchAVLocation8 is not implemented on wasm");
+    WasmUnsupportedStub("RhpInterfaceDispatchAVLocation8 is not implemented on wasm");
 }
 
 extern "C" void RhpInterfaceDispatchAVLocation16()
 {
     PORTABILITY_ASSERT("RhpInterfaceDispatchAVLocation16 is not implemented on wasm");
+    WasmUnsupportedStub("RhpInterfaceDispatchAVLocation16 is not implemented on wasm");
 }
 
 extern "C" void RhpInterfaceDispatchAVLocation32()
 {
     PORTABILITY_ASSERT("RhpInterfaceDispatchAVLocation32 is not implemented on wasm");
+    WasmUnsupportedStub("RhpInterfaceDispatchAVLocation32 is not implemented on wasm");
 }
 
 extern "C" void RhpInterfaceDispatchAVLocation64()
 {
     PORTABILITY_ASSERT("RhpInterfaceDispatchAVLocation64 is not implemented on wasm");
+    WasmUnsupportedStub("RhpInterfaceDispatchAVLocation64 is not implemented on wasm");
 }
 
 extern "C" void RhpVTableOffsetDispatchAVLocation()
 {
     PORTABILITY_ASSERT("RhpVTableOffsetDispatchAVLocation is not implemented on wasm");
+    WasmUnsupportedStub("RhpVTableOffsetDispatchAVLocation is not implemented on wasm");
 }
 
 extern "C" void STDCALL ThePreStubPatchLabel(void)
@@ -1017,16 +1058,19 @@ LONG CLRNoCatchHandler(EXCEPTION_POINTERS* pExceptionInfo, PVOID pv)
 EXTERN_C void STDMETHODCALLTYPE ProfileEnterNaked(FunctionIDOrClientID functionIDOrClientID)
 {
     PORTABILITY_ASSERT("ProfileEnterNaked is not implemented on wasm");
+    WasmUnsupportedStub("ProfileEnterNaked is not implemented on wasm");
 }
 
 EXTERN_C void STDMETHODCALLTYPE ProfileLeaveNaked(UINT_PTR clientData)
 {
     PORTABILITY_ASSERT("ProfileLeaveNaked is not implemented on wasm");
+    WasmUnsupportedStub("ProfileLeaveNaked is not implemented on wasm");
 }
 
 EXTERN_C void STDMETHODCALLTYPE ProfileTailcallNaked(UINT_PTR clientData)
 {
     PORTABILITY_ASSERT("ProfileTailcallNaked is not implemented on wasm");
+    WasmUnsupportedStub("ProfileTailcallNaked is not implemented on wasm");
 }
 
 void InitJITWriteBarrierHelpers()

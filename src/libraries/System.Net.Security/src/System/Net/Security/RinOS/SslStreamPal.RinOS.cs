@@ -241,10 +241,18 @@ namespace System.Net.Security
             RinCertificateSignerState state =
                 new RinCertificateSignerState(certificateContext.TargetCertificate);
             IntPtr stateHandle = handle.AttachCertificateSignerState(state);
-            int result = Interop.RinTls.SetClientCertificate(
-                handle, certificateList,
-                Marshal.GetFunctionPointerForDelegate(s_certificateSignCallback),
-                stateHandle);
+            int result;
+            try
+            {
+                result = Interop.RinTls.SetClientCertificate(
+                    handle, certificateList,
+                    Marshal.GetFunctionPointerForDelegate(s_certificateSignCallback),
+                    stateHandle);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(certificateList);
+            }
             if (result != 0)
             {
                 throw new RinTlsException(

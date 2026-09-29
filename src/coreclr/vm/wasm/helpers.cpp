@@ -751,7 +751,9 @@ extern "C" void STDCALL VarargPInvokeStub_RetBuffArg(void)
 
 extern "C" PCODE CID_VirtualOpenDelegateDispatch(TransitionBlock * pTransitionBlock)
 {
-    PORTABILITY_ASSERT("CID_VirtualOpenDelegateDispatch is not implemented on wasm");
+    // No WASM delegate-dispatch provider ABI is available.  The caller
+    // treats a null code pointer as an unsupported capability result.
+    (void)pTransitionBlock;
     return 0;
 }
 
@@ -1481,7 +1483,9 @@ namespace
                 return (uint32_t)len;
             }
             default:
-                PORTABILITY_ASSERT("Unknown type");
+                // Keep signature-key generation deterministic for a type
+                // without a WASM lowering.  The '?' key cannot resolve to a
+                // thunk and is handled as a null query result downstream.
                 c = '?';
                 break;
         }

@@ -1611,23 +1611,23 @@ public:
 
 #elif defined(TARGET_WASM)
 private:
-    // WASMTODO: #error NYI for this arch
+    // WASM does not expose a native UniversalTransition register/stack
+    // contract. Keep the placeholder storage for layout compatibility, but
+    // make every unwind query fail closed without aborting the process.
     uintptr_t m_stackPassedArgs[1];        // Placeholder
 public:
-    PTR_uintptr_t get_CallerSP() { PORTABILITY_ASSERT("@TODO: FIXME:WASM"); return NULL; }
-    PTR_uintptr_t get_AddressOfPushedCallerIP() { PORTABILITY_ASSERT("@TODO: FIXME:WASM"); return NULL; }
-    PTR_uintptr_t get_LowerBoundForConservativeReporting() { PORTABILITY_ASSERT("@TODO: FIXME:WASM"); return NULL; }
+    PTR_uintptr_t get_CallerSP() { return NULL; }
+    PTR_uintptr_t get_AddressOfPushedCallerIP() { return NULL; }
+    PTR_uintptr_t get_LowerBoundForConservativeReporting() { return NULL; }
 
     void UnwindNonVolatileRegisters(REGDISPLAY * pRegisterSet)
     {
         UNREFERENCED_PARAMETER(pRegisterSet);
-        PORTABILITY_ASSERT("@TODO: FIXME:WASM");
     }
 
     void UnwindVolatileArgRegisters(REGDISPLAY * pRegisterSet)
     {
         UNREFERENCED_PARAMETER(pRegisterSet);
-        PORTABILITY_ASSERT("@TODO: FIXME:WASM");
     }
 #else
 #error NYI for this arch

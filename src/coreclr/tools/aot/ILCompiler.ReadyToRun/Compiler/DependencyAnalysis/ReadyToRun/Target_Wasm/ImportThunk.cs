@@ -16,8 +16,13 @@ namespace ILCompiler.DependencyAnalysis.ReadyToRun
     {
         protected override void EmitCode(NodeFactory factory, ref WasmEmitter instructionEncoder, bool relocsOnly)
         {
-            // WASM-TODO: implement.
-            // throw new NotImplementedException();
+            // WASM import thunks need a signature-aware body.  All current WASM
+            // delay-load paths use WasmImportThunk, which owns that signature
+            // and emits the transition-block/indirect-call sequence.  Do not
+            // silently emit an empty function if a generic ImportThunk reaches
+            // this target-specific implementation before that ABI is defined.
+            throw new NotSupportedException(
+                "Generic ReadyToRun ImportThunk emission is not supported on WASM; use WasmImportThunk");
         }
     }
 }

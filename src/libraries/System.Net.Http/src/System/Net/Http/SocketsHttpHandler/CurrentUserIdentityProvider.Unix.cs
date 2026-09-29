@@ -10,7 +10,16 @@ namespace System.Net.Http
             // RinOS resolves Environment.UserName through the product passwd/account ABI.
             // This value partitions default-credential connection pools; it does not mint
             // credentials and must not be treated as Kerberos/NTLM authentication material.
-            return Environment.UserName;
+            string identity = Environment.UserName;
+            if (string.IsNullOrWhiteSpace(identity))
+            {
+                // Never collapse an unavailable product identity into the shared empty
+                // identity used by non-default-credential pools.
+                throw new PlatformNotSupportedException(
+                    "RinOS product account identity is unavailable.");
+            }
+
+            return identity;
         }
     }
 }

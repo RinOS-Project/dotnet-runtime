@@ -89,16 +89,8 @@ namespace System.Net.Security
             ReadOnlySpan<byte> inputBuffer,
             out int consumed,
             SslAuthenticationOptions sslAuthenticationOptions)
-        {
-            if (sslAuthenticationOptions.IsServer)
-            {
-                consumed = 0;
-                return Unsupported("RinTLS currently exposes a client-only TLS API.");
-            }
-
-            return HandshakeInternal(ref context, inputBuffer, out consumed,
-                                     sslAuthenticationOptions);
-        }
+            => HandshakeInternal(ref context, inputBuffer, out consumed,
+                                 sslAuthenticationOptions);
 
         public static ProtocolToken InitializeSecurityContext(
             ref SafeFreeCredentials? credential,
@@ -246,12 +238,12 @@ namespace System.Net.Security
             }
 
             byte[] certificateList = BuildClientCertificateList(certificateContext);
-            RinClientCertificateState state =
-                new RinClientCertificateState(certificateContext.TargetCertificate);
-            IntPtr stateHandle = handle.AttachClientCertificateState(state);
+            RinCertificateSignerState state =
+                new RinCertificateSignerState(certificateContext.TargetCertificate);
+            IntPtr stateHandle = handle.AttachCertificateSignerState(state);
             int result = Interop.RinTls.SetClientCertificate(
                 handle, certificateList,
-                Marshal.GetFunctionPointerForDelegate(s_clientCertificateSignCallback),
+                Marshal.GetFunctionPointerForDelegate(s_certificateSignCallback),
                 stateHandle);
             if (result != 0)
             {
@@ -264,6 +256,86 @@ namespace System.Net.Security
         }
 
         private const int MaxClientCertificateChain = 16 * 1024;
+        private const int MaxServerCertificateList = 16 * 1024 - 5;
+
+        private static void ConfigureServerCertificate(
+            RinSslHandle handle, SslAuthenticationOptions sslAuthenticationOptions)
+        {
+            SslStreamCertificateContext? certificateContext =
+                sslAuthenticationOptions.CertificateContext;
+            if (certificateContext is null)
+            {
+                throw new AuthenticationException(
+                    "RinTLS requires a server certificate context.");
+            }
+
+            byte[] certificateList = BuildServerCertificateList(certificateContext);
+            RinCertificateSignerState state =
+                new RinCertificateSignerState(certificateContext.TargetCertificate);
+            IntPtr stateHandle = handle.AttachCertificateSignerState(state);
+            int result;
+            try
+            {
+                result = Interop.RinTls.SetServerCertificate(
+                    handle, certificateList,
+                    Marshal.GetFunctionPointerForDelegate(s_certificateSignCallback),
+                    stateHandle);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(certificateList);
+            }
+            if (result != 0)
+            {
+                throw new RinTlsException(
+                    result, "RinTLS rejected the managed server certificate.");
+            }
+        }
+
+        private static byte[] BuildServerCertificateList(
+            SslStreamCertificateContext certificateContext)
+        {
+            byte[][] certificates = new byte[
+                1 + certificateContext.IntermediateCertificates.Count][];
+            certificates[0] = certificateContext.TargetCertificate.RawData;
+            for (int i = 0; i < certificateContext.IntermediateCertificates.Count; i++)
+            {
+                certificates[i + 1] =
+                    certificateContext.IntermediateCertificates[i].RawData;
+            }
+
+            int listLength = 0;
+            foreach (byte[] certificate in certificates)
+            {
+                if (certificate.Length == 0 || certificate.Length > 0xFFFFFF)
+                {
+                    throw new AuthenticationException(
+                        "RinTLS received an invalid server certificate.");
+                }
+
+                listLength = checked(listLength + 3 + certificate.Length + 2);
+                if (listLength > MaxServerCertificateList)
+                {
+                    throw new AuthenticationException(
+                        "The RinTLS server certificate chain exceeds 16 KiB.");
+                }
+            }
+
+            byte[] result = new byte[listLength + 3];
+            WriteUInt24(result, 0, listLength);
+            int offset = 3;
+            foreach (byte[] certificate in certificates)
+            {
+                WriteUInt24(result, offset, certificate.Length);
+                offset += 3;
+                certificate.AsSpan().CopyTo(result.AsSpan(offset));
+                offset += certificate.Length;
+                result[offset++] = 0;
+                result[offset++] = 0;
+            }
+
+            return result;
+        }
 
         private static byte[] BuildClientCertificateList(
             SslStreamCertificateContext certificateContext)
@@ -319,15 +391,15 @@ namespace System.Net.Security
         }
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        private unsafe delegate int ClientCertificateSignCallback(
+        private unsafe delegate int CertificateSignCallback(
             IntPtr opaque, ushort signatureScheme, byte* message,
             nuint messageLength, byte* signature, nuint signatureCapacity,
             nuint* signatureLength);
 
-        private static readonly unsafe ClientCertificateSignCallback
-            s_clientCertificateSignCallback = SignClientCertificate;
+        private static readonly unsafe CertificateSignCallback
+            s_certificateSignCallback = SignCertificate;
 
-        private static unsafe int SignClientCertificate(
+        private static unsafe int SignCertificate(
             IntPtr opaque, ushort signatureScheme, byte* message,
             nuint messageLength, byte* signature, nuint signatureCapacity,
             nuint* signatureLength)
@@ -348,7 +420,7 @@ namespace System.Net.Security
                 }
 
                 object? target = GCHandle.FromIntPtr(opaque).Target;
-                if (target is not RinClientCertificateState state)
+                if (target is not RinCertificateSignerState state)
                 {
                     return -1;
                 }
@@ -371,11 +443,11 @@ namespace System.Net.Security
             }
         }
 
-        private sealed class RinClientCertificateState
+        private sealed class RinCertificateSignerState
         {
             private readonly X509Certificate2 _certificate;
 
-            internal RinClientCertificateState(X509Certificate2 certificate)
+            internal RinCertificateSignerState(X509Certificate2 certificate)
             {
                 _certificate = certificate;
             }
@@ -384,6 +456,9 @@ namespace System.Net.Security
             {
                 return signatureScheme switch
                 {
+                    0x0401 => SignRsaPkcs1(message, HashAlgorithmName.SHA256),
+                    0x0501 => SignRsaPkcs1(message, HashAlgorithmName.SHA384),
+                    0x0601 => SignRsaPkcs1(message, HashAlgorithmName.SHA512),
                     0x0403 => SignEcdsa(message, HashAlgorithmName.SHA256, 256),
                     0x0503 => SignEcdsa(message, HashAlgorithmName.SHA384, 384),
                     0x0603 => SignEcdsa(message, HashAlgorithmName.SHA512, 521),
@@ -431,6 +506,24 @@ namespace System.Net.Security
                         : SHA512.HashData(message);
                 return rsa.SignHash(hash, hashAlgorithm, RSASignaturePadding.Pss);
             }
+
+            private byte[] SignRsaPkcs1(
+                ReadOnlySpan<byte> message, HashAlgorithmName hashAlgorithm)
+            {
+                using RSA? rsa = _certificate.GetRSAPrivateKey();
+                if (rsa is null)
+                {
+                    throw new CryptographicException(
+                        "The server certificate does not contain an RSA private key.");
+                }
+
+                byte[] hash = hashAlgorithm == HashAlgorithmName.SHA256
+                    ? SHA256.HashData(message)
+                    : hashAlgorithm == HashAlgorithmName.SHA384
+                        ? SHA384.HashData(message)
+                        : SHA512.HashData(message);
+                return rsa.SignHash(hash, hashAlgorithm, RSASignaturePadding.Pkcs1);
+            }
         }
 
         private static ProtocolToken HandshakeInternal(
@@ -445,11 +538,6 @@ namespace System.Net.Security
 
             try
             {
-                if (sslAuthenticationOptions.IsServer)
-                {
-                    return Unsupported("RinTLS currently exposes a client-only TLS API.");
-                }
-
                 bool created = false;
                 if (context is null || context.IsInvalid)
                 {
@@ -514,12 +602,13 @@ namespace System.Net.Security
         {
             X509ChainPolicy? chainPolicy =
                 sslAuthenticationOptions.CertificateChainPolicy;
-            if (string.IsNullOrEmpty(sslAuthenticationOptions.TargetHost))
+            bool isServer = sslAuthenticationOptions.IsServer;
+            if (!isServer && string.IsNullOrEmpty(sslAuthenticationOptions.TargetHost))
             {
                 throw new AuthenticationException(
                     "RinTLS requires a target host for certificate verification.");
             }
-            if (!sslAuthenticationOptions.CheckCertName)
+            if (!isServer && !sslAuthenticationOptions.CheckCertName)
             {
                 throw new PlatformNotSupportedException(
                     "RinTLS does not support disabling hostname verification.");
@@ -553,10 +642,14 @@ namespace System.Net.Security
                 }
             }
 
-            uint options = GetRinTlsOptions(sslAuthenticationOptions.EnabledSslProtocols);
+            uint options = GetRinTlsOptions(
+                sslAuthenticationOptions.EnabledSslProtocols, isServer);
             ulong trustedTime = GetTrustedUnixTime(chainPolicy);
             IntPtr raw = Interop.RinTls.Create(
-                TargetHostNameHelper.NormalizeHostName(sslAuthenticationOptions.TargetHost),
+                isServer,
+                isServer
+                    ? string.Empty
+                    : TargetHostNameHelper.NormalizeHostName(sslAuthenticationOptions.TargetHost),
                 options, trustedTime,
                 out int error);
             if (raw == IntPtr.Zero)
@@ -579,28 +672,37 @@ namespace System.Net.Security
                     }
                 }
 
-                bool useCustomTrust = chainPolicy?.TrustMode ==
-                    X509ChainTrustMode.CustomRootTrust;
-                byte[] trust = useCustomTrust
-                    ? BuildCustomTrustBundle(chainPolicy!.CustomTrustStore)
-                    : LoadProductTrustBundle();
-                try
+                if (!isServer)
                 {
-                    if (trust.Length > MaxTrustStoreBytes)
+                    bool useCustomTrust = chainPolicy?.TrustMode ==
+                        X509ChainTrustMode.CustomRootTrust;
+                    byte[] trust = useCustomTrust
+                        ? BuildCustomTrustBundle(chainPolicy!.CustomTrustStore)
+                        : LoadProductTrustBundle();
+                    try
                     {
-                        throw new AuthenticationException("RinTLS trust bundle is too large.");
-                    }
+                        if (trust.Length > MaxTrustStoreBytes)
+                        {
+                            throw new AuthenticationException("RinTLS trust bundle is too large.");
+                        }
 
-                    int result = Interop.RinTls.LoadTrustStore(handle, trust);
-                    if (result != 0)
+                        int result = Interop.RinTls.LoadTrustStore(handle, trust);
+                        if (result != 0)
+                        {
+                            throw new RinTlsException(result);
+                        }
+                    }
+                    finally
                     {
-                        throw new RinTlsException(result);
+                        CryptographicOperations.ZeroMemory(trust);
                     }
                 }
-                finally
+
+                if (isServer)
                 {
-                    CryptographicOperations.ZeroMemory(trust);
+                    ConfigureServerCertificate(handle, sslAuthenticationOptions);
                 }
+
                 return handle;
             }
             catch
@@ -799,11 +901,11 @@ namespace System.Net.Security
             destination[offset + 3] = (byte)(value >> 24);
         }
 
-        private static uint GetRinTlsOptions(SslProtocols protocols)
+        private static uint GetRinTlsOptions(SslProtocols protocols, bool isServer)
         {
             if (protocols == SslProtocols.None)
             {
-                return 0;
+                return isServer ? 0x0008u : 0u;
             }
 
             const SslProtocols supported = SslProtocols.Tls12 | SslProtocols.Tls13;
@@ -815,7 +917,8 @@ namespace System.Net.Security
 
             bool tls12 = (protocols & SslProtocols.Tls12) != 0;
             bool tls13 = (protocols & SslProtocols.Tls13) != 0;
-            return tls12 == tls13 ? 0 : tls12 ? 0x0002u : 0x0004u;
+            uint options = tls12 == tls13 ? 0u : tls12 ? 0x0002u : 0x0004u;
+            return isServer ? options | 0x0008u : options;
         }
 
         private static void DrainOutput(RinSslHandle handle, ref ProtocolToken token)

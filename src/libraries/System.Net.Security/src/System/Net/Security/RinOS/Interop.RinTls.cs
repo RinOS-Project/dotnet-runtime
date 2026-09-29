@@ -45,6 +45,12 @@ namespace System.Net.Security
                 IntPtr signer, IntPtr signerOpaque);
 
             [LibraryImport(Libraries.CryptoNative,
+                EntryPoint = "CryptoNative_RinTlsSetServerCertificate")]
+            private static partial unsafe int SetServerCertificateNative(
+                IntPtr handle, byte* certificateList, int certificateListLength,
+                IntPtr signer, IntPtr signerOpaque);
+
+            [LibraryImport(Libraries.CryptoNative,
                 EntryPoint = "CryptoNative_RinTlsClientCertificateRequested")]
             private static partial int ClientCertificateRequestedNative(
                 IntPtr handle);
@@ -173,9 +179,10 @@ namespace System.Net.Security
                 byte* certificateDer, int certificateLength,
                 byte* issuerDer, int issuerLength);
 
-            internal static IntPtr Create(string hostname, uint options,
+            internal static IntPtr Create(bool isServer, string hostname, uint options,
                                           ulong trustedTime, out int error)
-                => CreateNative(0, hostname, options, trustedTime, out error);
+                => CreateNative(isServer ? 1 : 0, hostname, options, trustedTime,
+                                out error);
 
             internal static void Destroy(RinSslHandle handle)
                 => DestroyNative(handle.DangerousGetHandle());
@@ -310,6 +317,19 @@ namespace System.Net.Security
                     return CopyPeerCertificateNative(handle.DangerousGetHandle(),
                                                      destinationPtr,
                                                      destination.Length);
+                }
+            }
+
+            internal static unsafe int SetServerCertificate(
+                RinSslHandle handle, ReadOnlySpan<byte> certificateList,
+                IntPtr signer, IntPtr signerOpaque)
+            {
+                fixed (byte* listPtr = certificateList)
+                {
+                    return SetServerCertificateNative(
+                        handle.DangerousGetHandle(),
+                        certificateList.IsEmpty ? null : listPtr,
+                        certificateList.Length, signer, signerOpaque);
                 }
             }
 

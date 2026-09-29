@@ -8,7 +8,7 @@ namespace System.Net.Security
 {
     internal sealed class RinSslHandle : SafeDeleteSslContext
     {
-        private GCHandle _clientCertificateState;
+        private GCHandle _certificateSignerState;
         private bool _clientCertificateConfigured;
         private readonly ulong _trustedUnixTime;
 
@@ -21,16 +21,16 @@ namespace System.Net.Security
         internal bool ClientCertificateConfigured => _clientCertificateConfigured;
         internal ulong TrustedUnixTime => _trustedUnixTime;
 
-        internal IntPtr AttachClientCertificateState(object state)
+        internal IntPtr AttachCertificateSignerState(object state)
         {
-            if (_clientCertificateState.IsAllocated)
+            if (_certificateSignerState.IsAllocated)
             {
                 throw new InvalidOperationException(
-                    "RinTLS client certificate state is already attached.");
+                    "RinTLS certificate signer state is already attached.");
             }
 
-            _clientCertificateState = GCHandle.Alloc(state);
-            return GCHandle.ToIntPtr(_clientCertificateState);
+            _certificateSignerState = GCHandle.Alloc(state);
+            return GCHandle.ToIntPtr(_certificateSignerState);
         }
 
         internal void MarkClientCertificateConfigured()
@@ -38,9 +38,9 @@ namespace System.Net.Security
 
         private void ReleaseClientCertificateState()
         {
-            if (_clientCertificateState.IsAllocated)
+            if (_certificateSignerState.IsAllocated)
             {
-                _clientCertificateState.Free();
+                _certificateSignerState.Free();
             }
         }
 

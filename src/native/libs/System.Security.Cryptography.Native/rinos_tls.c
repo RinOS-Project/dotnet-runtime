@@ -234,11 +234,11 @@ void* CryptoNative_RinTlsCreate(int32_t is_server, const char* hostname,
     int result;
 
     if (error) *error = RINTLS_OK;
-    if (is_server != 0) {
+    if (is_server != 0 && is_server != 1) {
         if (error) *error = RINTLS_ERR_UNSUPPORTED;
         return RIN_NULL;
     }
-    if (!hostname || hostname[0] == '\0') {
+    if (is_server == 0 && (!hostname || hostname[0] == '\0')) {
         if (error) *error = RINTLS_ERR_HOSTNAME;
         return RIN_NULL;
     }
@@ -257,7 +257,8 @@ void* CryptoNative_RinTlsCreate(int32_t is_server, const char* hostname,
     }
 
     result = rintls_set_io(adapter->context, rinos_send, rinos_recv, adapter);
-    if (result == RINTLS_OK) result = rintls_set_hostname(adapter->context, hostname);
+    if (result == RINTLS_OK && hostname && hostname[0] != '\0')
+        result = rintls_set_hostname(adapter->context, hostname);
     if (result == RINTLS_OK) result = rintls_set_options(adapter->context, options);
     if (result == RINTLS_OK) result = rintls_set_trusted_time(adapter->context, trusted_time);
     if (result != RINTLS_OK) {
@@ -515,6 +516,20 @@ int32_t CryptoNative_RinTlsCopyPeerCertificate(void* handle, uint8_t* destinatio
         return RINTLS_ERR_MEMORY;
     return rintls_get_peer_certificate(adapter->context, destination,
                                        (rin_size_t)capacity, &length);
+}
+
+int32_t CryptoNative_RinTlsSetServerCertificate(
+    void* handle, const uint8_t* certificate_list, int32_t certificate_list_length,
+    void* signer, void* signer_opaque)
+{
+    rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;
+    if (!adapter || certificate_list_length < 0 ||
+        (certificate_list_length != 0 && !certificate_list) ||
+        !signer)
+        return RINTLS_ERR_MEMORY;
+    return rintls_set_server_certificate(
+        adapter->context, certificate_list, (rin_size_t)certificate_list_length,
+        (rintls_server_certificate_sign_func)signer, signer_opaque);
 }
 
 int32_t CryptoNative_RinTlsGetPeerCertificateChainLength(void* handle,

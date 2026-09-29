@@ -404,7 +404,10 @@ extern "C" UINT_PTR STDCALL GetCurrentIP(void)
 
 extern "C" void STDMETHODCALLTYPE JIT_ProfilerEnterLeaveTailcallStub(UINT_PTR ProfilerHandle)
 {
-    PORTABILITY_ASSERT("JIT_ProfilerEnterLeaveTailcallStub is not implemented on wasm");
+    // This helper is the dynamic JIT probe address, not the profiler callback
+    // implementation.  The native targets use the same no-op return stub;
+    // the generated ProfileEnter/Leave/Tailcall helpers own notification.
+    (void)ProfilerHandle;
 }
 
 extern "C" PCODE STDCALL DelayLoad_MethodCallImpl(TransitionBlock* pTransitionBlock, READYTORUN_IMPORT_THUNK_PORTABLE_ENTRYPOINT* pImportThunkEntry, uint8_t *moduleBase, int32_t rvaOfModuleFixup)

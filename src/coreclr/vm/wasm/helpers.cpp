@@ -842,7 +842,10 @@ extern "C" void JIT_PInvokeEnd(void* sp, InlinedCallFrame* pFrame, PCODE pep)
 
 extern "C" void STDCALL JIT_StackProbe()
 {
-    PORTABILITY_ASSERT("JIT_StackProbe is not implemented on wasm");
+    // WASM stack storage is managed by the __stack_pointer global and does
+    // not expose a native guard-page probing ABI. The WASM code generator
+    // reserves its shadow stack before entering helpers, so there is no
+    // native stack range to probe here.
 }
 
 EXTERN_C void JIT_PollGCRarePath(uintptr_t callersStackPointer)

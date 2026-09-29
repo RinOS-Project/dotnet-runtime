@@ -102,6 +102,12 @@ FCIMPLEND
 
 EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
 {
+    if (ppThunksSection == NULL)
+    {
+        return E_INVALIDARG;
+    }
+    *ppThunksSection = NULL;
+
     size_t thunksMapSize = THUNKS_MAP_SIZE;
 
 #ifdef WIN32
@@ -326,6 +332,12 @@ FCDECL1(void*, RhpGetThunkStubsBlockAddress, void* addr);
 
 EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
 {
+    if (ppThunksSection == NULL)
+    {
+        return E_INVALIDARG;
+    }
+    *ppThunksSection = NULL;
+
     static int nextThunkDataMapping = 0;
 
     int thunkBlocksPerMapping = RhpGetNumThunkBlocksPerMapping();
@@ -380,6 +392,12 @@ FCDECL0(int, RhpGetThunkBlockSize);
 
 EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
 {
+    if (ppThunksSection == NULL)
+    {
+        return E_INVALIDARG;
+    }
+    *ppThunksSection = NULL;
+
     static void* pThunksTemplateAddress = NULL;
 
     void *pThunkMap = NULL;

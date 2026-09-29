@@ -84,12 +84,22 @@ FCIMPLEND
 
 FCIMPL1(void*, RhpGetThunkDataBlockAddress, void* pThunkStubAddress)
 {
+    if (pThunkStubAddress == NULL)
+    {
+        return NULL;
+    }
+
     return (void*)(((uintptr_t)pThunkStubAddress & ~(OS_PAGE_SIZE - 1)) + THUNKS_MAP_SIZE);
 }
 FCIMPLEND
 
 FCIMPL1(void*, RhpGetThunkStubsBlockAddress, void* pThunkDataAddress)
 {
+    if (pThunkDataAddress == NULL)
+    {
+        return NULL;
+    }
+
     return (void*)(((uintptr_t)pThunkDataAddress & ~(OS_PAGE_SIZE - 1)) - THUNKS_MAP_SIZE);
 }
 FCIMPLEND

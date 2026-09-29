@@ -1063,6 +1063,10 @@ void StackFrameIterator::UnwindFuncletInvokeThunk()
 
 #if defined(FEATURE_PORTABLE_HELPERS) // @TODO: Currently no funclet invoke defined in a portable way
     return;
+#elif defined(TARGET_WASM)
+    // WASM has no native funclet-invoke frame ABI. Do not interpret the
+    // interpreter stack as an architecture-specific register save area.
+    return;
 #else // defined(FEATURE_PORTABLE_HELPERS)
     ASSERT((CategorizeUnadjustedReturnAddress(m_ControlPC) == InFuncletInvokeThunk) ||
            (CategorizeUnadjustedReturnAddress(m_ControlPC) == InFilterFuncletInvokeThunk));

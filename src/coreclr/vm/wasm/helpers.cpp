@@ -997,7 +997,10 @@ extern "C" void RhpVTableOffsetDispatchAVLocation()
 
 extern "C" void STDCALL ThePreStubPatchLabel(void)
 {
-    PORTABILITY_ASSERT("ThePreStubPatchLabel is not implemented on wasm");
+    // The label identifies the fixed debugger/precode patch range.  WASM has
+    // no native instruction patching contract here, so keep the marker
+    // callable without turning a range probe into an unsupported-operation
+    // abort.
 }
 
 LONG CLRNoCatchHandler(EXCEPTION_POINTERS* pExceptionInfo, PVOID pv)

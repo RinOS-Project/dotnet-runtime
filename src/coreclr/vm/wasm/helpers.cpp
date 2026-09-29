@@ -373,7 +373,9 @@ extern "C" void STDCALL CallCountingStubCode()
 
 extern "C" void CallCountingStubCode_End()
 {
-    PORTABILITY_ASSERT("CallCountingStubCode_End is not implemented on wasm");
+    // Range marker paired with CallCountingStubCode.  The executable
+    // call-counting stub is still unsupported on WASM; this sentinel must not
+    // turn a diagnostic/code-size query into an abort.
 }
 
 extern "C" void STDCALL OnCallCountThresholdReachedStub()
@@ -436,7 +438,8 @@ extern "C" void STDCALL StubPrecodeCode()
 
 extern "C" void STDCALL StubPrecodeCode_End()
 {
-    PORTABILITY_ASSERT("StubPrecodeCode_End is not implemented on wasm");
+    // Range marker paired with StubPrecodeCode.  The precode entrypoint itself
+    // remains an explicit unsupported boundary on WASM.
 }
 
 extern "C" void STDCALL FixupPrecodeCode()
@@ -446,7 +449,8 @@ extern "C" void STDCALL FixupPrecodeCode()
 
 extern "C" void STDCALL FixupPrecodeCode_End()
 {
-    PORTABILITY_ASSERT("FixupPrecodeCode_End is not implemented on wasm");
+    // Range marker paired with FixupPrecodeCode.  Keep the sentinel inert
+    // without claiming that the executable fixup precode exists on WASM.
 }
 
 extern "C" void RhpInitialInterfaceDispatch()

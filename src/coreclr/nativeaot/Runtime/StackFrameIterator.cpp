@@ -1379,6 +1379,22 @@ private:
     uintptr_t m_callerRetaddr;             // ChildSP+0C8 CallerSP-008 (0x8 bytes)
     uintptr_t m_stackPassedArgs[1];        // ChildSP+0D0 CallerSP+000 (unknown size)
 
+    static_assert(sizeof(Fp128) == 0x10, "UNIX AMD64 universal transition FP register width drift");
+    static_assert(offsetof(UniversalTransitionStackFrame, m_fpArgRegs) == 0x00,
+                  "UNIX AMD64 universal transition FP register offset drift");
+    static_assert(offsetof(UniversalTransitionStackFrame, m_returnBlock) == 0x80,
+                  "UNIX AMD64 universal transition return block offset drift");
+    static_assert(offsetof(UniversalTransitionStackFrame, m_intArgRegs) == 0x90,
+                  "UNIX AMD64 universal transition integer register offset drift");
+    static_assert(offsetof(UniversalTransitionStackFrame, m_alignmentPad) == 0xC0,
+                  "UNIX AMD64 universal transition alignment offset drift");
+    static_assert(offsetof(UniversalTransitionStackFrame, m_callerRetaddr) == 0xC8,
+                  "UNIX AMD64 universal transition return address offset drift");
+    static_assert(offsetof(UniversalTransitionStackFrame, m_stackPassedArgs) == 0xD0,
+                  "UNIX AMD64 universal transition stack argument offset drift");
+    static_assert(sizeof(UniversalTransitionStackFrame) == 0xD8,
+                  "UNIX AMD64 universal transition frame size drift");
+
 public:
     PTR_uintptr_t get_CallerSP() { return GET_POINTER_TO_FIELD(m_stackPassedArgs[0]); }
     PTR_uintptr_t get_AddressOfPushedCallerIP() { return GET_POINTER_TO_FIELD(m_callerRetaddr); }

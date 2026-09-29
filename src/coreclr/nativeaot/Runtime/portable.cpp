@@ -28,8 +28,47 @@
 #include "TypeManager.h"
 #include "MethodTable.inl"
 #include "ObjectLayout.h"
+#include "../../../../../../public-base/RinOS-SDK/include/rin/dotnet/nativeaot_thunk_abi.h"
 
 #include "GCMemoryHelpers.inl"
+
+#if defined(__GNUC__) || defined(__clang__)
+#define RINOS_NATIVEAOT_THUNK_WEAK __attribute__((weak))
+#else
+#define RINOS_NATIVEAOT_THUNK_WEAK
+#endif
+
+extern "C" const RinNativeAotThunkProviderV1*
+rin_nativeaot_thunk_provider_get_v1(void) RINOS_NATIVEAOT_THUNK_WEAK;
+
+static const RinNativeAotThunkProviderV1* GetRinNativeAotThunkProvider()
+{
+    if (rin_nativeaot_thunk_provider_get_v1 == nullptr)
+        return nullptr;
+
+    const RinNativeAotThunkProviderV1* provider =
+        rin_nativeaot_thunk_provider_get_v1();
+    if (provider == nullptr ||
+        provider->struct_size != sizeof(RinNativeAotThunkProviderV1) ||
+        provider->abi_version != RIN_NATIVEAOT_THUNK_ABI_VERSION ||
+        provider->reserved0 != 0 ||
+        (provider->capability_mask & ~RIN_NATIVEAOT_THUNK_KNOWN_CAPABILITIES) != 0 ||
+        (provider->capability_mask & RIN_NATIVEAOT_THUNK_KNOWN_CAPABILITIES) !=
+            RIN_NATIVEAOT_THUNK_KNOWN_CAPABILITIES ||
+        provider->allocate_thunks_mapping == nullptr ||
+        provider->get_thunks_base == nullptr ||
+        provider->get_num_thunk_blocks_per_mapping == nullptr ||
+        provider->get_num_thunks_per_block == nullptr ||
+        provider->get_thunk_size == nullptr ||
+        provider->get_thunk_data_block_address == nullptr ||
+        provider->get_thunk_stubs_block_address == nullptr ||
+        provider->get_thunk_block_size == nullptr ||
+        provider->get_common_stub_address == nullptr ||
+        provider->get_current_thunk_context == nullptr)
+        return nullptr;
+
+    return provider;
+}
 
 #if defined(FEATURE_PORTABLE_HELPERS)
 EXTERN_C void* RhpGcAlloc(MethodTable *pEEType, uint32_t uFlags, intptr_t numElements, void * pTransitionFrame);
@@ -369,75 +408,126 @@ FCIMPL1(HRESULT, RhAllocateThunksMapping, void ** ppThunksSection)
     if (ppThunksSection == nullptr)
         return E_INVALIDARG;
 
-    // Preserve the out-parameter failure contract even when the caller passes
-    // a non-null storage location.  PortableRuntime has no mapping owner, so
-    // managed ThunkPool must never observe stale thunk memory after E_NOTIMPL.
     *ppThunksSection = nullptr;
 
-    // PortableRuntime has no executable thunk template or writable/executable
-    // mapping owner. Keep the unsupported boundary in the managed ThunkPool
-    // caller, which translates any non-S_OK result to PlatformNotSupportedException.
+    const RinNativeAotThunkProviderV1* provider =
+        GetRinNativeAotThunkProvider();
+    if (provider != nullptr)
+    {
+        HRESULT result = (HRESULT)provider->allocate_thunks_mapping(
+            provider->context, ppThunksSection);
+        if (result != S_OK || *ppThunksSection == nullptr)
+        {
+            *ppThunksSection = nullptr;
+            return result == S_OK ? E_FAIL : result;
+        }
+
+        return result;
+    }
+
+    // Keep the unsupported boundary in the managed ThunkPool caller, which
+    // translates any non-S_OK result to PlatformNotSupportedException.
     return E_NOTIMPL;
 }
 FCIMPLEND
 
 FCIMPL0(void *, RhpGetThunksBase)
 {
-    // PortableRuntime does not expose executable thunk mappings.
+    const RinNativeAotThunkProviderV1* provider =
+        GetRinNativeAotThunkProvider();
+    if (provider != nullptr)
+        return provider->get_thunks_base(provider->context);
+
     return NULL;
 }
 FCIMPLEND
 
 FCIMPL0(int, RhpGetNumThunkBlocksPerMapping)
 {
-    // Keep Constants initialization safe so RhAllocateThunksMapping can report
-    // the managed PlatformNotSupportedException boundary.
+    const RinNativeAotThunkProviderV1* provider =
+        GetRinNativeAotThunkProvider();
+    if (provider != nullptr)
+        return provider->get_num_thunk_blocks_per_mapping(provider->context);
+
     return 0;
 }
 FCIMPLEND
 
 FCIMPL0(int, RhpGetNumThunksPerBlock)
 {
+    const RinNativeAotThunkProviderV1* provider =
+        GetRinNativeAotThunkProvider();
+    if (provider != nullptr)
+        return provider->get_num_thunks_per_block(provider->context);
+
     return 0;
 }
 FCIMPLEND
 
 FCIMPL0(int, RhpGetThunkSize)
 {
+    const RinNativeAotThunkProviderV1* provider =
+        GetRinNativeAotThunkProvider();
+    if (provider != nullptr)
+        return provider->get_thunk_size(provider->context);
+
     return 0;
 }
 FCIMPLEND
 
 FCIMPL1(void*, RhpGetThunkDataBlockAddress, void* pThunkStubAddress)
 {
-    UNREFERENCED_PARAMETER(pThunkStubAddress);
+    const RinNativeAotThunkProviderV1* provider =
+        GetRinNativeAotThunkProvider();
+    if (provider != nullptr && pThunkStubAddress != nullptr)
+        return provider->get_thunk_data_block_address(
+            provider->context, pThunkStubAddress);
+
     return NULL;
 }
 FCIMPLEND
 
 FCIMPL1(void*, RhpGetThunkStubsBlockAddress, void* pThunkDataAddress)
 {
-    UNREFERENCED_PARAMETER(pThunkDataAddress);
+    const RinNativeAotThunkProviderV1* provider =
+        GetRinNativeAotThunkProvider();
+    if (provider != nullptr && pThunkDataAddress != nullptr)
+        return provider->get_thunk_stubs_block_address(
+            provider->context, pThunkDataAddress);
+
     return NULL;
 }
 FCIMPLEND
 
 FCIMPL0(int, RhpGetThunkBlockSize)
 {
+    const RinNativeAotThunkProviderV1* provider =
+        GetRinNativeAotThunkProvider();
+    if (provider != nullptr)
+        return provider->get_thunk_block_size(provider->context);
+
     return 0;
 }
 FCIMPLEND
 
 FCIMPL0(void *, RhGetCommonStubAddress)
 {
-    // There is no portable executable common stub.
+    const RinNativeAotThunkProviderV1* provider =
+        GetRinNativeAotThunkProvider();
+    if (provider != nullptr)
+        return provider->get_common_stub_address(provider->context);
+
     return NULL;
 }
 FCIMPLEND
 
 FCIMPL0(void *, RhGetCurrentThunkContext)
 {
-    // PortableRuntime has no active native interop thunk context.
+    const RinNativeAotThunkProviderV1* provider =
+        GetRinNativeAotThunkProvider();
+    if (provider != nullptr)
+        return provider->get_current_thunk_context(provider->context);
+
     return NULL;
 }
 FCIMPLEND

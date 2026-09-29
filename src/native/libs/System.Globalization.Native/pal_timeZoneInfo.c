@@ -324,12 +324,25 @@ ResultCode GlobalizationNative_GetTimeZoneDisplayName(const UChar* localeName, c
 {
     UErrorCode err = U_ZERO_ERROR;
 
-    if (localeName == NULL || timeZoneId == NULL || result == NULL || resultLength <= 0)
+    if (timeZoneId == NULL || result == NULL || resultLength <= 0)
     {
         return UnknownError;
     }
 
     result[0] = 0;
+
+    // TimeZoneName is the ID-backed path used by hybrid globalization. It
+    // does not depend on a locale, so preserve that contract even when the
+    // caller has no UI culture to provide.
+    if (type == TimeZoneDisplayName_TimeZoneName)
+    {
+        return GetTimeZoneName(timeZoneId, result, resultLength);
+    }
+
+    if (localeName == NULL)
+    {
+        return UnknownError;
+    }
 
     char locale[ULOC_FULLNAME_CAPACITY];
     GetLocale(localeName, locale, ULOC_FULLNAME_CAPACITY, false, &err);
@@ -358,9 +371,6 @@ ResultCode GlobalizationNative_GetTimeZoneDisplayName(const UChar* localeName, c
 
     switch (type)
     {
-        case TimeZoneDisplayName_TimeZoneName:
-            return GetTimeZoneName(timeZoneId, result, resultLength);
-
         case TimeZoneDisplayName_Standard:
             GetTimeZoneDisplayName_FromCalendar(locale, timeZoneId, timestamp, UCAL_STANDARD, result, resultLength, &err);
             break;

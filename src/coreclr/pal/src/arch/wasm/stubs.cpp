@@ -5,6 +5,7 @@
 #include "pal/signal.hpp"
 #include "pal/context.h"
 #include "pal/seh.hpp"
+#include <errno.h>
 
 #if defined(TARGET_BROWSER)
 #include <emscripten/emscripten.h>
@@ -69,7 +70,12 @@ RtlCaptureContext(OUT PCONTEXT pContextRecord)
 extern "C" void
 CONTEXT_CaptureContext(LPCONTEXT lpContext)
 {
-    _ASSERT(!"CONTEXT_CaptureContext not implemented on wasm");
+    // WASM has no native register context. Match RtlCaptureContext's
+    // fail-closed contract by returning a fully initialized zero context.
+    if (lpContext != nullptr)
+    {
+        memset(lpContext, 0, sizeof(*lpContext));
+    }
 }
 
 extern "C" void ThrowExceptionFromContextInternal(CONTEXT* context, PAL_SEHException* ex)
@@ -91,25 +97,25 @@ void ExecuteHandlerOnCustomStack(int code, siginfo_t *siginfo, void *context, si
 extern "C" int unw_getcontext(int)
 {
     _ASSERT(!"unw_getcontext not implemented on wasm");
-    return 0;
+    return -1;
 }
 
 extern "C" int unw_init_local(int, int)
 {
     _ASSERT(!"unw_init_local not implemented on wasm");
-    return 0;
+    return -1;
 }
 
 extern "C" int unw_step(int)
 {
     _ASSERT(!"unw_step not implemented on wasm");
-    return 0;
+    return -1;
 }
 
 extern "C" int unw_is_signal_frame(int)
 {
     _ASSERT(!"unw_is_signal_frame not implemented on wasm");
-    return 0;
+    return -1;
 }
 #endif // TARGET_BROWSER
 
@@ -118,7 +124,7 @@ extern "C" int unw_is_signal_frame(int)
 extern "C" int pthread_setschedparam(pthread_t, int, const struct sched_param *)
 {
     _ASSERT(!"pthread_setschedparam not implemented on wasm");
-    return 0;
+    return ENOTSUP;
 }
 
 #if defined(TARGET_WASI)

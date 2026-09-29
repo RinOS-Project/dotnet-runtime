@@ -753,6 +753,35 @@ uint32_t NetSecurityNative_IsNtlmInstalled(void)
     return foundNtlm;
 }
 
+uint32_t NetSecurityNative_IsKerberosInstalled(void)
+{
+    gss_OID kerberosOid = (gss_OID)(unsigned long)gss_mech_krb5;
+    uint32_t majorStatus;
+    uint32_t minorStatus;
+    gss_OID_set mechSet;
+    gss_OID_desc oid;
+    uint32_t foundKerberos = 0;
+
+    majorStatus = gss_indicate_mechs(&minorStatus, &mechSet);
+    if (majorStatus == GSS_S_COMPLETE)
+    {
+        for (size_t i = 0; i < mechSet->count; i++)
+        {
+            oid = mechSet->elements[i];
+            if ((oid.length == kerberosOid->length) &&
+                (memcmp(oid.elements, kerberosOid->elements, oid.length) == 0))
+            {
+                foundKerberos = 1;
+                break;
+            }
+        }
+
+        gss_release_oid_set(&minorStatus, &mechSet);
+    }
+
+    return foundKerberos;
+}
+
 int32_t NetSecurityNative_EnsureGssInitialized(void)
 {
 #if defined(GSS_SHIM)

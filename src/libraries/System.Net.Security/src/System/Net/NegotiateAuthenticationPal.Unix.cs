@@ -785,8 +785,7 @@ namespace System.Net
                 // rejects an absent or incomplete provider, so the mere
                 // presence of System.Net.Security.Native never advertises
                 // Kerberos/DefaultCredentials support.
-                _ = Interop.NetSecurityNative.IsNtlmInstalled();
-                return true;
+                return Interop.NetSecurityNative.IsKerberosInstalled();
             }
             catch (Exception e) when (e is EntryPointNotFoundException || e is DllNotFoundException || e is TypeInitializationException || e is BadImageFormatException)
             {

@@ -21,6 +21,7 @@ static const Entry s_securityNative[] =
     DllImportEntry(NetSecurityNative_InitiateCredWithPassword)
     DllImportEntry(NetSecurityNative_InitSecContext)
     DllImportEntry(NetSecurityNative_InitSecContextEx)
+    DllImportEntry(NetSecurityNative_IsKerberosInstalled)
     DllImportEntry(NetSecurityNative_IsNtlmInstalled)
     DllImportEntry(NetSecurityNative_ReleaseCred)
     DllImportEntry(NetSecurityNative_ReleaseGssBuffer)

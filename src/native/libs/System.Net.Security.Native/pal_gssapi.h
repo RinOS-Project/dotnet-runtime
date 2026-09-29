@@ -215,6 +215,9 @@ Shims the gss_indicate_mechs method to detect if NTLM mech is installed.
 */
 PALEXPORT uint32_t NetSecurityNative_IsNtlmInstalled(void);
 
+/* Returns non-zero only when the selected GSS provider advertises Kerberos. */
+PALEXPORT uint32_t NetSecurityNative_IsKerberosInstalled(void);
+
 /*
 Shims gss_inquire_context and gss_display_name to get the remote user principal name.
 */

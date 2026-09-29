@@ -39,6 +39,7 @@ static const RinAuthProviderV1* rinos_gss_provider(void)
         provider->struct_size != sizeof(*provider) ||
         provider->version != RIN_AUTH_PROVIDER_ABI_VERSION ||
         provider->reserved0 != 0u ||
+        (provider->package_mask & RIN_AUTH_PROVIDER_KNOWN_PACKAGES) == 0u ||
         (provider->package_mask & ~RIN_AUTH_PROVIDER_KNOWN_PACKAGES) != 0u ||
         provider->max_token_size == 0u ||
         provider->max_token_size > RIN_AUTH_PROVIDER_MAX_TOKEN_SIZE ||
@@ -87,6 +88,28 @@ static uint32_t rinos_gss_unavailable(uint32_t* minorStatus)
     }
 
     return RINOS_GSS_S_UNAVAILABLE;
+}
+
+static uint32_t rinos_gss_package_bit(uint32_t packageType)
+{
+    switch (packageType)
+    {
+        case PAL_GSS_NEGOTIATE:
+            return RIN_AUTH_PROVIDER_PACKAGE_NEGOTIATE;
+        case PAL_GSS_NTLM:
+            return RIN_AUTH_PROVIDER_PACKAGE_NTLM;
+        case PAL_GSS_KERBEROS:
+            return RIN_AUTH_PROVIDER_PACKAGE_KERBEROS;
+        default:
+            return 0u;
+    }
+}
+
+static int rinos_gss_supports_package(const RinAuthProviderV1* provider,
+                                      uint32_t packageType)
+{
+    uint32_t packageBit = rinos_gss_package_bit(packageType);
+    return packageBit != 0u && (provider->package_mask & packageBit) != 0u;
 }
 
 static void rinos_gss_clear_buffer(PAL_GssBuffer* outBuffer)
@@ -228,7 +251,8 @@ PALEXPORT uint32_t NetSecurityNative_InitiateCredSpNego(
     uint32_t* minorStatus, GssName* desiredName, GssCredId** outputCredHandle)
 {
     const RinAuthProviderV1* provider = rinos_gss_provider();
-    if (provider != NULL)
+    if (provider != NULL &&
+        (provider->package_mask & RIN_AUTH_PROVIDER_PACKAGE_NEGOTIATE) != 0u)
     {
         return provider->initiate_cred_spnego(
             provider->context, minorStatus, desiredName,
@@ -277,7 +301,7 @@ PALEXPORT uint32_t NetSecurityNative_InitSecContext(
     int32_t* isNtlmUsed)
 {
     const RinAuthProviderV1* provider = rinos_gss_provider();
-    if (provider != NULL)
+    if (provider != NULL && rinos_gss_supports_package(provider, packageType))
     {
         return provider->init_sec_context(
             provider->context, minorStatus, claimantCredHandle,
@@ -324,7 +348,7 @@ PALEXPORT uint32_t NetSecurityNative_InitSecContextEx(
     int32_t* isNtlmUsed)
 {
     const RinAuthProviderV1* provider = rinos_gss_provider();
-    if (provider != NULL)
+    if (provider != NULL && rinos_gss_supports_package(provider, packageType))
     {
         return provider->init_sec_context_ex(
             provider->context, minorStatus, claimantCredHandle,
@@ -514,7 +538,7 @@ PALEXPORT uint32_t NetSecurityNative_InitiateCredWithPassword(
     GssCredId** outputCredHandle)
 {
     const RinAuthProviderV1* provider = rinos_gss_provider();
-    if (provider != NULL)
+    if (provider != NULL && rinos_gss_supports_package(provider, (uint32_t)packageType))
     {
         return provider->initiate_cred_with_password(
             provider->context, minorStatus, packageType, desiredName,
@@ -535,12 +559,20 @@ PALEXPORT uint32_t NetSecurityNative_InitiateCredWithPassword(
 PALEXPORT uint32_t NetSecurityNative_IsNtlmInstalled(void)
 {
     const RinAuthProviderV1* provider = rinos_gss_provider();
-    if (provider != NULL)
+    if (provider != NULL &&
+        (provider->package_mask & RIN_AUTH_PROVIDER_PACKAGE_NTLM) != 0u)
     {
         return provider->is_ntlm_installed(provider->context);
     }
 
     return 0;
+}
+
+PALEXPORT uint32_t NetSecurityNative_IsKerberosInstalled(void)
+{
+    const RinAuthProviderV1* provider = rinos_gss_provider();
+    return provider != NULL &&
+        (provider->package_mask & RIN_AUTH_PROVIDER_PACKAGE_KERBEROS) != 0u;
 }
 
 PALEXPORT uint32_t NetSecurityNative_GetUser(

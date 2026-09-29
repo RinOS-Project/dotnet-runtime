@@ -80,14 +80,30 @@ CONTEXT_CaptureContext(LPCONTEXT lpContext)
 
 extern "C" void ThrowExceptionFromContextInternal(CONTEXT* context, PAL_SEHException* ex)
 {
+    (void)context;
+    (void)ex;
     _ASSERT(!"ThrowExceptionFromContextInternal not implemented on wasm");
+    // The caller transfers control through the native context on supported
+    // targets and must never continue after this function returns. WASM has
+    // no native context ABI, so returning here would silently continue with
+    // an invalid exception state in release builds.
+    __builtin_trap();
 }
 
 /* unwind */
 
 void ExecuteHandlerOnCustomStack(int code, siginfo_t *siginfo, void *context, size_t sp, SignalHandlerWorkerReturnPoint* returnPoint)
 {
+    (void)code;
+    (void)siginfo;
+    (void)context;
+    (void)sp;
+    (void)returnPoint;
     _ASSERT(!"ExecuteHandlerOnCustomStack not implemented on wasm");
+    // This helper is also a non-returning context transfer on native
+    // targets. WASM has no alternate-stack/context ABI; fail closed instead
+    // of returning into the signal dispatcher with an invalid state.
+    __builtin_trap();
 }
 
 #if defined(TARGET_BROWSER)

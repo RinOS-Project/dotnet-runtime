@@ -400,6 +400,11 @@ FCIMPL1(uint8_t *, RhGetCodeTarget, uint8_t * pCodeOrg)
         return (uint8_t *)((int64_t)pCode + distToTarget);
     }
 
+#elif defined(TARGET_WASM)
+    // WASM has no native instruction bytes or executable unboxing jump to
+    // decode.  Keep the interpreter entry point as the target instead of
+    // turning a target query into a portability abort.
+    UNREFERENCED_PARAMETER(unboxingStub);
 #else
     UNREFERENCED_PARAMETER(unboxingStub);
     PORTABILITY_ASSERT("RhGetCodeTarget");

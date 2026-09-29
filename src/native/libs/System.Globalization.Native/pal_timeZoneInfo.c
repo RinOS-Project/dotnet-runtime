@@ -103,6 +103,31 @@ static void GetTimeZoneDisplayName_FromPattern(const char* locale, const UChar* 
     }
 }
 
+/* The TimeZoneName contract is intentionally the stable IANA identifier.
+ * Apple hybrid globalization uses the same representation, and managed
+ * TimeZoneInfo uses it only for the platform-specific ID-backed display path.
+ * Keep this separate from localized ICU names so a missing CLDR name does not
+ * turn a valid identifier into an UnknownError. */
+static ResultCode GetTimeZoneName(const UChar* timeZoneId, UChar* result, int32_t resultLength)
+{
+    int32_t length;
+
+    if (timeZoneId == NULL || result == NULL || resultLength <= 0)
+    {
+        return UnknownError;
+    }
+
+    length = u_strlen(timeZoneId);
+    if (length >= resultLength)
+    {
+        return InsufficientBuffer;
+    }
+
+    u_strncpy(result, timeZoneId, length);
+    result[length] = 0;
+    return Success;
+}
+
 /*
 Private function to modify the generic display name to better suit our needs.
 */
@@ -328,6 +353,9 @@ ResultCode GlobalizationNative_GetTimeZoneDisplayName(const UChar* localeName, c
 
     switch (type)
     {
+        case TimeZoneDisplayName_TimeZoneName:
+            return GetTimeZoneName(timeZoneId, result, resultLength);
+
         case TimeZoneDisplayName_Standard:
             GetTimeZoneDisplayName_FromCalendar(locale, timeZoneId, timestamp, UCAL_STANDARD, result, resultLength, &err);
             break;

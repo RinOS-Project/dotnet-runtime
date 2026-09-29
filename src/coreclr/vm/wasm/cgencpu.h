@@ -153,13 +153,12 @@ inline TADDR GetFirstArgReg(T_CONTEXT *context)
 
 inline void SetSecondArgReg(T_CONTEXT *context, TADDR value)
 {
-    PORTABILITY_ASSERT("SetSecondArgReg is not implemented on wasm");
+    context->InterpreterSecondArg = (DWORD)value;
 }
 
 inline TADDR GetSecondArgReg(T_CONTEXT *context)
 {
-    PORTABILITY_ASSERT("GetSecondArgReg is not implemented on wasm");
-    return 0;
+    return (TADDR)context->InterpreterSecondArg;
 }
 
 TADDR GetWasmFramePointerFromStackPointer(TADDR sp, PCODE controlPC);

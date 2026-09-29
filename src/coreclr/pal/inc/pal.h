@@ -2180,6 +2180,7 @@ typedef struct _CONTEXT {
     ULONG ContextFlags;
 
     DWORD InterpreterWalkFramePointer;
+    DWORD InterpreterSecondArg;
     DWORD InterpreterSP;
     DWORD InterpreterFP;
     DWORD InterpreterIP;

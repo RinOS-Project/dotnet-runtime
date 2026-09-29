@@ -434,6 +434,9 @@ void StackFrameIterator::InternalInit(Thread * pThreadToWalk, PTR_PAL_LIMITED_CO
     //
     m_RegDisplay.SP   = pCtx->GetSp();
     m_RegDisplay.IP   = controlPC;
+#if defined(TARGET_WASM)
+    m_RegDisplay.FP   = pCtx->GetFp();
+#endif
     SetControlPC(dac_cast<PTR_VOID>(m_RegDisplay.GetIP()));
 
 #ifdef TARGET_ARM
@@ -618,6 +621,9 @@ void StackFrameIterator::InternalInit(Thread * pThreadToWalk, PTR_PAL_LIMITED_CO
     m_RegDisplay.pR10 = NULL;
     m_RegDisplay.pR11 = NULL;
 #endif // TARGET_AMD64
+#elif defined(TARGET_WASM)
+    // WASM has no native register pointers. SP/IP were copied above from the
+    // interpreter context and are the complete REGDISPLAY contract.
 #else
     PORTABILITY_ASSERT("StackFrameIterator::InternalInit");
 #endif // TARGET_ARM
@@ -1037,6 +1043,8 @@ void StackFrameIterator::UpdateFromExceptionDispatch(PTR_StackFrameIterator pSou
     m_RegDisplay.pR14 = thisFuncletPtrs.pR14;
     m_RegDisplay.pR15 = thisFuncletPtrs.pR15;
 #endif // TARGET_AMD64
+#elif defined(TARGET_WASM)
+    // WASM has no preserved native registers to restore.
 #else
     PORTABILITY_ASSERT("StackFrameIterator::UpdateFromExceptionDispatch");
 #endif
@@ -1654,6 +1662,10 @@ void StackFrameIterator::UnwindUniversalTransitionThunk()
 
 #if defined(FEATURE_PORTABLE_HELPERS) // @TODO: Corresponding helper code is only defined in assembly code
     return;
+#elif defined(TARGET_WASM)
+    // The WASM build has no native UniversalTransition frame ABI. Do not
+    // dereference the placeholder frame or publish a fabricated caller.
+    return;
 #else // defined(FEATURE_PORTABLE_HELPERS)
     ASSERT(CategorizeUnadjustedReturnAddress(m_ControlPC) == InUniversalTransitionThunk);
 
@@ -1768,6 +1780,10 @@ void StackFrameIterator::UnwindThrowSiteThunk()
     m_RegDisplay.pRdi = (PTR_uintptr_t)PTR_TO_MEMBER_TADDR(PAL_LIMITED_CONTEXT, pContext, Rdi);
     m_RegDisplay.pRsi = (PTR_uintptr_t)PTR_TO_MEMBER_TADDR(PAL_LIMITED_CONTEXT, pContext, Rsi);
     m_RegDisplay.pRbx = (PTR_uintptr_t)PTR_TO_MEMBER_TADDR(PAL_LIMITED_CONTEXT, pContext, Rbx);
+#elif defined(TARGET_WASM)
+    // WASM has no preserved native register pointers. The interpreter frame
+    // pointer is carried by the PAL context itself.
+    m_RegDisplay.FP = pContext->GetFp();
 #elif defined(TARGET_LOONGARCH64)
     m_RegDisplay.pR23 = (PTR_uintptr_t)PTR_TO_MEMBER_TADDR(PAL_LIMITED_CONTEXT, pContext, R23);
     m_RegDisplay.pR24 = (PTR_uintptr_t)PTR_TO_MEMBER_TADDR(PAL_LIMITED_CONTEXT, pContext, R24);

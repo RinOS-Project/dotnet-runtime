@@ -150,18 +150,34 @@ extern "C" int pthread_setschedparam(pthread_t, int, const struct sched_param *)
 
 extern "C" BOOL CONTEXT_GetRegisters(DWORD processId, LPCONTEXT lpContext)
 {
+    (void)processId;
+    if (lpContext != nullptr)
+    {
+        memset(lpContext, 0, sizeof(*lpContext));
+    }
     _ASSERT(!"CONTEXT_GetRegisters not implemented on wasi");
     return FALSE;
 }
 
 void CONTEXTToNativeContext(CONST CONTEXT *lpContext, native_context_t *native)
 {
+    (void)lpContext;
+    if (native != nullptr)
+    {
+        memset(native, 0, sizeof(*native));
+    }
     _ASSERT(!"CONTEXTToNativeContext not implemented on wasi");
 }
 
 void CONTEXTFromNativeContext(const native_context_t *native, LPCONTEXT lpContext,
                               ULONG contextFlags)
 {
+    (void)native;
+    (void)contextFlags;
+    if (lpContext != nullptr)
+    {
+        memset(lpContext, 0, sizeof(*lpContext));
+    }
     _ASSERT(!"CONTEXTFromNativeContext not implemented on wasi");
 }
 
@@ -180,6 +196,8 @@ LPVOID GetNativeContextSP(const native_context_t *context)
 DWORD CONTEXTGetExceptionCodeForSignal(const siginfo_t *siginfo,
                                        const native_context_t *context)
 {
+    (void)siginfo;
+    (void)context;
     _ASSERT(!"CONTEXTGetExceptionCodeForSignal not implemented on wasi");
     return 0;
 }
@@ -314,7 +332,11 @@ PAL_EnableCrashReportBeforeSignalChaining(void)
 extern "C" PALIMPORT BOOL PALAPI
 GetThreadContext(IN HANDLE hThread, IN OUT LPCONTEXT lpContext)
 {
-    (void)hThread; (void)lpContext;
+    (void)hThread;
+    if (lpContext != nullptr)
+    {
+        memset(lpContext, 0, sizeof(*lpContext));
+    }
     _ASSERT(!"GetThreadContext not implemented on wasi");
     return FALSE;
 }

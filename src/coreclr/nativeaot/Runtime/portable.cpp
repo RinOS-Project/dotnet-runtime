@@ -366,6 +366,12 @@ FCIMPLEND
 
 FCIMPL1(HRESULT, RhAllocateThunksMapping, void ** ppThunksSection)
 {
+    // Preserve the out-parameter failure contract even when the caller passes
+    // a non-null storage location.  PortableRuntime has no mapping owner, so
+    // managed ThunkPool must never observe stale thunk memory after E_NOTIMPL.
+    if (ppThunksSection != nullptr)
+        *ppThunksSection = nullptr;
+
     // PortableRuntime has no executable thunk template or writable/executable
     // mapping owner. Keep the unsupported boundary in the managed ThunkPool
     // caller, which translates any non-S_OK result to PlatformNotSupportedException.

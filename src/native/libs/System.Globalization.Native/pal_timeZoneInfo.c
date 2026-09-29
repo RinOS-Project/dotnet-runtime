@@ -118,6 +118,11 @@ static ResultCode GetTimeZoneName(const UChar* timeZoneId, UChar* result, int32_
     }
 
     length = u_strlen(timeZoneId);
+    if (length == 0)
+    {
+        return UnknownError;
+    }
+
     if (length >= resultLength)
     {
         return InsufficientBuffer;

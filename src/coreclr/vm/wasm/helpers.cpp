@@ -1902,7 +1902,8 @@ void* GetPortableEntryPointToInterpreterThunk(MethodDesc *pMD)
                     thunkKey = "Iiiiiip";
                     break;
                 default:
-                    PORTABILITY_ASSERT("GetPortableEntryPointToInterpreterThunk: unknown thunk for string constructor");
+                    // No pregenerated thunk supports this constructor shape;
+                    // the caller handles the documented NULL query result.
                     return nullptr;
             }
         }

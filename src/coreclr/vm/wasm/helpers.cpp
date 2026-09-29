@@ -1107,7 +1107,30 @@ void InvokeUnmanagedCalli(PCODE ftn, InterpreterCalliCookie cookie, int8_t *pArg
 
 void InvokeDelegateInvokeMethod(MethodDesc *pMDDelegateInvoke, int8_t *pArgs, int8_t *pRet, PCODE target, Object** pContinuationRet)
 {
-    PORTABILITY_ASSERT("Attempted to execute non-interpreter code from interpreter on wasm, this is not yet implemented");
+    _ASSERTE(pMDDelegateInvoke != NULL);
+    _ASSERTE(pArgs != NULL);
+    _ASSERTE(pRet != NULL);
+
+    // Delegate invoke targets use the same signature-specific WASM call thunk
+    // as ordinary managed interpreter calls.  The target is the delegate's
+    // resolved method address; it must not be treated as a native ABI entry.
+    InterpreterCalliCookie cookie = pMDDelegateInvoke->GetCalliCookie();
+    if (cookie == NULL)
+    {
+        MetaSig sig(pMDDelegateInvoke);
+        cookie = GetCookieForCalliSig(sig, pMDDelegateInvoke);
+        _ASSERTE(cookie != NULL);
+        pMDDelegateInvoke->SetCalliCookie(cookie);
+        cookie = pMDDelegateInvoke->GetCalliCookie();
+    }
+
+    Object** pCalleeContinuationRet = pMDDelegateInvoke->IsAsyncMethod() ? pContinuationRet : nullptr;
+    InvokeCalliStub(
+        target == NULL ? pMDDelegateInvoke->GetMultiCallableAddrOfCode(CORINFO_ACCESS_ANY) : target,
+        cookie,
+        pArgs,
+        pRet,
+        pCalleeContinuationRet);
 }
 
 namespace
@@ -1950,7 +1973,26 @@ void InvokeManagedMethod(MethodDesc *pMD, int8_t *pArgs, int8_t *pRet, PCODE tar
 
 void InvokeUnmanagedMethod(MethodDesc *targetMethod, int8_t *pArgs, int8_t *pRet, PCODE callTarget)
 {
-    PORTABILITY_ASSERT("Attempted to execute unmanaged code from interpreter on wasm, this is not yet implemented");
+    _ASSERTE(targetMethod != NULL);
+    _ASSERTE(pArgs != NULL);
+    _ASSERTE(pRet != NULL);
+    _ASSERTE(callTarget != NULL);
+
+    // SuppressGCTransition P/Invoke calls still need the generated WASM
+    // signature thunk.  The thunk performs the WebAssembly argument/result
+    // lowering; the provider-owned native import ABI remains outside this
+    // helper and is represented by callTarget.
+    InterpreterCalliCookie cookie = targetMethod->GetCalliCookie();
+    if (cookie == NULL)
+    {
+        MetaSig sig(targetMethod);
+        cookie = GetCookieForCalliSig(sig, targetMethod);
+        _ASSERTE(cookie != NULL);
+        targetMethod->SetCalliCookie(cookie);
+        cookie = targetMethod->GetCalliCookie();
+    }
+
+    InvokeUnmanagedCalli(callTarget, cookie, pArgs, pRet);
 }
 
 static TADDR GetWasmFramePointerFromStackPointer_Internal(TADDR sp)

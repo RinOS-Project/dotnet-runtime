@@ -301,6 +301,24 @@ static const char* const g_es_super_short_day_names[] = {
     "D", "L", "M", "X", "J", "V", "S"
 };
 
+static const char* const g_ca_month_names[] = {
+    "gener", "febrer", "març", "abril", "maig", "juny",
+    "juliol", "agost", "setembre", "octubre", "novembre", "desembre", ""
+};
+static const char* const g_ca_abbreviated_month_names[] = {
+    "gen.", "febr.", "març", "abr.", "maig", "juny",
+    "jul.", "ag.", "set.", "oct.", "nov.", "des.", ""
+};
+static const char* const g_ca_day_names[] = {
+    "diumenge", "dilluns", "dimarts", "dimecres", "dijous", "divendres", "dissabte"
+};
+static const char* const g_ca_abbreviated_day_names[] = {
+    "dg.", "dl.", "dt.", "dc.", "dj.", "dv.", "ds."
+};
+static const char* const g_ca_super_short_day_names[] = {
+    "D", "L", "D", "D", "D", "D", "D"
+};
+
 static const char* const g_it_month_names[] = {
     "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
     "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre", ""
@@ -739,6 +757,9 @@ static const RinCalendarSymbols g_calendar_symbols[] = {
       g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
     { "es", g_es_month_names, g_es_abbreviated_month_names, g_es_day_names,
       g_es_abbreviated_day_names, g_es_super_short_day_names, "calendario gregoriano", "calendario japonés",
+      g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
+    { "ca", g_ca_month_names, g_ca_abbreviated_month_names, g_ca_day_names,
+      g_ca_abbreviated_day_names, g_ca_super_short_day_names, "calendari gregorià", "calendari japonès",
       g_japanese_era_names_en, g_japanese_era_abbreviations, NULL, NULL },
     { "it", g_it_month_names, g_it_abbreviated_month_names, g_it_day_names,
       g_it_abbreviated_day_names, g_it_super_short_day_names, "calendario gregoriano", "calendario giapponese",

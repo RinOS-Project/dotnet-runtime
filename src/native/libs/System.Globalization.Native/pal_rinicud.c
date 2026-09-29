@@ -1232,11 +1232,11 @@ static int product_locale_language_id(const char* locale_id)
         {"pt", 0x0016}, {"ru", 0x0019}, {"uk", 0x0022}, {"tr", 0x001f},
         {"pl", 0x0015}, {"nl", 0x0013}, {"sv", 0x001d}, {"fi", 0x000b},
         {"da", 0x0006}, {"cs", 0x0005}, {"hu", 0x000e}, {"ro", 0x0018},
-        {"ar", 0x0001}, {"fa", 0x0029}, {"he", 0x000d}, {"hi", 0x0039},
+        {"ar", 0x0001}, {"fa", 0x0029}, {"he", 0x000d}, {"hi", 0x0039}, {"ca", 0x0003},
         {"th", 0x001e}, {"id", 0x0021}, {"vi", 0x002a},
         {"en-US", 0x0409}, {"en-GB", 0x0809}, {"en-IN", 0x4009},
         {"en-AU", 0x0c09}, {"en-CA", 0x1009}, {"en-NZ", 0x1409}, {"en-ZA", 0x1c09},
-        {"ja-JP", 0x0411},
+        {"ja-JP", 0x0411}, {"ca-ES", 0x0403},
         {"zh-CN", 0x0804}, {"zh-TW", 0x0404}, {"ko-KR", 0x0412},
         {"fr-FR", 0x040c}, {"fr-BE", 0x080c}, {"fr-CA", 0x0c0c},
         {"de-DE", 0x0407}, {"de-AT", 0x0c07}, {"de-CH", 0x0807}, {"es-ES", 0x0c0a},
@@ -1269,7 +1269,7 @@ typedef struct RinLocaleCode
 static const char* product_language_three_letter(const char* language)
 {
     static const RinLocaleCode codes[] = {
-        { "ar", "ara" }, { "cs", "ces" }, { "da", "dan" },
+        { "ar", "ara" }, { "ca", "cat" }, { "cs", "ces" }, { "da", "dan" },
         { "de", "deu" }, { "en", "eng" }, { "es", "spa" },
         { "fa", "fas" }, { "he", "heb" },
         { "fi", "fin" }, { "fr", "fra" }, { "hi", "hin" },

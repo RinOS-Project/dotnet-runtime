@@ -843,11 +843,11 @@ void InitJITHelpers1()
 
 extern "C" HRESULT __cdecl CorDBGetInterface(DebugInterface** rcInterface)
 {
-    PORTABILITY_ASSERT("CorDBGetInterface is not implemented on wasm");
     // A null debugger interface must never be reported as a successful
     // acquisition.  Keep the unsupported WASM boundary explicit so callers
     // take their normal HRESULT failure path instead of dereferencing a
-    // success result with no interface.
+    // success result with no interface.  Do not assert here: this is a
+    // supported capability probe and the HRESULT is the failure contract.
     if (rcInterface != nullptr)
         *rcInterface = nullptr;
     return E_NOTIMPL;

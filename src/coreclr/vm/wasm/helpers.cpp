@@ -1005,7 +1005,12 @@ extern "C" void STDCALL ThePreStubPatchLabel(void)
 
 LONG CLRNoCatchHandler(EXCEPTION_POINTERS* pExceptionInfo, PVOID pv)
 {
-    PORTABILITY_ASSERT("CLRNoCatchHandler is not implemented on wasm");
+    UNREFERENCED_PARAMETER(pExceptionInfo);
+    UNREFERENCED_PARAMETER(pv);
+
+    // This callback is the fallback filter used while the runtime searches
+    // for an exception handler.  It does not require a native register or
+    // stack ABI; like the other targets, WASM must simply decline the frame.
     return EXCEPTION_CONTINUE_SEARCH;
 }
 

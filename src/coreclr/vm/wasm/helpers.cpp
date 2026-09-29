@@ -1056,8 +1056,23 @@ RtlpGetFunctionEndAddress (
 
 EXTERN_C Thread * JIT_InitPInvokeFrame(InlinedCallFrame *pFrame)
 {
-    PORTABILITY_ASSERT("JIT_InitPInvokeFrame is not implemented on wasm");
-    return nullptr;
+    CONTRACTL
+    {
+        NOTHROW;
+        GC_TRIGGERS;
+    } CONTRACTL_END;
+
+    Thread *pThread = GetThread();
+
+    // The WASM P/Invoke entry stub still needs the same managed frame-chain
+    // initialization as the desktop JIT path.  The later native-call
+    // transition is a separate ABI boundary and remains owned by the WASM
+    // P/Invoke provider; do not fabricate it here.
+    _ASSERTE(pFrame != pThread->GetFrame());
+    pFrame->Init();
+    pFrame->m_Next = pThread->GetFrame();
+
+    return pThread;
 }
 
 void _DacGlobals::Initialize()

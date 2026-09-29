@@ -7,7 +7,10 @@ namespace System.Net.Http
     {
         public static string GetIdentity()
         {
-            return string.Empty;
+            // RinOS resolves Environment.UserName through the product passwd/account ABI.
+            // This value partitions default-credential connection pools; it does not mint
+            // credentials and must not be treated as Kerberos/NTLM authentication material.
+            return Environment.UserName;
         }
     }
 }

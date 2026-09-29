@@ -640,6 +640,13 @@ void PalAttachThread(void* thread)
 
 UInt32_BOOL PalAllocateThunksFromTemplate(HANDLE hTemplateModule, uint32_t templateRva, size_t templateSize, void** newThunksOut)
 {
+    if (newThunksOut == nullptr)
+    {
+        return UInt32_FALSE;
+    }
+
+    *newThunksOut = nullptr;
+
 #ifdef TARGET_APPLE
     vm_address_t addr, taddr;
     vm_prot_t prot, max_prot;
@@ -678,7 +685,13 @@ UInt32_BOOL PalAllocateThunksFromTemplate(HANDLE hTemplateModule, uint32_t templ
 
     return UInt32_TRUE;
 #else
-    PORTABILITY_ASSERT("UNIXTODO: Implement this function");
+    // Non-Apple UNIX has no template-mapping owner in this NativeAOT build.
+    // Do not leave the output uninitialized or fall through after an assert:
+    // the caller must observe an explicit unsupported result.
+    UNREFERENCED_PARAMETER(hTemplateModule);
+    UNREFERENCED_PARAMETER(templateRva);
+    UNREFERENCED_PARAMETER(templateSize);
+    return UInt32_FALSE;
 #endif
 }
 
@@ -694,7 +707,11 @@ UInt32_BOOL PalFreeThunksFromTemplate(void *pBaseAddress, size_t templateSize)
 
     return ret == KERN_SUCCESS ? UInt32_TRUE : UInt32_FALSE;
 #else
-    PORTABILITY_ASSERT("UNIXTODO: Implement this function");
+    // Keep the unsupported template owner fail-closed instead of invoking an
+    // assertion with no return value in release builds.
+    UNREFERENCED_PARAMETER(pBaseAddress);
+    UNREFERENCED_PARAMETER(templateSize);
+    return UInt32_FALSE;
 #endif
 }
 #endif // !FEATURE_PORTABLE_HELPERS && !FEATURE_RX_THUNKS

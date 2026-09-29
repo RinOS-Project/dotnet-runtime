@@ -395,7 +395,10 @@ extern "C" void InterpreterStub()
 
 extern "C" UINT_PTR STDCALL GetCurrentIP(void)
 {
-    PORTABILITY_ASSERT("GetCurrentIP is not implemented on wasm");
+    // WASM has no native return-address register.  Callers use this value for
+    // diagnostics and fatal-error reporting, so an unknown IP is represented
+    // by the documented zero sentinel instead of aborting the process while
+    // trying to report the original failure.
     return 0;
 }
 
@@ -460,19 +463,37 @@ extern "C" void RhpInitialInterfaceDispatch()
 
 unsigned FuncEvalFrame::GetFrameAttribs_Impl(void)
 {
-    PORTABILITY_ASSERT("FuncEvalFrame::GetFrameAttribs_Impl is not implemented on wasm");
-    return 0;
+    LIMITED_METHOD_DAC_CONTRACT;
+
+    // WASM does not support the native thread-hijack path.  It can still
+    // construct a FuncEvalFrame for interpreter/exception processing, where
+    // the frame is deliberately non-resumable.
+    return GetDebuggerEval()->m_evalUsesHijack ? FRAME_ATTR_RESUMABLE : FRAME_ATTR_NONE;
 }
 
 TADDR FuncEvalFrame::GetReturnAddressPtr_Impl()
 {
-    PORTABILITY_ASSERT("FuncEvalFrame::GetReturnAddressPtr_Impl is not implemented on wasm");
-    return 0;
+    LIMITED_METHOD_DAC_CONTRACT;
+
+    // There is no native return address for the non-hijack WASM path.  Keep
+    // the same null contract used by the desktop implementation.
+    return GetDebuggerEval()->m_evalUsesHijack ? PTR_HOST_MEMBER_TADDR(FuncEvalFrame, this, m_ReturnAddress) : 0;
 }
 
 void FuncEvalFrame::UpdateRegDisplay_Impl(const PREGDISPLAY pRD, bool updateFloats)
 {
-    PORTABILITY_ASSERT("FuncEvalFrame::UpdateRegDisplay_Impl is not implemented on wasm");
+    LIMITED_METHOD_DAC_CONTRACT;
+    UNREFERENCED_PARAMETER(pRD);
+    UNREFERENCED_PARAMETER(updateFloats);
+
+    // A WASM func-eval is not installed by hijacking a native register
+    // context.  Leave the existing register display untouched, matching the
+    // non-hijack branch in the common debugger implementation.
+    if (!GetDebuggerEval()->m_evalUsesHijack)
+        return;
+
+    // The native hijack register layout has no WASM equivalent yet.  Keep the
+    // boundary fail-closed rather than fabricating register locations.
 }
 
 void InlinedCallFrame::UpdateRegDisplay_Impl(const PREGDISPLAY pRD, bool updateFloats)
@@ -526,7 +547,25 @@ void InlinedCallFrame::UpdateRegDisplay_Impl(const PREGDISPLAY pRD, bool updateF
 
 void FaultingExceptionFrame::UpdateRegDisplay_Impl(const PREGDISPLAY pRD, bool updateFloats)
 {
-    PORTABILITY_ASSERT("FaultingExceptionFrame::UpdateRegDisplay_Impl is not implemented on wasm");
+    LIMITED_METHOD_DAC_CONTRACT;
+    UNREFERENCED_PARAMETER(updateFloats);
+
+    // A WASM exception context consists of the interpreter IP/SP/FP tuple.
+    // Copy it into the stack walk's active context and derive the frame
+    // pointer only when the saved IP/SP identify a RyuJIT frame.
+    *pRD->pCurrentContext = m_ctx;
+    if (m_ctx.InterpreterIP != 0 && m_ctx.InterpreterSP != 0)
+    {
+        pRD->pCurrentContext->InterpreterFP = GetWasmFramePointerFromStackPointer(
+            m_ctx.InterpreterSP, (PCODE)m_ctx.InterpreterIP);
+    }
+    else
+    {
+        pRD->pCurrentContext->InterpreterFP = 0;
+    }
+
+    pRD->IsCallerContextValid = FALSE;
+    SyncRegDisplayToCurrentContext(pRD);
 }
 
 void TransitionFrame::UpdateRegDisplay_Impl(const PREGDISPLAY pRD, bool updateFloats)

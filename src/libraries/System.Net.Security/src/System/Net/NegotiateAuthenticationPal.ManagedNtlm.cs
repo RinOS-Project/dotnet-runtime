@@ -341,14 +341,25 @@ namespace System.Net
                 return new ManagedNtlmNegotiateAuthenticationPal(serverOptions);
             }
 
+            private static void ZeroAndClear(ref byte[]? buffer)
+            {
+                if (buffer is null)
+                {
+                    return;
+                }
+
+                CryptographicOperations.ZeroMemory(buffer);
+                buffer = null;
+            }
+
             public override void Dispose()
             {
                 // Dispose of the state
-                _negotiateMessage = null;
-                _clientSigningKey = null;
-                _serverSigningKey = null;
-                _clientSealingKey = null;
-                _serverSealingKey = null;
+                ZeroAndClear(ref _negotiateMessage);
+                ZeroAndClear(ref _clientSigningKey);
+                ZeroAndClear(ref _serverSigningKey);
+                ZeroAndClear(ref _clientSealingKey);
+                ZeroAndClear(ref _serverSealingKey);
                 _clientSeal?.Dispose();
                 _serverSeal?.Dispose();
                 _clientSeal = null;
@@ -356,9 +367,8 @@ namespace System.Net
                 _clientSequenceNumber = 0;
                 _serverSequenceNumber = 0;
                 _isAuthenticated = false;
-                _negotiateMessage = null;
-                _serverChallenge = null;
-                _challengeMessage = null;
+                ZeroAndClear(ref _serverChallenge);
+                ZeroAndClear(ref _challengeMessage);
                 _remoteIdentity = null;
             }
 
@@ -390,7 +400,9 @@ namespace System.Net
                     _negotiateMessage = new byte[sizeof(NegotiateMessage)];
                     CreateNtlmNegotiateMessage(_negotiateMessage, requiredFlags);
 
-                    outgoingBlob = _negotiateMessage;
+                    // Keep the caller-owned token separate from the internal
+                    // transcript so Dispose can zeroize the latter safely.
+                    outgoingBlob = _negotiateMessage.ToArray();
                     statusCode = NegotiateAuthenticationStatusCode.ContinueNeeded;
                 }
                 else
@@ -510,7 +522,9 @@ namespace System.Net
                 targetInfo.CopyTo(challengeSpan.Slice(sizeof(ChallengeMessage)));
 
                 _negotiateMessage = blob.ToArray();
-                _challengeMessage = challengeBytes;
+                // The challenge is returned to the caller, so retain a
+                // private transcript copy that can be zeroized on Dispose.
+                _challengeMessage = challengeBytes.ToArray();
                 _serverChallenge = challengeBytes.AsSpan(24, ChallengeLength).ToArray();
                 statusCode = NegotiateAuthenticationStatusCode.ContinueNeeded;
                 return challengeBytes;

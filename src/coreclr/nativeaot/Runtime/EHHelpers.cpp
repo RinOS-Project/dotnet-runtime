@@ -360,6 +360,11 @@ static uintptr_t UnwindSimpleHelperToCaller(
 #endif
 #elif defined(HOST_LOONGARCH64) || defined(HOST_RISCV64)
     uintptr_t adjustedFaultingIP = pContext->GetRa();
+#elif defined(TARGET_WASM) || defined(HOST_WASM)
+    // WASM has no native return-address register or helper stack layout to
+    // unwind.  Preserve the context and report an unknown caller IP through
+    // the existing zero sentinel instead of aborting the exception path.
+    uintptr_t adjustedFaultingIP = 0;
 #else
     uintptr_t adjustedFaultingIP = 0; // initializing to make the compiler happy
     PORTABILITY_ASSERT("UnwindSimpleHelperToCaller");

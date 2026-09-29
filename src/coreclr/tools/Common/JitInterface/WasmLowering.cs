@@ -9,6 +9,7 @@ using ILCompiler;
 using ILCompiler.DependencyAnalysis.Wasm;
 
 using Internal.TypeSystem;
+using Internal.TypeSystem.Interop;
 
 namespace Internal.JitInterface
 {
@@ -588,7 +589,7 @@ namespace Internal.JitInterface
         {
             if (!flags.HasFlag(LoweringFlags.IsUnmanagedCallersOnly) && signature.Flags.HasFlag(MethodSignatureFlags.UnmanagedCallingConvention))
             {
-                flags = flags | LoweringFlags.IsUnmanagedCallersOnly;
+                flags |= LoweringFlags.IsUnmanagedCallersOnly;
             }
 
             TypeDesc returnType = signature.ReturnType;
@@ -628,7 +629,7 @@ namespace Internal.JitInterface
                     returnContext.CacheReturnStructBySize(returnType);
                     if (!TryGetMultiSegmentLayout(returnType, out _, out _))
                     {
-                        int returnAlignment = CorInfoImpl.GetClassAlignmentRequirementStatic((DefType)returnType);
+                        int returnAlignment = GetClassAlignmentRequirement((DefType)returnType);
                         returnContext.CacheStruct(returnType, returnAlignment > 8);
                     }
                 }
@@ -727,7 +728,7 @@ namespace Internal.JitInterface
                     else
                     {
                         Debug.Assert(paramType is DefType);
-                        int paramAlignment = CorInfoImpl.GetClassAlignmentRequirementStatic((DefType)paramType);
+                        int paramAlignment = GetClassAlignmentRequirement((DefType)paramType);
                         bool requiresAlignedSlot = paramAlignment > 8;
                         sigBuilder.Append(requiresAlignedSlot ? 'A' : 'S');
                         sigBuilder.Append(paramSize);
@@ -754,6 +755,26 @@ namespace Internal.JitInterface
                 : new([LowerType(loweredReturnType)]);
 
             return new WasmSignature(new WasmFuncType(ps, ret), sigBuilder.ToString());
+        }
+
+        // Keep this policy in the common lowering layer so NativeAOT does not depend on the
+        // ReadyToRun/RyuJit CorInfoImpl adapter merely to classify an aggregate's ABI alignment.
+        private static int GetClassAlignmentRequirement(DefType type)
+        {
+            int alignment = type.Context.Target.PointerSize;
+
+            if (type is MetadataType metadataType && !metadataType.IsAutoLayout &&
+                (metadataType.IsSequentialLayout || MarshalUtils.IsBlittableType(metadataType)))
+            {
+                alignment = metadataType.InstanceFieldAlignment.AsInt;
+            }
+
+            if (type.Context.Target.SupportsAlign8 && alignment < 8 && type.RequiresAlign8())
+            {
+                alignment = 8;
+            }
+
+            return alignment;
         }
     }
 }

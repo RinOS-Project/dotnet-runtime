@@ -112,25 +112,21 @@ void ExecuteHandlerOnCustomStack(int code, siginfo_t *siginfo, void *context, si
 // satisfy any residual references.
 extern "C" int unw_getcontext(int)
 {
-    _ASSERT(!"unw_getcontext not implemented on wasm");
     return -1;
 }
 
 extern "C" int unw_init_local(int, int)
 {
-    _ASSERT(!"unw_init_local not implemented on wasm");
     return -1;
 }
 
 extern "C" int unw_step(int)
 {
-    _ASSERT(!"unw_step not implemented on wasm");
     return -1;
 }
 
 extern "C" int unw_is_signal_frame(int)
 {
-    _ASSERT(!"unw_is_signal_frame not implemented on wasm");
     return -1;
 }
 #endif // TARGET_BROWSER
@@ -139,7 +135,6 @@ extern "C" int unw_is_signal_frame(int)
 
 extern "C" int pthread_setschedparam(pthread_t, int, const struct sched_param *)
 {
-    _ASSERT(!"pthread_setschedparam not implemented on wasm");
     return ENOTSUP;
 }
 
@@ -155,7 +150,6 @@ extern "C" BOOL CONTEXT_GetRegisters(DWORD processId, LPCONTEXT lpContext)
     {
         memset(lpContext, 0, sizeof(*lpContext));
     }
-    _ASSERT(!"CONTEXT_GetRegisters not implemented on wasi");
     return FALSE;
 }
 
@@ -166,7 +160,6 @@ void CONTEXTToNativeContext(CONST CONTEXT *lpContext, native_context_t *native)
     {
         memset(native, 0, sizeof(*native));
     }
-    _ASSERT(!"CONTEXTToNativeContext not implemented on wasi");
 }
 
 void CONTEXTFromNativeContext(const native_context_t *native, LPCONTEXT lpContext,
@@ -178,18 +171,17 @@ void CONTEXTFromNativeContext(const native_context_t *native, LPCONTEXT lpContex
     {
         memset(lpContext, 0, sizeof(*lpContext));
     }
-    _ASSERT(!"CONTEXTFromNativeContext not implemented on wasi");
 }
 
 LPVOID GetNativeContextPC(const native_context_t *context)
 {
-    _ASSERT(!"GetNativeContextPC not implemented on wasi");
+    (void)context;
     return nullptr;
 }
 
 LPVOID GetNativeContextSP(const native_context_t *context)
 {
-    _ASSERT(!"GetNativeContextSP not implemented on wasi");
+    (void)context;
     return nullptr;
 }
 
@@ -198,7 +190,6 @@ DWORD CONTEXTGetExceptionCodeForSignal(const siginfo_t *siginfo,
 {
     (void)siginfo;
     (void)context;
-    _ASSERT(!"CONTEXTGetExceptionCodeForSignal not implemented on wasi");
     return 0;
 }
 
@@ -299,7 +290,6 @@ extern "C" PALIMPORT BOOL PALAPI
 PAL_VirtualUnwind(CONTEXT *context)
 {
     (void)context;
-    _ASSERT(!"PAL_VirtualUnwind not implemented on wasi");
     return FALSE;
 }
 
@@ -337,7 +327,6 @@ GetThreadContext(IN HANDLE hThread, IN OUT LPCONTEXT lpContext)
     {
         memset(lpContext, 0, sizeof(*lpContext));
     }
-    _ASSERT(!"GetThreadContext not implemented on wasi");
     return FALSE;
 }
 

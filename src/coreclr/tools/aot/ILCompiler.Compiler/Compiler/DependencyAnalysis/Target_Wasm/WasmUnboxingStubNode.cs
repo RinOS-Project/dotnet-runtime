@@ -11,7 +11,8 @@ namespace ILCompiler.DependencyAnalysis
     {
         protected override void EmitCode(NodeFactory factory, ref WasmEmitter encoder, bool relocsOnly)
         {
-            throw new NotImplementedException();
+            throw new NotSupportedException(
+                "NativeAOT WASM unboxing stub emission requires the WASM function-body/object-writer ABI");
         }
     }
 }

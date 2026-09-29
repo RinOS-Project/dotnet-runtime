@@ -11,12 +11,14 @@ namespace ILCompiler.DependencyAnalysis
     {
         protected override void EmitCode(NodeFactory factory, ref WasmEmitter encoder, bool relocsOnly)
         {
-            throw new NotImplementedException();
+            throw new NotSupportedException(
+                "NativeAOT WASM ReadyToRun generic helper emission requires the WASM function-body/object-writer ABI");
         }
 
         protected virtual void EmitLoadGenericContext(NodeFactory factory, ref WasmEmitter encoder, bool relocsOnly)
         {
-            throw new NotImplementedException();
+            throw new NotSupportedException(
+                "NativeAOT WASM generic context loading requires the WASM function-body/object-writer ABI");
         }
     }
 
@@ -24,7 +26,8 @@ namespace ILCompiler.DependencyAnalysis
     {
         protected override void EmitLoadGenericContext(NodeFactory factory, ref WasmEmitter encoder, bool relocsOnly)
         {
-            throw new NotImplementedException();
+            throw new NotSupportedException(
+                "NativeAOT WASM generic type lookup requires the WASM function-body/object-writer ABI");
         }
     }
 }

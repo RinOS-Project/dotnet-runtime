@@ -42,11 +42,41 @@ namespace System.Runtime
 {
     internal static class Constants
     {
+        private static int RequirePositive(int value)
+        {
+            if (value <= 0)
+            {
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
+
+            return value;
+        }
+
+        private static uint ComputePageSize()
+        {
+            ulong codeBytes = (ulong)ThunkCodeSize * (ulong)NumThunksPerBlock;
+            ulong dataBytes = (ulong)ThunkDataSize * (ulong)NumThunksPerBlock + (ulong)IntPtr.Size;
+            ulong required = Math.Max(codeBytes, dataBytes);
+            if (required == 0 || required > int.MaxValue)
+            {
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
+
+            uint pageSize = BitOperations.RoundUpToPowerOf2((uint)required);
+            if (pageSize == 0)
+            {
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
+
+            return pageSize;
+        }
+
         public static readonly int ThunkDataSize = 2 * IntPtr.Size;
-        public static readonly int ThunkCodeSize = RuntimeImports.RhpGetThunkSize();
-        public static readonly int NumThunksPerBlock = RuntimeImports.RhpGetNumThunksPerBlock();
-        public static readonly int NumThunkBlocksPerMapping = RuntimeImports.RhpGetNumThunkBlocksPerMapping();
-        public static readonly uint PageSize = BitOperations.RoundUpToPowerOf2((uint)Math.Max(ThunkCodeSize * NumThunksPerBlock, ThunkDataSize * NumThunksPerBlock + IntPtr.Size));
+        public static readonly int ThunkCodeSize = RequirePositive(RuntimeImports.RhpGetThunkSize());
+        public static readonly int NumThunksPerBlock = RequirePositive(RuntimeImports.RhpGetNumThunksPerBlock());
+        public static readonly int NumThunkBlocksPerMapping = RequirePositive(RuntimeImports.RhpGetNumThunkBlocksPerMapping());
+        public static readonly int ThunkBlockSize = RequirePositive(RuntimeImports.RhpGetThunkBlockSize());
+        public static readonly uint PageSize = ComputePageSize();
         public static readonly nuint PageSizeMask = PageSize - 1;
     }
 
@@ -84,12 +114,22 @@ namespace System.Runtime
 
         private unsafe ThunksHeap(IntPtr commonStubAddress)
         {
+            if (commonStubAddress == IntPtr.Zero)
+            {
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
+
             _commonStubAddress = commonStubAddress;
 
             _allocatedBlocks = new AllocatedBlock();
 
             IntPtr thunkStubsBlock = ThunkBlocks.GetNewThunksBlock();
             IntPtr thunkDataBlock = RuntimeImports.RhpGetThunkDataBlockAddress(thunkStubsBlock);
+
+            if (thunkDataBlock == IntPtr.Zero)
+            {
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
 
             // Address of the first thunk data cell should be at the beginning of the thunks data block (page-aligned)
             Debug.Assert(((nuint)(nint)thunkDataBlock % Constants.PageSize) == 0);
@@ -124,6 +164,11 @@ namespace System.Runtime
 
             IntPtr thunkStubsBlock = ThunkBlocks.GetNewThunksBlock();
             IntPtr thunkDataBlock = RuntimeImports.RhpGetThunkDataBlockAddress(thunkStubsBlock);
+
+            if (thunkDataBlock == IntPtr.Zero)
+            {
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
 
             // Address of the first thunk data cell should be at the beginning of the thunks data block (page-aligned)
             Debug.Assert(((nuint)(nint)thunkDataBlock % Constants.PageSize) == 0);
@@ -179,7 +224,18 @@ namespace System.Runtime
             Debug.Assert((thunkIndex % Constants.ThunkDataSize) == 0);
             thunkIndex /= Constants.ThunkDataSize;
 
-            IntPtr thunkAddress = RuntimeImports.RhpGetThunkStubsBlockAddress(nextAvailableThunkPtr) + thunkIndex * Constants.ThunkCodeSize;
+            IntPtr thunkStubsBlock = RuntimeImports.RhpGetThunkStubsBlockAddress(nextAvailableThunkPtr);
+            if (thunkStubsBlock == IntPtr.Zero)
+            {
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
+
+            IntPtr thunkAddress = thunkStubsBlock + thunkIndex * Constants.ThunkCodeSize;
+
+            if (thunkAddress == IntPtr.Zero)
+            {
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
 
             return SetThumbBit(thunkAddress);
         }
@@ -242,6 +298,9 @@ namespace System.Runtime
 
             // Compute the address of the data block that corresponds to the current thunk
             IntPtr thunkDataBlockAddress = RuntimeImports.RhpGetThunkDataBlockAddress((IntPtr)((nint)thunkAddressValue));
+
+            if (thunkDataBlockAddress == IntPtr.Zero)
+                return IntPtr.Zero;
 
             return thunkDataBlockAddress + thunkIndex * Constants.ThunkDataSize;
         }
@@ -324,11 +383,10 @@ namespace System.Runtime
                 // Each mapping consists of multiple blocks of thunk stubs/data pairs. Keep track of those
                 // so that we do not create a new mapping until all blocks in the sections we just mapped are consumed
                 IntPtr currentThunksBlock = nextThunksBlock;
-                int thunkBlockSize = RuntimeImports.RhpGetThunkBlockSize();
                 for (int i = 0; i < Constants.NumThunkBlocksPerMapping; i++)
                 {
                     s_currentlyMappedThunkBlocks[i] = currentThunksBlock;
-                    currentThunksBlock += thunkBlockSize;
+                    currentThunksBlock += Constants.ThunkBlockSize;
                 }
                 s_currentlyMappedThunkBlocksIndex = 1;
             }

@@ -56,8 +56,11 @@ BOOL ETW::GCLog::ShouldTrackMovementForEtw()
 
 BOOL ETW::GCLog::ShouldWalkStaticsAndCOMForEtw()
 {
-    // @TODO
-    return false;
+    // NativeAOT does not provide a COM/RCW or static-root enumerator to this
+    // ETW owner. Keep the capability probe false until that owner and its
+    // root identity contract exist; advertising the heap walk would otherwise
+    // make WalkStaticsAndCOMForETW look successful while emitting no roots.
+    return FALSE;
 }
 
 // Batches the list of moved/surviving references for the GCBulkMovedObjectRanges /
@@ -478,6 +481,9 @@ HRESULT ETW::GCLog::ForceGCForDiagnostics()
 
 void ETW::GCLog::WalkStaticsAndCOMForETW()
 {
+    // Deliberately empty: the NativeAOT runtime has no COM/RCW or static-root
+    // enumeration owner. ShouldWalkStaticsAndCOMForEtw() must remain false so
+    // this unsupported path is never reported as a completed heap walk.
 }
 
 // Holds state that batches of roots, nodes, edges, and types as the GC walks the heap

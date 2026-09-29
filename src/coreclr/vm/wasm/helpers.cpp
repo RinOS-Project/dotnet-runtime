@@ -688,17 +688,21 @@ extern "C" PCODE CID_VirtualOpenDelegateDispatch(TransitionBlock * pTransitionBl
 
 EXTERN_C void JIT_WriteBarrier_End()
 {
-    PORTABILITY_ASSERT("JIT_WriteBarrier_End is not implemented on wasm");
+    // This symbol is only the range marker paired with JIT_WriteBarrier.  It
+    // is inspected by exception/diagnostic source code and is never an
+    // executable write-barrier entry point on WASM.
 }
 
 EXTERN_C void JIT_CheckedWriteBarrier_End()
 {
-    PORTABILITY_ASSERT("JIT_CheckedWriteBarrier_End is not implemented on wasm");
+    // Range marker only; the portable write-barrier implementation owns the
+    // actual helper and does not execute this sentinel.
 }
 
 EXTERN_C void JIT_StackProbe_End()
 {
-    PORTABILITY_ASSERT("JIT_StackProbe_End is not implemented on wasm");
+    // Range marker only.  Keep the symbol addressable without turning a
+    // diagnostic range query into an unsupported-operation abort.
 }
 
 EXTERN_C VOID STDCALL ResetCurrentContext()

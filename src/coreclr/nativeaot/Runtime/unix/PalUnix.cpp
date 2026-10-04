@@ -28,6 +28,7 @@
 #include "RhConfig.h"
 
 #include <unistd.h>
+#include <stdint.h>
 #include <minipal/cpucount.h>
 #include <sched.h>
 #include <sys/mman.h>
@@ -685,13 +686,53 @@ UInt32_BOOL PalAllocateThunksFromTemplate(HANDLE hTemplateModule, uint32_t templ
 
     return UInt32_TRUE;
 #else
-    // Non-Apple UNIX has no template-mapping owner in this NativeAOT build.
-    // Do not leave the output uninitialized or fall through after an assert:
-    // the caller must observe an explicit unsupported result.
-    UNREFERENCED_PARAMETER(hTemplateModule);
-    UNREFERENCED_PARAMETER(templateRva);
-    UNREFERENCED_PARAMETER(templateSize);
-    return UInt32_FALSE;
+    // Keep the code and writable-data halves at the same relative offset as in
+    // the template. Copy the code into a private mapping, then make only its
+    // half executable so the mapping never has a writable executable alias.
+    if (hTemplateModule == nullptr || templateSize == 0 ||
+        templateSize > SIZE_MAX / 2 ||
+        (templateSize % OS_PAGE_SIZE) != 0)
+    {
+        return UInt32_FALSE;
+    }
+
+    uintptr_t moduleBase = (uintptr_t)hTemplateModule;
+    if ((uintptr_t)templateRva > UINTPTR_MAX - moduleBase)
+    {
+        return UInt32_FALSE;
+    }
+    uintptr_t templateAddress = moduleBase + (uintptr_t)templateRva;
+    if (templateSize > UINTPTR_MAX - templateAddress)
+    {
+        return UInt32_FALSE;
+    }
+
+    size_t mappingSize = templateSize * 2;
+    // Start with an executable mapping because some hardened UNIX kernels only
+    // allow execute permission on mappings that were created executable. Drop
+    // execute permission before writing any template bytes.
+    void* mapping = PalVirtualAlloc(mappingSize, PAGE_EXECUTE_READ);
+    if (mapping == nullptr)
+    {
+        return UInt32_FALSE;
+    }
+
+    if (!PalVirtualProtect(mapping, mappingSize, PAGE_READWRITE))
+    {
+        (void)munmap(mapping, mappingSize);
+        return UInt32_FALSE;
+    }
+
+    memcpy(mapping, (const void*)templateAddress, templateSize);
+    if (!PalVirtualProtect(mapping, templateSize, PAGE_EXECUTE_READ))
+    {
+        PalVirtualFree(mapping, mappingSize);
+        return UInt32_FALSE;
+    }
+
+    PalFlushInstructionCache(mapping, templateSize);
+    *newThunksOut = mapping;
+    return UInt32_TRUE;
 #endif
 }
 
@@ -707,11 +748,16 @@ UInt32_BOOL PalFreeThunksFromTemplate(void *pBaseAddress, size_t templateSize)
 
     return ret == KERN_SUCCESS ? UInt32_TRUE : UInt32_FALSE;
 #else
-    // Keep the unsupported template owner fail-closed instead of invoking an
-    // assertion with no return value in release builds.
-    UNREFERENCED_PARAMETER(pBaseAddress);
-    UNREFERENCED_PARAMETER(templateSize);
-    return UInt32_FALSE;
+    if (pBaseAddress == nullptr || templateSize == 0 ||
+        templateSize > SIZE_MAX / 2 ||
+        (templateSize % OS_PAGE_SIZE) != 0)
+    {
+        return UInt32_FALSE;
+    }
+
+    return munmap(pBaseAddress, templateSize * 2) == 0
+               ? UInt32_TRUE
+               : UInt32_FALSE;
 #endif
 }
 #endif // !FEATURE_PORTABLE_HELPERS && !FEATURE_RX_THUNKS

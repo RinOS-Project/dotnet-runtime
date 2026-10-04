@@ -36,14 +36,28 @@ TypeManager * TypeManager::Create(HANDLE osModule, void * pModuleHeader, void** 
         (pReadyToRunHeader->MinorVersion != ReadyToRunHeaderConstants::CurrentMinorVersion))
         return nullptr;
 
+    if (pReadyToRunHeader->EntrySize != sizeof(ModuleInfoRow))
+        return nullptr;
+
     return new (nothrow) TypeManager(osModule, pReadyToRunHeader, pClasslibFunctions, nClasslibFunctions);
 }
 
 TypeManager::TypeManager(HANDLE osModule, ReadyToRunHeader * pHeader, void** pClasslibFunctions, uint32_t nClasslibFunctions)
     : m_osModule(osModule), m_pHeader(pHeader),
+      m_sectionsSorted(true),
       m_pClasslibFunctions(pClasslibFunctions), m_nClasslibFunctions(nClasslibFunctions)
 {
     int length;
+    ModuleInfoRow* pModuleInfoRows = (ModuleInfoRow*)(m_pHeader + 1);
+    for (int i = 1; i < m_pHeader->NumberOfSections; i++)
+    {
+        if (pModuleInfoRows[i - 1].SectionId >= pModuleInfoRows[i].SectionId)
+        {
+            m_sectionsSorted = false;
+            break;
+        }
+    }
+
     m_pStaticsGCDataSection = (uint8_t*)GetModuleSection(ReadyToRunSectionType::GCStaticRegion, &length);
     m_pThreadStaticsDataSection = (uint8_t*)GetModuleSection(ReadyToRunSectionType::ThreadStaticRegion, &length);
 }
@@ -54,7 +68,31 @@ void * TypeManager::GetModuleSection(ReadyToRunSectionType sectionId, int * leng
 
     ASSERT(m_pHeader->EntrySize == sizeof(ModuleInfoRow));
 
-    // TODO: Binary search
+    if (m_sectionsSorted)
+    {
+        // ReadyToRunHeaderNode emits section rows sorted by ID.
+        int low = 0;
+        int high = m_pHeader->NumberOfSections;
+        while (low < high)
+        {
+            int middle = low + (high - low) / 2;
+            ModuleInfoRow* pCurrent = pModuleInfoRows + middle;
+            if ((int32_t)sectionId == pCurrent->SectionId)
+            {
+                *length = pCurrent->Length;
+                return pCurrent->Start;
+            }
+            if (pCurrent->SectionId < (int32_t)sectionId)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+        *length = 0;
+        return nullptr;
+    }
+
+    // Preserve lookup behavior for externally produced headers without the
+    // ordering emitted by the supported NativeAOT compiler.
     for (int i = 0; i < m_pHeader->NumberOfSections; i++)
     {
         ModuleInfoRow * pCurrent = pModuleInfoRows + i;

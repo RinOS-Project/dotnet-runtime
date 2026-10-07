@@ -189,3 +189,70 @@ int32_t SystemNative_GetProcessCapabilities(uint64_t* capabilities)
     return -1;
 #endif
 }
+
+int32_t SystemNative_GetRinOSCredentialIdentity(char* identity, int32_t* capacity)
+{
+#if defined(TARGET_RINOS)
+    __rin_credentials_v1 credentials;
+    char value[512];
+    int32_t written;
+    int32_t offset;
+    uint32_t index;
+
+    if (identity == NULL || capacity == NULL || *capacity <= 0)
+    {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (__rin_credentials_get(&credentials) != 0)
+    {
+        errno = EIO;
+        return -1;
+    }
+
+    written = snprintf(
+        value, sizeof(value),
+        "rinos-cred-v1:uid=%u;gid=%u;euid=%u;egid=%u;caps=%016llx;"
+        "personality=%u;flags=%u;groups=",
+        credentials.uid, credentials.gid, credentials.effective_uid,
+        credentials.effective_gid,
+        (unsigned long long)credentials.capabilities,
+        credentials.personality, credentials.flags);
+    if (written < 0 || written >= (int32_t)sizeof(value))
+    {
+        errno = EIO;
+        return -1;
+    }
+
+    offset = written;
+    for (index = 0; index < credentials.group_count; ++index)
+    {
+        int32_t appended = snprintf(
+            value + offset, sizeof(value) - (size_t)offset,
+            "%s%u", index == 0 ? "" : ",", credentials.groups[index]);
+        if (appended < 0 || appended >= (int32_t)sizeof(value) - offset)
+        {
+            errno = EIO;
+            return -1;
+        }
+        offset += appended;
+    }
+
+    if (*capacity <= offset)
+    {
+        *capacity = offset + 1;
+        errno = ERANGE;
+        return -1;
+    }
+
+    memcpy(identity, value, (size_t)offset + 1u);
+    *capacity = offset + 1;
+    return 0;
+#else
+    (void)identity;
+    (void)capacity;
+    errno = ENOTSUP;
+    return -1;
+#endif
+}

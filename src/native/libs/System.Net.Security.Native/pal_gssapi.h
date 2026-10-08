@@ -40,6 +40,11 @@ typedef enum
 #define PAL_GSS_S_UNAVAILABLE UINT32_C(16u << 16)
 #define PAL_GSS_S_CONTEXT_EXPIRED UINT32_C(12u << 16)
 #define PAL_GSS_S_FAILURE UINT32_C(13u << 16)
+/* RFC 2743/2744 supplementary information: the mechanism accepted the
+ * framing but identified a replayed token.  This is a bit in the major
+ * status, not a routine error, and may accompany GSS_S_FAILURE during
+ * context establishment. */
+#define PAL_GSS_S_DUPLICATE_TOKEN UINT32_C(1u << 24)
 
 typedef enum
 {

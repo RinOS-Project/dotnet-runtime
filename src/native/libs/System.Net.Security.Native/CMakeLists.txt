@@ -11,10 +11,14 @@ if (CLR_CMAKE_TARGET_RINOS)
     # RinOS TLS is provided by System.Security.Cryptography.Native through
     # the product RinTLS adapter.  This library is the separate GSSAPI PAL
     # used by Negotiate/Kerberos/NTLM; do not discover or link a host GSS
-    # implementation while producing a target RLL.  The target PAL returns a
-    # stable unsupported status so managed callers fail closed.
+    # implementation while producing a target RLL.  The owner client below
+    # obtains only an opaque handle from the authenticated RinOS keyring; the
+    # RFC 4120/4121 token provider remains a separate capability.
     set(NATIVEGSS_SOURCES
         pal_gssapi_rinos.c
+        rinos_kerberos_credential_owner.c
+        "${RINOS_REPO_ROOT}/public-base/libs/rinruntime/src/rin_keyring_client.c"
+        "${RINOS_REPO_ROOT}/public-base/libs/rinruntime/src/service.c"
     )
 else()
     include(${CMAKE_CURRENT_LIST_DIR}/extra_libs.cmake)
@@ -41,6 +45,19 @@ add_library(System.Net.Security.Native-Static
     STATIC
     ${NATIVEGSS_SOURCES}
 )
+
+if (CLR_CMAKE_TARGET_RINOS)
+    target_include_directories(System.Net.Security.Native-Static PRIVATE
+        "${RINOS_REPO_ROOT}/public-base/RinOS-SDK/include"
+        "${RINOS_REPO_ROOT}/public-base/libs/rinruntime/include"
+    )
+    if (GEN_SHARED_LIB)
+        target_include_directories(System.Net.Security.Native PRIVATE
+            "${RINOS_REPO_ROOT}/public-base/RinOS-SDK/include"
+            "${RINOS_REPO_ROOT}/public-base/libs/rinruntime/include"
+        )
+    endif()
+endif()
 
 set_target_properties(System.Net.Security.Native-Static PROPERTIES OUTPUT_NAME System.Net.Security.Native CLEAN_DIRECT_OUTPUT 1)
 

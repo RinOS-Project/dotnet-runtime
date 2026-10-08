@@ -216,8 +216,25 @@ NESTED_END RhpGcPollRare, _TEXT
 // GC Stress Hijack targets
 //
 LEAF_ENTRY RhpGcStressHijack, _TEXT
-    // NYI
-    int 3
+        FixupHijackedCallstack
+        mov         r10d, DEFAULT_FRAME_SAVE_FLAGS + PTFF_SAVE_RAX + PTFF_SAVE_RCX + PTFF_SAVE_RDX + PTFF_SAVE_R8 + PTFF_SAVE_R9
+        jmp         C_FUNC(RhpGcStressProbe)
 LEAF_END RhpGcStressHijack, _TEXT
+
+//
+// Worker for GC stress probes.  The hijack fixup leaves the current Thread*
+// in r11, so use the SysV probe-frame convention already used by RhpWaitForGC.
+// The frame records all volatile registers that can contain managed refs and
+// publishes the deferred transition frame before entering the collector.
+//
+NESTED_ENTRY RhpGcStressProbe, _TEXT, NoHandler
+        PUSH_PROBE_FRAME r11, rax, r10
+        END_PROLOGUE
+
+        call        C_FUNC(RhpStressGc)
+
+        POP_PROBE_FRAME
+        ret
+NESTED_END RhpGcStressProbe, _TEXT
 
 #endif  // FEATURE_GC_STRESS

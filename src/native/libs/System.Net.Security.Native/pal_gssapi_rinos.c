@@ -194,6 +194,8 @@ static uint32_t rinos_gss_map_provider_status(uint32_t providerStatus)
             return PAL_GSS_CONTINUE_NEEDED;
         case RIN_AUTH_PROVIDER_CONTEXT_EXPIRED:
             return PAL_GSS_S_CONTEXT_EXPIRED;
+        case RIN_AUTH_PROVIDER_BAD_BINDINGS:
+            return PAL_GSS_S_BAD_BINDINGS;
         case RIN_AUTH_PROVIDER_UNAVAILABLE:
         case RIN_AUTH_PROVIDER_ABI_MISMATCH:
         default:

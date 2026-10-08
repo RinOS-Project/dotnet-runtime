@@ -192,6 +192,8 @@ static uint32_t rinos_gss_map_provider_status(uint32_t providerStatus)
             return RINOS_GSS_S_COMPLETE;
         case RIN_AUTH_PROVIDER_CONTINUE_NEEDED:
             return PAL_GSS_CONTINUE_NEEDED;
+        case RIN_AUTH_PROVIDER_CONTEXT_EXPIRED:
+            return PAL_GSS_S_CONTEXT_EXPIRED;
         case RIN_AUTH_PROVIDER_UNAVAILABLE:
         case RIN_AUTH_PROVIDER_ABI_MISMATCH:
         default:
@@ -273,7 +275,7 @@ static uint32_t rinos_gss_finish_provider_buffer(
                                      outBuffer->data, outBuffer->length);
         }
         rinos_gss_clear_buffer(outBuffer);
-        return rinos_gss_unavailable(minorStatus);
+        return rinos_gss_local_error(minorStatus, mappedStatus);
     }
 
     if (outBuffer == NULL ||

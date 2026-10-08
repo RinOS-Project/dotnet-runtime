@@ -91,6 +91,10 @@ static uint32_t provider_status_from_owner(uint32_t status,
         if (minor_status != NULL) *minor_status = 0u;
         return RIN_AUTH_PROVIDER_OK;
     }
+    if (status == RIN_KERBEROS_CREDENTIAL_OWNER_CONTEXT_EXPIRED) {
+        if (minor_status != NULL) *minor_status = 0u;
+        return RIN_AUTH_PROVIDER_CONTEXT_EXPIRED;
+    }
     return provider_unavailable(minor_status);
 }
 

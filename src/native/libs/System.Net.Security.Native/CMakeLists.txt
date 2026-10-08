@@ -47,11 +47,20 @@ add_library(System.Net.Security.Native-Static
 )
 
 if (CLR_CMAKE_TARGET_RINOS)
+    # Keep the owner client in the static archive when the PAL object is
+    # selected.  The provider/owner capability is still validated at runtime;
+    # this only prevents a weak-reference-only archive extraction hole.
+    target_compile_definitions(System.Net.Security.Native-Static PRIVATE
+        RINOS_KERBEROS_OWNER_LINKED=1
+    )
     target_include_directories(System.Net.Security.Native-Static PRIVATE
         "${RINOS_REPO_ROOT}/public-base/RinOS-SDK/include"
         "${RINOS_REPO_ROOT}/public-base/libs/rinruntime/include"
     )
     if (GEN_SHARED_LIB)
+        target_compile_definitions(System.Net.Security.Native PRIVATE
+            RINOS_KERBEROS_OWNER_LINKED=1
+        )
         target_include_directories(System.Net.Security.Native PRIVATE
             "${RINOS_REPO_ROOT}/public-base/RinOS-SDK/include"
             "${RINOS_REPO_ROOT}/public-base/libs/rinruntime/include"

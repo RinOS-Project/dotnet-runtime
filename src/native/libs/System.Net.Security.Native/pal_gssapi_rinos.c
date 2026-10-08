@@ -3,10 +3,12 @@
 
 /*
  * RinOS deliberately has no host GSSAPI/Kerberos dependency.  TLS is owned
- * by the product RinTLS adapter; this PAL is only the native boundary for
- * Negotiate/Kerberos/NTLM.  Keep every exported entry point present so the
- * managed interop surface resolves deterministically, then report the
- * product's unsupported status without dereferencing caller-owned handles.
+ * by the product RinTLS adapter; this PAL is the native boundary for the
+ * product Negotiate/Kerberos/NTLM provider.  The RinOS target also links the
+ * process-local Kerberos owner client below the PAL, while the RFC 4120/4121
+ * token provider remains a separate capability.  Keep every exported entry
+ * point present so the managed interop surface resolves deterministically,
+ * then report unsupported status without dereferencing caller-owned handles.
  */
 
 #include "pal_gssapi.h"
@@ -27,8 +29,17 @@
 extern const RinAuthProviderV1* rin_auth_provider_get_v1(void)
     RINOS_AUTH_PROVIDER_WEAK;
 
+#if defined(RINOS_KERBEROS_OWNER_LINKED)
+/* The target static archive must retain the owner object: a strong reference
+ * from the PAL makes the archive linker extract it when the PAL is selected.
+ * Host contract builds intentionally omit this definition and use the weak
+ * boundary below so the PAL remains independently testable. */
+extern const RinKerberosCredentialOwnerV1*
+    rin_kerberos_credential_owner_get_v1(void);
+#else
 extern const RinKerberosCredentialOwnerV1*
     rin_kerberos_credential_owner_get_v1(void) RINOS_AUTH_PROVIDER_WEAK;
+#endif
 
 static int rinos_gss_kerberos_owner_valid(const RinAuthProviderV1* provider)
 {
@@ -42,10 +53,12 @@ static int rinos_gss_kerberos_owner_valid(const RinAuthProviderV1* provider)
     /* A Kerberos capability without both real default-credential owners is
      * an invalid advertisement.  In particular, the PAL must not turn a
      * provider-local success stub into DefaultCredentials. */
+#if !defined(RINOS_KERBEROS_OWNER_LINKED)
     if (rin_kerberos_credential_owner_get_v1 == NULL)
     {
         return 0;
     }
+#endif
 
     owner = rin_kerberos_credential_owner_get_v1();
     return owner != NULL &&

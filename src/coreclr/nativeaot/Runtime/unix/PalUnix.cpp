@@ -648,6 +648,24 @@ UInt32_BOOL PalAllocateThunksFromTemplate(HANDLE hTemplateModule, uint32_t templ
 
     *newThunksOut = nullptr;
 
+    if (hTemplateModule == nullptr || templateSize == 0 ||
+        templateSize > SIZE_MAX / 2 ||
+        (templateSize % OS_PAGE_SIZE) != 0)
+    {
+        return UInt32_FALSE;
+    }
+
+    uintptr_t moduleBase = (uintptr_t)hTemplateModule;
+    if ((uintptr_t)templateRva > UINTPTR_MAX - moduleBase)
+    {
+        return UInt32_FALSE;
+    }
+    uintptr_t templateAddress = moduleBase + (uintptr_t)templateRva;
+    if (templateSize > UINTPTR_MAX - templateAddress)
+    {
+        return UInt32_FALSE;
+    }
+
 #ifdef TARGET_APPLE
     vm_address_t addr, taddr;
     vm_prot_t prot, max_prot;
@@ -669,7 +687,7 @@ UInt32_BOOL PalAllocateThunksFromTemplate(HANDLE hTemplateModule, uint32_t templ
     {
         ret = vm_remap(
             mach_task_self(), &addr, templateSize, 0, VM_FLAGS_FIXED | VM_FLAGS_OVERWRITE,
-            mach_task_self(), ((vm_address_t)hTemplateModule + templateRva), FALSE, &prot, &max_prot, VM_INHERIT_SHARE);
+            mach_task_self(), (vm_address_t)templateAddress, FALSE, &prot, &max_prot, VM_INHERIT_SHARE);
     } while (ret == KERN_ABORTED);
 
     if (ret != KERN_SUCCESS)
@@ -689,24 +707,6 @@ UInt32_BOOL PalAllocateThunksFromTemplate(HANDLE hTemplateModule, uint32_t templ
     // Keep the code and writable-data halves at the same relative offset as in
     // the template. Copy the code into a private mapping, then make only its
     // half executable so the mapping never has a writable executable alias.
-    if (hTemplateModule == nullptr || templateSize == 0 ||
-        templateSize > SIZE_MAX / 2 ||
-        (templateSize % OS_PAGE_SIZE) != 0)
-    {
-        return UInt32_FALSE;
-    }
-
-    uintptr_t moduleBase = (uintptr_t)hTemplateModule;
-    if ((uintptr_t)templateRva > UINTPTR_MAX - moduleBase)
-    {
-        return UInt32_FALSE;
-    }
-    uintptr_t templateAddress = moduleBase + (uintptr_t)templateRva;
-    if (templateSize > UINTPTR_MAX - templateAddress)
-    {
-        return UInt32_FALSE;
-    }
-
     size_t mappingSize = templateSize * 2;
     // Start with an executable mapping because some hardened UNIX kernels only
     // allow execute permission on mappings that were created executable. Drop
@@ -738,6 +738,14 @@ UInt32_BOOL PalAllocateThunksFromTemplate(HANDLE hTemplateModule, uint32_t templ
 
 UInt32_BOOL PalFreeThunksFromTemplate(void *pBaseAddress, size_t templateSize)
 {
+    if (pBaseAddress == nullptr || templateSize == 0 ||
+        templateSize > SIZE_MAX / 2 ||
+        (templateSize % OS_PAGE_SIZE) != 0 ||
+        ((uintptr_t)pBaseAddress % OS_PAGE_SIZE) != 0)
+    {
+        return UInt32_FALSE;
+    }
+
 #ifdef TARGET_APPLE
     kern_return_t ret;
 
@@ -748,14 +756,6 @@ UInt32_BOOL PalFreeThunksFromTemplate(void *pBaseAddress, size_t templateSize)
 
     return ret == KERN_SUCCESS ? UInt32_TRUE : UInt32_FALSE;
 #else
-    if (pBaseAddress == nullptr || templateSize == 0 ||
-        templateSize > SIZE_MAX / 2 ||
-        (templateSize % OS_PAGE_SIZE) != 0 ||
-        ((uintptr_t)pBaseAddress % OS_PAGE_SIZE) != 0)
-    {
-        return UInt32_FALSE;
-    }
-
     return munmap(pBaseAddress, templateSize * 2) == 0
                ? UInt32_TRUE
                : UInt32_FALSE;

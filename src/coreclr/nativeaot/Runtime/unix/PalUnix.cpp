@@ -46,6 +46,10 @@
 #include <minipal/memorybarrierprocesswide.h>
 #include <minipal/thread.h>
 
+#if !defined(HOST_WASM)
+#include <unwind.h>
+#endif
+
 #ifdef TARGET_LINUX
 #include <sys/syscall.h>
 #include <link.h>
@@ -1248,8 +1252,59 @@ uint16_t PalCaptureStackBackTrace(uint32_t arg1, uint32_t arg2, void* arg3, uint
 
     *arg4 = backTraceHash;
     return (uint16_t)frameCount;
+#elif !defined(HOST_WASM)
+    // Other hosted UNIX targets use the compiler unwind ABI.  The RinOS
+    // target cannot use that path because its unwind owner is product PAL
+    // state, so it stays on the bounded frame-chain implementation above.
+    // WASM has no native return-address/unwind ABI and remains an explicit
+    // empty result rather than pretending that an interpreter frame is native.
+    if (arg3 == nullptr || arg4 == nullptr || arg2 == 0)
+    {
+        return 0;
+    }
+
+    struct BacktraceState
+    {
+        uint32_t skip;
+        uint32_t limit;
+        uint32_t count;
+        uint32_t hash;
+        void** frames;
+    } state = {arg1, arg2 > UINT16_MAX ? UINT16_MAX : arg2, 0, 0,
+               (void**)arg3};
+
+    auto callback = [](_Unwind_Context* context, void* rawState)
+        -> _Unwind_Reason_Code
+    {
+        BacktraceState* state = (BacktraceState*)rawState;
+        uintptr_t instructionPointer = (uintptr_t)_Unwind_GetIP(context);
+        if (instructionPointer == 0)
+        {
+            return _URC_NO_REASON;
+        }
+        if (state->skip != 0)
+        {
+            --state->skip;
+            return _URC_NO_REASON;
+        }
+        if (state->count >= state->limit)
+        {
+            return _URC_END_OF_STACK;
+        }
+        state->frames[state->count++] = (void*)instructionPointer;
+        state->hash = (state->hash * 33u) ^
+            (uint32_t)instructionPointer ^
+            (uint32_t)(instructionPointer >> 32);
+        return state->count == state->limit ? _URC_END_OF_STACK : _URC_NO_REASON;
+    };
+
+    (void)_Unwind_Backtrace(callback, &state);
+    *arg4 = state.hash;
+    return (uint16_t)state.count;
 #else
-    // UNIXTODO: Implement this function
+    // WASM has no native return-address/unwind ABI.  Keep this capability
+    // explicitly unavailable instead of reading an interpreter frame as a
+    // machine stack.
     return 0;
 #endif
 }

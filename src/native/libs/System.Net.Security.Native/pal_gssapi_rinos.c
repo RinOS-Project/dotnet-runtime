@@ -11,6 +11,7 @@
 
 #include "pal_gssapi.h"
 #include "../../../../../../public-base/RinOS-SDK/include/rin/net/auth_provider_abi.h"
+#include "../../../../../../public-base/RinOS-SDK/include/rin/net/kerberos_credential_owner_abi.h"
 
 #include <stdint.h>
 
@@ -25,6 +26,41 @@
 
 extern const RinAuthProviderV1* rin_auth_provider_get_v1(void)
     RINOS_AUTH_PROVIDER_WEAK;
+
+extern const RinKerberosCredentialOwnerV1*
+    rin_kerberos_credential_owner_get_v1(void) RINOS_AUTH_PROVIDER_WEAK;
+
+static int rinos_gss_kerberos_owner_valid(const RinAuthProviderV1* provider)
+{
+    const RinKerberosCredentialOwnerV1* owner;
+
+    if ((provider->package_mask & RIN_AUTH_PROVIDER_PACKAGE_KERBEROS) == 0u)
+    {
+        return 1;
+    }
+
+    /* A Kerberos capability without both real default-credential owners is
+     * an invalid advertisement.  In particular, the PAL must not turn a
+     * provider-local success stub into DefaultCredentials. */
+    if (rin_kerberos_credential_owner_get_v1 == NULL)
+    {
+        return 0;
+    }
+
+    owner = rin_kerberos_credential_owner_get_v1();
+    return owner != NULL &&
+        owner->struct_size == sizeof(*owner) &&
+        owner->version == RIN_KERBEROS_CREDENTIAL_OWNER_ABI_VERSION &&
+        owner->reserved0 == 0u &&
+        (owner->capability_mask &
+            RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES) ==
+            RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES &&
+        (owner->capability_mask &
+            ~RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES) == 0u &&
+        owner->acquire_session_initiator != NULL &&
+        owner->acquire_acceptor_keytab != NULL &&
+        owner->release_credential != NULL;
+}
 
 static const RinAuthProviderV1* rinos_gss_provider(void)
 {
@@ -62,7 +98,8 @@ static const RinAuthProviderV1* rinos_gss_provider(void)
         provider->verify_mic == NULL ||
         provider->initiate_cred_with_password == NULL ||
         provider->is_ntlm_installed == NULL ||
-        provider->get_user == NULL)
+        provider->get_user == NULL ||
+        !rinos_gss_kerberos_owner_valid(provider))
     {
         return NULL;
     }

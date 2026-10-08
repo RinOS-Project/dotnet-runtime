@@ -96,8 +96,9 @@ static const RinAuthProviderV1* rinos_gss_provider(void)
         provider->unwrap == NULL ||
         provider->get_mic == NULL ||
         provider->verify_mic == NULL ||
-        provider->initiate_cred_with_password == NULL ||
-        provider->is_ntlm_installed == NULL ||
+        ((provider->package_mask & RIN_AUTH_PROVIDER_PACKAGE_NTLM) != 0u &&
+         (provider->initiate_cred_with_password == NULL ||
+          provider->is_ntlm_installed == NULL)) ||
         provider->get_user == NULL ||
         !rinos_gss_kerberos_owner_valid(provider))
     {
@@ -986,7 +987,9 @@ PALEXPORT uint32_t NetSecurityNative_InitiateCredWithPassword(
     }
 
     const RinAuthProviderV1* provider = rinos_gss_provider();
-    if (provider != NULL && rinos_gss_supports_package(provider, (uint32_t)packageType))
+    if (provider != NULL &&
+        provider->initiate_cred_with_password != NULL &&
+        rinos_gss_supports_package(provider, (uint32_t)packageType))
     {
         *outputCredHandle = NULL;
         return rinos_gss_finish_provider_handle(provider, minorStatus,
@@ -1011,6 +1014,7 @@ PALEXPORT uint32_t NetSecurityNative_IsNtlmInstalled(void)
 {
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL &&
+        (provider->is_ntlm_installed != NULL) &&
         (provider->package_mask & RIN_AUTH_PROVIDER_PACKAGE_NTLM) != 0u)
     {
         return provider->is_ntlm_installed(provider->context);

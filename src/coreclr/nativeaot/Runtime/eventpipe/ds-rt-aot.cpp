@@ -7,6 +7,10 @@
 #include <stdlib.h>
 #endif
 
+#ifdef TARGET_RINOS
+#include <unistd.h>
+#endif
+
 #include <sys/types.h>
 
 #ifdef __APPLE__
@@ -98,6 +102,16 @@ aot_ipc_get_process_id_disambiguation_key(
 	*key = seconds_since_epoch;
 
 	return true;
+#elif defined (TARGET_RINOS)
+
+    // RinOS has no procfs start-time file.  Ask the product libc for the
+    // kernel-authenticated namespace generation cookie instead; using a raw
+    // PID here would let a reused PID collide with a previous diagnostic
+    // transport name.
+    if (rin_process_instance_cookie(process_id, key) != 0 || *key == 0)
+        return false;
+    return true;
+
 #elif defined (__linux__)
 
     // Here we read /proc/<pid>/stat file to get the start time for the process.
@@ -164,8 +178,10 @@ ep_on_error:
     ep_exit_error_handler ();
 
 #else
-    // If we don't have /proc, we just return false.
-    DS_LOG_WARNING_0 ("ipc_get_process_id_disambiguation_key was called but is not implemented on this platform!");
+    // If the platform has no process-generation identity source, keep the
+    // diagnostic transport fail-closed rather than deriving identity from a
+    // reusable PID.
+    DS_LOG_WARNING_0 ("ipc_get_process_id_disambiguation_key has no platform identity source");
     return false;
 #endif
 }

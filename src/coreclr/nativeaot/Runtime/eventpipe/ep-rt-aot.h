@@ -12,6 +12,7 @@
 #endif
 
 #include <minipal/utf8.h>
+#include <minipal/time.h>
 
 #include <eventpipe/ep-rt-config.h>
 #ifdef ENABLE_PERFTRACING
@@ -1628,7 +1629,12 @@ ep_rt_thread_set_activity_id (
 }
 
 #undef EP_YIELD_WHILE
-#define EP_YIELD_WHILE(condition) {}//YIELD_WHILE(condition)
+#define EP_YIELD_WHILE(condition) do { \
+    uint32_t switch_count = 0; \
+    while (condition) { \
+        minipal_switch_to_thread (++switch_count); \
+    } \
+} while (0)
 
 /*
  * Volatile.

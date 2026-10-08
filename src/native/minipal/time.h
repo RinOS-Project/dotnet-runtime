@@ -4,6 +4,7 @@
 #ifndef HAVE_MINIPAL_TIME_H
 #define HAVE_MINIPAL_TIME_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -30,6 +31,13 @@ extern "C"
 
     // Return system time in Windows FILETIME precision (100ns since 01 January 1601).
     uint64_t minipal_get_system_time(void);
+
+    // Sleep for the requested number of milliseconds.
+    void minipal_sleep(uint32_t milliseconds);
+
+    // Yield to another thread, periodically sleeping after repeated yields.
+    // Returns whether the OS yield succeeded.
+    bool minipal_switch_to_thread(uint32_t switchCount);
 
 #ifdef __cplusplus
 }

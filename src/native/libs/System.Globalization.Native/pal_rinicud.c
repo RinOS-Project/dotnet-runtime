@@ -1653,39 +1653,22 @@ static int product_percent_positive_pattern(const RinIcuDataLocaleRecord* record
     return separated ? 0 : 1;
 }
 
-static int product_first_day_of_week(const char* region)
+static int product_first_day_of_week(const RinIcuDataLocaleRecord* record)
 {
-    static const char* sunday_regions[] = {
-        "AU", "BR", "CA", "CL", "CO", "HK", "ID", "IN", "JP", "KR", "MX", "MY", "NG", "NZ", "PH", "PT", "SA", "SG", "TH", "TW", "US", "ZA"
-    };
-    static const char* saturday_regions[] = {
-        "IR"
-    };
-    size_t index;
-    if (!region) return -1;
-    if (region[0] == '\0') return 0;
-    for (index = 0u; index < sizeof(sunday_regions) / sizeof(sunday_regions[0]); ++index) {
-        if (strcmp(region, sunday_regions[index]) == 0) return 0;
-    }
-    for (index = 0u; index < sizeof(saturday_regions) / sizeof(saturday_regions[0]); ++index) {
-        if (strcmp(region, saturday_regions[index]) == 0) return 6;
-    }
-    return 1;
+    if (!record || !rin_icu_data_week_data_valid(record->week_data)) return -1;
+    return (int)((record->week_data & RIN_ICU_DATA_WEEK_FIRST_DAY_MASK) >>
+                 RIN_ICU_DATA_WEEK_FIRST_DAY_SHIFT);
 }
 
-static int product_first_week_rule(const char* region)
+static int product_first_week_rule(const RinIcuDataLocaleRecord* record)
 {
-    static const char* first_four_day_regions[] = {
-        "AT", "BE", "BG", "CH", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GB",
-        "GR", "IE", "IS", "IT", "LT", "LU", "NL", "PL", "PT", "RU", "SE", "SK"
-    };
-    size_t index;
-    if (!region) return -1;
-    if (region[0] == '\0') return 0;
-    for (index = 0u; index < sizeof(first_four_day_regions) / sizeof(first_four_day_regions[0]); ++index) {
-        if (strcmp(region, first_four_day_regions[index]) == 0) return 2;
-    }
-    return 0;
+    uint32_t min_days;
+    if (!record || !rin_icu_data_week_data_valid(record->week_data)) return -1;
+    min_days = (record->week_data & RIN_ICU_DATA_WEEK_MIN_DAYS_MASK) >>
+               RIN_ICU_DATA_WEEK_MIN_DAYS_SHIFT;
+    /* .NET's WeekRule enum uses FirstDay=0, FirstFullWeek=1, and
+     * FirstFourDayWeek=2.  CLDR minDays is the authoritative distinction. */
+    return min_days == 1u ? 0 : min_days == 7u ? 1 : min_days >= 4u ? 2 : -1;
 }
 
 static size_t record_field_length(const char* field, size_t capacity)
@@ -2533,7 +2516,7 @@ int32_t GlobalizationNative_GetLocaleInfoInt(const UChar* locale, LocaleNumberDa
             *value = (strcmp(record.region, "US") == 0 || strcmp(record.region, "LR") == 0 || strcmp(record.region, "MM") == 0) ? 1 : 0;
             break;
         case LocaleNumber_FirstDayofWeek:
-            *value = product_first_day_of_week(record.region);
+            *value = product_first_day_of_week(&record);
             if (*value < 0) return 0;
             break;
         case LocaleNumber_FractionalDigitsCount:
@@ -2569,7 +2552,7 @@ int32_t GlobalizationNative_GetLocaleInfoInt(const UChar* locale, LocaleNumberDa
             }
             break;
         case LocaleNumber_FirstWeekOfYear:
-            *value = product_first_week_rule(record.region);
+            *value = product_first_week_rule(&record);
             if (*value < 0) return 0;
             break;
         case LocaleNumber_ReadingLayout:

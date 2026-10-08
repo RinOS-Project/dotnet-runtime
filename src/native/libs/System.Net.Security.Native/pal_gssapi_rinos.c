@@ -310,8 +310,6 @@ static uint32_t rinos_gss_finish_provider_buffer(
         *minorStatus = 0;
     }
 
-    if (minorStatus != NULL && preserve_error_token) *minorStatus = 0;
-
     return mappedStatus;
 }
 
@@ -358,6 +356,8 @@ static uint32_t rinos_gss_finish_provider_context(
 {
     uint32_t mappedStatus = rinos_gss_finish_provider_buffer(
         provider, minorStatus, status, outBuffer);
+    const uint32_t savedMinorStatus =
+        minorStatus != NULL ? *minorStatus : 0u;
 
     /* GSS-API returns a context handle on both COMPLETE and CONTINUE_NEEDED.
      * A provider that reports success without one cannot make progress on a
@@ -413,6 +413,9 @@ static uint32_t rinos_gss_finish_provider_context(
         {
             *isNtlmUsed = 0;
         }
+        /* Context teardown can overwrite minorStatus while releasing the
+         * provider handle. Preserve the original mechanism error details. */
+        if (minorStatus != NULL) *minorStatus = savedMinorStatus;
     }
 
     return mappedStatus;

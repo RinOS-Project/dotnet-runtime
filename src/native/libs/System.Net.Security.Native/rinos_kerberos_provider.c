@@ -28,6 +28,9 @@
 #define RINOS_KERBEROS_CONTEXT_MAGIC UINT32_C(0x31584252)
 #define RINOS_KERBEROS_MAX_PRINCIPAL_SIZE UINT32_C(4096)
 #define RINOS_KERBEROS_GSS_FLAG_SEALED UINT8_C(0x02)
+/* Keep a peer-supplied RFC 4120 error code distinguishable from local
+ * provider diagnostics while preserving every non-negative Int32 code. */
+#define RINOS_KERBEROS_MINOR_PROTOCOL_ERROR UINT32_C(0x80000000)
 
 #if defined(__GNUC__) || defined(__clang__)
 #define RINOS_KERBEROS_WEAK __attribute__((weak))
@@ -151,8 +154,10 @@ static int provider_der_value_bounds(const uint8_t* input, uint32_t size,
     return 1;
 }
 
-static int provider_gss_token_has_framing(const uint8_t* token,
-                                          uint32_t token_size)
+static int provider_gss_token_payload(const uint8_t* token,
+                                      uint32_t token_size,
+                                      const uint8_t** payload_out,
+                                      uint32_t* payload_size_out)
 {
     static const uint8_t kerberos_oid[] = {
         0x2au, 0x86u, 0x48u, 0x86u, 0xf7u,
@@ -164,7 +169,8 @@ static int provider_gss_token_has_framing(const uint8_t* token,
     uint32_t oid_size;
     uint32_t offset;
 
-    if (token == NULL || token_size < 2u || token[0] != 0x60u ||
+    if (payload_out == NULL || payload_size_out == NULL || token == NULL ||
+        token_size < 2u || token[0] != 0x60u ||
         !provider_der_value_bounds(token, token_size, &outer_header,
                                    &outer_size) ||
         outer_header > token_size ||
@@ -180,11 +186,297 @@ static int provider_gss_token_has_framing(const uint8_t* token,
                sizeof(kerberos_oid)) != 0)
         return 0;
     offset += oid_header + oid_size;
-    /* A valid Kerberos GSS token has a two-octet TOK_ID.  Do not interpret
-     * the identifier here: RFC 4121's unknown-TOK_ID KRB-ERROR response is a
-     * service/provider responsibility, not a reason to invent a runtime
-     * success path. */
-    return token_size - offset >= 2u;
+    if (token_size - offset < 2u) return 0;
+    *payload_out = token + offset;
+    *payload_size_out = token_size - offset;
+    return 1;
+}
+
+static int provider_gss_token_has_framing(const uint8_t* token,
+                                          uint32_t token_size)
+{
+    const uint8_t* payload = NULL;
+    uint32_t payload_size = 0u;
+    return provider_gss_token_payload(token, token_size, &payload,
+                                      &payload_size);
+}
+
+typedef struct ProviderDerCursorV1 {
+    const uint8_t* bytes;
+    uint32_t size;
+    uint32_t offset;
+} ProviderDerCursorV1;
+
+static int provider_der_read_tlv(ProviderDerCursorV1* cursor,
+                                 uint8_t expected_tag,
+                                 const uint8_t** value_out,
+                                 uint32_t* value_size_out)
+{
+    uint32_t header_size;
+    uint32_t value_size;
+
+    if (cursor == NULL || value_out == NULL || value_size_out == NULL ||
+        cursor->bytes == NULL || cursor->offset > cursor->size ||
+        cursor->offset == cursor->size ||
+        cursor->bytes[cursor->offset] != expected_tag ||
+        !provider_der_value_bounds(cursor->bytes + cursor->offset,
+                                   cursor->size - cursor->offset,
+                                   &header_size, &value_size))
+        return 0;
+    *value_out = cursor->bytes + cursor->offset + header_size;
+    *value_size_out = value_size;
+    cursor->offset += header_size + value_size;
+    return 1;
+}
+
+static int provider_der_read_integer(ProviderDerCursorV1* cursor,
+                                     uint32_t* value_out)
+{
+    const uint8_t* bytes;
+    uint32_t size;
+    uint32_t value = 0u;
+    uint32_t index;
+
+    if (value_out == NULL || !provider_der_read_tlv(
+            cursor, 0x02u, &bytes, &size) || size == 0u || size > 5u ||
+        (size == 5u && (bytes[0] != 0u || (bytes[1] & 0x80u) == 0u)) ||
+        (size < 5u && (bytes[0] & 0x80u) != 0u) ||
+        (size > 1u && size < 5u && bytes[0] == 0u &&
+         (bytes[1] & 0x80u) == 0u))
+        return 0;
+    for (index = size == 5u ? 1u : 0u; index < size; ++index)
+        value = (value << 8u) | bytes[index];
+    *value_out = value;
+    return 1;
+}
+
+static int provider_der_read_wrapped_integer(ProviderDerCursorV1* cursor,
+                                             uint8_t wrapper_tag,
+                                             uint32_t* value_out)
+{
+    const uint8_t* bytes;
+    uint32_t size;
+    ProviderDerCursorV1 nested;
+
+    if (!provider_der_read_tlv(cursor, wrapper_tag, &bytes, &size)) return 0;
+    nested.bytes = bytes;
+    nested.size = size;
+    nested.offset = 0u;
+    return provider_der_read_integer(&nested, value_out) &&
+           nested.offset == nested.size;
+}
+
+static int provider_der_read_wrapped_value(ProviderDerCursorV1* cursor,
+                                           uint8_t wrapper_tag,
+                                           uint8_t inner_tag,
+                                           const uint8_t** value_out,
+                                           uint32_t* value_size_out)
+{
+    const uint8_t* bytes;
+    uint32_t size;
+    ProviderDerCursorV1 nested;
+
+    if (!provider_der_read_tlv(cursor, wrapper_tag, &bytes, &size)) return 0;
+    nested.bytes = bytes;
+    nested.size = size;
+    nested.offset = 0u;
+    return provider_der_read_tlv(&nested, inner_tag, value_out,
+                                 value_size_out) &&
+           nested.offset == nested.size;
+}
+
+static int provider_der_integer32_valid(const uint8_t* bytes, uint32_t size)
+{
+    if (bytes == NULL || size == 0u || size > 5u) return 0;
+    if (size == 1u) return 1;
+    if (size == 5u)
+        return bytes[0] == 0u && (bytes[1] & 0x80u) != 0u;
+    if (bytes[0] == 0u && (bytes[1] & 0x80u) == 0u) return 0;
+    if (bytes[0] == 0xffu && (bytes[1] & 0x80u) != 0u) return 0;
+    return 1;
+}
+
+static int provider_kerberos_principal_name_valid(const uint8_t* bytes,
+                                                  uint32_t size)
+{
+    const uint8_t* field_bytes;
+    const uint8_t* components_bytes;
+    uint32_t field_size;
+    uint32_t components_size;
+    ProviderDerCursorV1 principal = {bytes, size, 0u};
+    ProviderDerCursorV1 integer;
+    ProviderDerCursorV1 components;
+
+    if (bytes == NULL ||
+        !provider_der_read_tlv(&principal, 0xa0u, &field_bytes,
+                               &field_size) ||
+        principal.offset == principal.size)
+        return 0;
+    integer.bytes = field_bytes;
+    integer.size = field_size;
+    integer.offset = 0u;
+    if (!provider_der_read_tlv(&integer, 0x02u, &field_bytes, &field_size) ||
+        integer.offset != integer.size ||
+        !provider_der_integer32_valid(field_bytes, field_size) ||
+        !provider_der_read_wrapped_value(&principal, 0xa1u, 0x30u,
+                                         &components_bytes,
+                                         &components_size) ||
+        principal.offset != principal.size)
+        return 0;
+
+    components.bytes = components_bytes;
+    components.size = components_size;
+    components.offset = 0u;
+    while (components.offset < components.size) {
+        if (!provider_der_read_tlv(&components, 0x1bu, &field_bytes,
+                                   &field_size))
+            return 0;
+    }
+    return 1;
+}
+
+static int provider_kerberos_time_valid(const uint8_t* bytes,
+                                        uint32_t size)
+{
+    uint32_t year;
+    uint32_t month;
+    uint32_t day;
+    uint32_t hour;
+    uint32_t minute;
+    uint32_t second;
+    static const uint8_t month_days[] = {
+        31u, 28u, 31u, 30u, 31u, 30u,
+        31u, 31u, 30u, 31u, 30u, 31u,
+    };
+    uint32_t max_day;
+    uint32_t index;
+    if (bytes == NULL || size != 15u || bytes[14] != (uint8_t)'Z')
+        return 0;
+    for (index = 0u; index < 14u; ++index) {
+        if (bytes[index] < (uint8_t)'0' || bytes[index] > (uint8_t)'9')
+            return 0;
+    }
+    year = (uint32_t)(bytes[0] - (uint8_t)'0') * 1000u +
+           (uint32_t)(bytes[1] - (uint8_t)'0') * 100u +
+           (uint32_t)(bytes[2] - (uint8_t)'0') * 10u +
+           (uint32_t)(bytes[3] - (uint8_t)'0');
+    month = (uint32_t)(bytes[4] - (uint8_t)'0') * 10u +
+            (uint32_t)(bytes[5] - (uint8_t)'0');
+    day = (uint32_t)(bytes[6] - (uint8_t)'0') * 10u +
+          (uint32_t)(bytes[7] - (uint8_t)'0');
+    hour = (uint32_t)(bytes[8] - (uint8_t)'0') * 10u +
+           (uint32_t)(bytes[9] - (uint8_t)'0');
+    minute = (uint32_t)(bytes[10] - (uint8_t)'0') * 10u +
+             (uint32_t)(bytes[11] - (uint8_t)'0');
+    second = (uint32_t)(bytes[12] - (uint8_t)'0') * 10u +
+             (uint32_t)(bytes[13] - (uint8_t)'0');
+    if (month == 0u || month > 12u || day == 0u ||
+        hour > 23u || minute > 59u || second > 60u)
+        return 0;
+    max_day = month_days[month - 1u];
+    if (month == 2u && (year % 4u == 0u) &&
+        ((year % 100u) != 0u || (year % 400u) == 0u))
+        ++max_day;
+    return day <= max_day;
+}
+
+static int provider_kerberos_error_der(const uint8_t* bytes, uint32_t size,
+                                       uint32_t* error_code_out)
+{
+    const uint8_t* app_bytes;
+    const uint8_t* time_bytes;
+    uint32_t app_size;
+    uint32_t time_size;
+    uint32_t value;
+    uint32_t previous_optional_tag = 0u;
+    int have_service_realm = 0;
+    int have_service_name = 0;
+    ProviderDerCursorV1 token = {bytes, size, 0u};
+    ProviderDerCursorV1 sequence;
+
+    if (error_code_out == NULL ||
+        !provider_der_read_tlv(&token, 0x7eu, &app_bytes, &app_size) ||
+        token.offset != token.size)
+        return 0;
+    /* KRB-ERROR uses the APPLICATION 30 IMPLICIT tag for its SEQUENCE;
+     * the sequence contents follow the 0x7e tag directly. */
+    sequence.bytes = app_bytes;
+    sequence.size = app_size;
+    sequence.offset = 0u;
+    if (!provider_der_read_wrapped_integer(&sequence, 0xa0u, &value) ||
+        value != 5u ||
+        !provider_der_read_wrapped_integer(&sequence, 0xa1u, &value) ||
+        value != 30u)
+        return 0;
+
+    if (sequence.offset < sequence.size &&
+        sequence.bytes[sequence.offset] == 0xa2u) {
+        if (!provider_der_read_wrapped_value(&sequence, 0xa2u, 0x18u,
+                                             &time_bytes, &time_size) ||
+            !provider_kerberos_time_valid(time_bytes, time_size))
+            return 0;
+    }
+    if (sequence.offset < sequence.size &&
+        sequence.bytes[sequence.offset] == 0xa3u) {
+        if (!provider_der_read_wrapped_integer(&sequence, 0xa3u, &value) ||
+            value >= 1000000u)
+            return 0;
+    }
+    if (!provider_der_read_wrapped_value(&sequence, 0xa4u, 0x18u,
+                                         &time_bytes, &time_size) ||
+        !provider_kerberos_time_valid(time_bytes, time_size) ||
+        !provider_der_read_wrapped_integer(&sequence, 0xa5u, &value) ||
+        value >= 1000000u ||
+        !provider_der_read_wrapped_integer(&sequence, 0xa6u, &value) ||
+        value == 0u || value > UINT32_C(0x7fffffff))
+        return 0;
+    *error_code_out = value;
+
+    /* Validate the remaining optional KRB-ERROR fields in ASN.1 order. They
+     * are advisory only; no peer-supplied name, text, or data drives policy. */
+    while (sequence.offset < sequence.size) {
+        const uint8_t tag = sequence.bytes[sequence.offset];
+        uint8_t inner_tag;
+        const uint8_t* ignored_bytes;
+        uint32_t ignored_size;
+        if (tag < 0xa7u || tag > 0xacu || tag <= previous_optional_tag)
+            return 0;
+        previous_optional_tag = tag;
+        switch (tag) {
+        case 0xa7u: case 0xa9u: case 0xabu: inner_tag = 0x1bu; break;
+        case 0xa8u: case 0xaau: inner_tag = 0x30u; break;
+        case 0xacu: inner_tag = 0x04u; break;
+        default: return 0;
+        }
+        if (!provider_der_read_wrapped_value(&sequence, tag, inner_tag,
+                                             &ignored_bytes, &ignored_size))
+            return 0;
+        if ((tag == 0xa8u || tag == 0xaau) &&
+            !provider_kerberos_principal_name_valid(ignored_bytes,
+                                                     ignored_size))
+            return 0;
+        if (tag == 0xa9u) have_service_realm = 1;
+        if (tag == 0xaau) have_service_name = 1;
+        (void)ignored_bytes;
+        (void)ignored_size;
+    }
+    return have_service_realm && have_service_name;
+}
+
+/* Returns 1 for a valid KRB-ERROR token, 0 for a different TOK_ID, and -1
+ * for malformed GSS/KRB-ERROR framing. */
+static int provider_gss_krb_error(const uint8_t* token, uint32_t token_size,
+                                  uint32_t* error_code_out)
+{
+    const uint8_t* payload;
+    uint32_t payload_size;
+    if (error_code_out == NULL ||
+        !provider_gss_token_payload(token, token_size, &payload,
+                                    &payload_size))
+        return -1;
+    if (payload[0] != 0x03u || payload[1] != 0x00u) return 0;
+    return provider_kerberos_error_der(payload + 2u, payload_size - 2u,
+                                       error_code_out) ? 1 : -1;
 }
 
 static int provider_sec_context_token(
@@ -543,7 +835,8 @@ static uint32_t provider_operation(
     RinOsKerberosProviderContext* provider_context,
     RinKerberosOperationRequestV1* request, const uint8_t* input,
     uint32_t input_size, RinAuthProviderBufferV1* output,
-    uint32_t update_context, uint32_t* return_flags)
+    uint32_t update_context, uint32_t* return_flags,
+    uint32_t* minor_status)
 {
     const RinKerberosOperationOwnerV1* owner;
     uint8_t* operation_output = NULL;
@@ -553,6 +846,7 @@ static uint32_t provider_operation(
     uint64_t operation_generation = 0u;
     uint32_t provider_result = 0u;
     uint32_t operation_return_flags = 0u;
+    uint32_t owner_minor_status = 0u;
     uint32_t status;
     const uint8_t* first_input = NULL;
     const uint8_t* second_input = NULL;
@@ -561,6 +855,7 @@ static uint32_t provider_operation(
 
     memset(next_context, 0, sizeof(next_context));
     if (return_flags != NULL) *return_flags = 0u;
+    if (minor_status != NULL) *minor_status = 0u;
     if (output != NULL) {
         output->data = NULL;
         output->length = 0u;
@@ -633,7 +928,8 @@ static uint32_t provider_operation(
         if (operation_output == NULL) return RIN_AUTH_PROVIDER_UNAVAILABLE;
     }
     status = owner->operation(
-        owner->context, NULL, credential->owner_credential, request,
+        owner->context, &owner_minor_status, credential->owner_credential,
+        request,
         provider_context != NULL ? provider_context->token : NULL,
         provider_context != NULL ? provider_context->token_size : 0u, input,
         input_size, operation_output, request->output_capacity,
@@ -650,9 +946,10 @@ static uint32_t provider_operation(
          * The owner is the authority for ticket/context lifetime and channel
          * bindings; collapsing these values to UNAVAILABLE would hide a
          * real protocol result from the PAL. */
-        return provider_status_from_owner(status, NULL);
+        return provider_status_from_owner(status, minor_status);
     }
-    if (provider_result > RIN_KERBEROS_OPERATION_RESULT_ERROR ||
+    if (owner_minor_status != 0u ||
+        provider_result > RIN_KERBEROS_OPERATION_RESULT_ERROR ||
         operation_generation == 0u ||
         operation_output_size > request->output_capacity ||
         next_context_size > sizeof(next_context) ||
@@ -675,6 +972,20 @@ static uint32_t provider_operation(
         }
         provider_zero(next_context, sizeof(next_context));
         return RIN_AUTH_PROVIDER_UNAVAILABLE;
+    }
+    if (provider_result == RIN_KERBEROS_OPERATION_RESULT_ERROR) {
+        uint32_t error_code = 0u;
+        if (provider_gss_krb_error(operation_output, operation_output_size,
+                                   &error_code) != 1) {
+            if (operation_output != NULL) {
+                provider_zero(operation_output, request->output_capacity);
+                free(operation_output);
+            }
+            provider_zero(next_context, sizeof(next_context));
+            return provider_unavailable(minor_status);
+        }
+        if (minor_status != NULL)
+            *minor_status = RINOS_KERBEROS_MINOR_PROTOCOL_ERROR | error_code;
     }
     if (provider_context != NULL) {
         if (provider_context->generation != 0u &&
@@ -727,6 +1038,8 @@ static uint32_t provider_init_sec_context(
     uint32_t status;
     uint32_t mechanism;
     int created_context = 0;
+    uint32_t received_error_code = 0u;
+    int received_error;
     (void)context;
     if (output != NULL) {
         output->data = NULL;
@@ -741,6 +1054,17 @@ static uint32_t provider_init_sec_context(
         !provider_credential_valid(credential,
                                    RIN_KERBEROS_OPERATION_CREDENTIAL_INITIATOR))
         return provider_unavailable(minor_status);
+    if (input_length != 0u) {
+        received_error = provider_gss_krb_error(
+            input, input_length, &received_error_code);
+        if (received_error < 0) return provider_defective_token(minor_status);
+        if (received_error > 0) {
+            if (minor_status != NULL)
+                *minor_status = RINOS_KERBEROS_MINOR_PROTOCOL_ERROR |
+                                received_error_code;
+            return RIN_AUTH_PROVIDER_KRB_ERROR;
+        }
+    }
     existing_context = (RinOsKerberosProviderContext*)*security_context;
     if (existing_context != NULL) {
         if (!provider_context_valid(existing_context) ||
@@ -792,7 +1116,7 @@ static uint32_t provider_init_sec_context(
     request.output_capacity = RIN_AUTH_PROVIDER_MAX_TOKEN_SIZE;
     status = provider_operation(credential, provider_context, &request,
                                 operation_input, operation_input_size, output,
-                                1u, return_flags);
+                                1u, return_flags, minor_status);
     if (operation_input != NULL) {
         provider_zero(operation_input, operation_input_size);
         free(operation_input);
@@ -830,6 +1154,8 @@ static uint32_t provider_init_sec_context_ex(
     uint32_t status;
     uint32_t mechanism;
     int created_context = 0;
+    uint32_t received_error_code = 0u;
+    int received_error;
     (void)context;
     if (output != NULL) {
         output->data = NULL;
@@ -845,6 +1171,17 @@ static uint32_t provider_init_sec_context_ex(
         !provider_credential_valid(credential,
                                    RIN_KERBEROS_OPERATION_CREDENTIAL_INITIATOR))
         return provider_unavailable(minor_status);
+    if (input_length != 0u) {
+        received_error = provider_gss_krb_error(
+            input, input_length, &received_error_code);
+        if (received_error < 0) return provider_defective_token(minor_status);
+        if (received_error > 0) {
+            if (minor_status != NULL)
+                *minor_status = RINOS_KERBEROS_MINOR_PROTOCOL_ERROR |
+                                received_error_code;
+            return RIN_AUTH_PROVIDER_KRB_ERROR;
+        }
+    }
     existing_context = (RinOsKerberosProviderContext*)*security_context;
     if (existing_context != NULL) {
         if (!provider_context_valid(existing_context) ||
@@ -888,7 +1225,7 @@ static uint32_t provider_init_sec_context_ex(
     request.output_capacity = RIN_AUTH_PROVIDER_MAX_TOKEN_SIZE;
     status = provider_operation(credential, provider_context, &request,
                                 operation_input, operation_input_size, output,
-                                1u, return_flags);
+                                1u, return_flags, minor_status);
     provider_zero(operation_input, operation_input_size);
     free(operation_input);
     if (status != RIN_AUTH_PROVIDER_OK &&
@@ -972,7 +1309,7 @@ static uint32_t provider_accept_sec_context(
     request.output_capacity = RIN_AUTH_PROVIDER_MAX_TOKEN_SIZE;
     status = provider_operation(credential, provider_context, &request,
                                 operation_input, operation_input_size, output,
-                                1u, return_flags);
+                                1u, return_flags, minor_status);
     provider_zero(operation_input, operation_input_size);
     free(operation_input);
     if (status != RIN_AUTH_PROVIDER_OK &&
@@ -1015,7 +1352,7 @@ static uint32_t provider_delete_sec_context(
     request.context_token_size = provider_context->token_size;
     request.output_capacity = 0u;
     status = provider_operation(&credential, provider_context, &request, NULL,
-                                0u, NULL, 0u, NULL);
+                                0u, NULL, 0u, NULL, minor_status);
     if (status != RIN_AUTH_PROVIDER_OK) {
         /* The owner still owns the remote context when cleanup fails.  Keep
          * the local handle alive so the caller can retry after a transient
@@ -1078,7 +1415,8 @@ static uint32_t provider_message_operation(
     request.input_size = total;
     request.output_capacity = RIN_AUTH_PROVIDER_MAX_TOKEN_SIZE;
     status = provider_operation(&credential, provider_context, &request,
-                                envelope, total, output, 1u, NULL);
+                                envelope, total, output, 1u, NULL,
+                                minor_status);
     provider_zero(envelope, total);
     free(envelope);
     if (status == RIN_AUTH_PROVIDER_OK && encrypt != NULL) {
@@ -1176,7 +1514,8 @@ static uint32_t provider_verify_mic(
     request.input_size = total;
     request.output_capacity = 0u;
     status = provider_operation(&credential, provider_context, &request,
-                                envelope, total, NULL, 1u, NULL);
+                                envelope, total, NULL, 1u, NULL,
+                                minor_status);
     provider_zero(envelope, total);
     free(envelope);
     if (minor_status != NULL) *minor_status = 0u;
@@ -1222,6 +1561,19 @@ static uint32_t provider_display_status_value(
     if (message != NULL) {
         length = strlen(message);
         memcpy(formatted, message, length);
+    } else if (is_minor &&
+               (status_value & RINOS_KERBEROS_MINOR_PROTOCOL_ERROR) != 0u) {
+        static const char prefix_text[] = "Kerberos protocol error ";
+        char digits[10];
+        uint32_t value = status_value & ~RINOS_KERBEROS_MINOR_PROTOCOL_ERROR;
+        size_t digit_count = 0u;
+        memcpy(formatted, prefix_text, sizeof(prefix_text) - 1u);
+        length = sizeof(prefix_text) - 1u;
+        do {
+            digits[digit_count++] = (char)('0' + (value % 10u));
+            value /= 10u;
+        } while (value != 0u);
+        while (digit_count != 0u) formatted[length++] = digits[--digit_count];
     } else {
         prefix = is_minor ? "RinOS mechanism status 0x" : "GSS status 0x";
         prefix_length = strlen(prefix);

@@ -507,6 +507,7 @@ static uint32_t provider_init_sec_context(
     uint32_t operation_input_size = 0u;
     RinKerberosOperationRequestV1 request = {0};
     uint32_t status;
+    uint32_t mechanism;
     int created_context = 0;
     (void)context;
     if (output != NULL) {
@@ -542,9 +543,17 @@ static uint32_t provider_init_sec_context(
         provider_context->owner = provider_operation_owner();
         created_context = 1;
     }
+    /* RinOS currently has a Kerberos-only provider.  The managed Unix PAL
+     * enters credential acquisition through InitiateCredSpNego and may retain
+     * PackageType.Negotiate for the first context call; normalize that
+     * selector to the Kerberos GSS mechanism instead of advertising an
+     * unimplemented SPNEGO exchange. */
+    mechanism = package_type == PAL_GSS_NEGOTIATE
+                    ? PAL_GSS_KERBEROS
+                    : package_type;
     if (provider_context->owner == NULL ||
         !provider_build_sec_context_input(
-            package_type, requested_flags, name, NULL, 0u, input,
+            mechanism, requested_flags, name, NULL, 0u, input,
             input_length, &operation_input, &operation_input_size)) {
         if (operation_input != NULL) {
             provider_zero(operation_input, operation_input_size);
@@ -601,6 +610,7 @@ static uint32_t provider_init_sec_context_ex(
     uint32_t operation_input_size = 0u;
     RinKerberosOperationRequestV1 request = {0};
     uint32_t status;
+    uint32_t mechanism;
     int created_context = 0;
     (void)context;
     if (output != NULL) {
@@ -637,9 +647,12 @@ static uint32_t provider_init_sec_context_ex(
         provider_context->owner = provider_operation_owner();
         created_context = 1;
     }
+    mechanism = package_type == PAL_GSS_NEGOTIATE
+                    ? PAL_GSS_KERBEROS
+                    : package_type;
     if (provider_context->owner == NULL ||
         !provider_build_sec_context_input(
-            package_type, requested_flags, name, channel_binding,
+            mechanism, requested_flags, name, channel_binding,
             (uint32_t)channel_binding_size, input, input_length,
             &operation_input, &operation_input_size)) {
         if (created_context) {

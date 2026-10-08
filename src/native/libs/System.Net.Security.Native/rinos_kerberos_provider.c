@@ -8,8 +8,10 @@
  * RFC 4120/4121.  The authenticated keyring owner receives the only access to
  * raw ccache/keytab bytes.  This provider sends bounded GSS inputs to the owner,
  * carries back opaque context/output tokens, and refuses to manufacture a
- * credential or a successful token when the service-side RFC implementation is
- * absent.
+ * credential or a successful token when the service-side RFC implementation
+ * is absent. The target build defines RINOS_KERBEROS_RFC_PROVIDER_LINKED only
+ * when the RinOS keyring service has the corresponding operation; the service
+ * still rejects every RFC feature it has not implemented.
  */
 
 #include "pal_gssapi.h"
@@ -1071,8 +1073,7 @@ static RinAuthProviderV1 g_provider = {
 const RinAuthProviderV1* rin_auth_provider_get_v1(void)
 {
 #if !defined(RINOS_KERBEROS_RFC_PROVIDER_LINKED)
-    /* The transport is compiled and audited, but capability advertisement is
-     * withheld until the service-side RFC 4120/4121 engine is linked. */
+    /* A transport-only build must not advertise a usable Kerberos provider. */
     return NULL;
 #else
     return &g_provider;

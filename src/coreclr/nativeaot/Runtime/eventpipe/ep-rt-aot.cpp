@@ -219,28 +219,144 @@ ep_rt_aot_execute_rundown (dn_vector_ptr_t* execution_checkpoints)
 const ep_char8_t *
 ep_rt_aot_diagnostics_command_line_get (void)
 {
-    // shipping criteria: no EVENTPIPE-NATIVEAOT-TODO left in the codebase
-    // TODO: revisit commandline for AOT
-#ifdef TARGET_WINDOWS
-    const ep_char16_t* command_line = reinterpret_cast<const ep_char16_t *>(::GetCommandLineW());
-    return ep_rt_utf16_to_utf8_string(command_line);
-#elif TARGET_LINUX
-    FILE *cmdline_file = ::fopen("/proc/self/cmdline", "r");
-    if (cmdline_file == nullptr)
-        return "";
+    // EventPipe keeps this pointer for the lifetime of the process.  Build the
+    // value once and publish it atomically so a diagnostics request cannot
+    // observe a partially initialized buffer or leak a fresh buffer on every
+    // request.
+    static ep_char8_t *volatile cached_command_line = nullptr;
+    ep_char8_t *command_line = nullptr;
 
-    char *line = NULL;
-    size_t line_len = 0;
-    if (::getline (&line, &line_len, cmdline_file) == -1) {
-        ::fclose (cmdline_file);
-        return "";
+#if defined(TARGET_RINOS)
+    // RinOS is freestanding and deliberately has no /proc mount.  Its crt0
+    // records the real process argv before C++ constructors and NativeAOT
+    // startup run, so use that product-owned process contract instead of
+    // inventing a username/token-like fallback or returning an empty string.
+    extern int __rin_argc;
+    extern char **__rin_argv;
+
+    if (__rin_argc > 0 && __rin_argv != nullptr) {
+        const size_t max_size = static_cast<size_t>(-1);
+        size_t command_line_length = 0;
+        bool valid = true;
+        for (int i = 0; i < __rin_argc; ++i) {
+            if (__rin_argv[i] == nullptr) {
+                valid = false;
+                break;
+            }
+
+            const size_t argument_length = strlen(__rin_argv[i]);
+            const size_t separator_length = i == 0 ? 0 : 1;
+            if (command_line_length > max_size - separator_length ||
+                argument_length > max_size - command_line_length - separator_length - 1) {
+                valid = false;
+                break;
+            }
+
+            command_line_length += separator_length + argument_length;
+        }
+
+        if (valid) {
+            command_line = ep_rt_utf8_string_alloc(command_line_length + 1);
+            if (command_line != nullptr) {
+                size_t offset = 0;
+                for (int i = 0; i < __rin_argc; ++i) {
+                    if (i != 0)
+                        command_line[offset++] = ' ';
+
+                    const size_t argument_length = strlen(__rin_argv[i]);
+                    memcpy(command_line + offset, __rin_argv[i], argument_length);
+                    offset += argument_length;
+                }
+                command_line[offset] = '\0';
+            }
+        }
+    }
+#elif defined(TARGET_WINDOWS)
+    const ep_char16_t* native_command_line = reinterpret_cast<const ep_char16_t *>(::GetCommandLineW());
+    command_line = ep_rt_utf16_to_utf8_string(native_command_line);
+#elif defined(TARGET_LINUX)
+    FILE *cmdline_file = ::fopen("/proc/self/cmdline", "r");
+    if (cmdline_file != nullptr) {
+        char *line = nullptr;
+        size_t line_length = 0;
+        size_t line_capacity = 0;
+        bool valid = true;
+
+        for (;;) {
+            char chunk[256];
+            const size_t bytes_read = ::fread(chunk, 1, sizeof(chunk), cmdline_file);
+            if (bytes_read != 0) {
+                const size_t max_size = static_cast<size_t>(-1);
+                if (bytes_read > max_size - line_length - 1) {
+                    valid = false;
+                    break;
+                }
+
+                const size_t required_capacity = line_length + bytes_read + 1;
+                if (required_capacity > line_capacity) {
+                    size_t new_capacity = line_capacity == 0 ? sizeof(chunk) : line_capacity;
+                    while (new_capacity < required_capacity) {
+                        if (new_capacity > max_size / 2) {
+                            new_capacity = required_capacity;
+                            break;
+                        }
+                        new_capacity *= 2;
+                    }
+
+                    char *resized = reinterpret_cast<char *>(::realloc(line, new_capacity));
+                    if (resized == nullptr) {
+                        valid = false;
+                        break;
+                    }
+                    line = resized;
+                    line_capacity = new_capacity;
+                }
+
+                memcpy(line + line_length, chunk, bytes_read);
+                line_length += bytes_read;
+                line[line_length] = '\0';
+            }
+
+            if (bytes_read < sizeof(chunk)) {
+                if (::ferror(cmdline_file) != 0)
+                    valid = false;
+                break;
+            }
+        }
+
+        ::fclose(cmdline_file);
+        if (valid && line != nullptr) {
+            // Linux exposes argv as NUL-delimited bytes.  Drop only the
+            // terminators at the end and turn separators inside the buffer
+            // into spaces, matching the diagnostic command-line contract.
+            while (line_length != 0 && line[line_length - 1] == '\0')
+                --line_length;
+            for (size_t i = 0; i < line_length; ++i) {
+                if (line[i] == '\0')
+                    line[i] = ' ';
+            }
+            line[line_length] = '\0';
+            command_line = reinterpret_cast<ep_char8_t *>(line);
+            line = nullptr;
+        }
+        ::free(line);
+    }
+#endif
+
+    if (command_line == nullptr)
+        command_line = ep_rt_utf8_string_dup(reinterpret_cast<const ep_char8_t *>(""));
+    if (command_line == nullptr)
+        return reinterpret_cast<const ep_char8_t *>("");
+
+    ep_char8_t *published = reinterpret_cast<ep_char8_t *>(
+        PalInterlockedCompareExchangePointer(
+            reinterpret_cast<void **>(&cached_command_line), command_line, nullptr));
+    if (published != nullptr) {
+        ep_rt_utf8_string_free(command_line);
+        return published;
     }
 
-    ::fclose (cmdline_file);
-    return reinterpret_cast<const ep_char8_t*>(line);
-#else
-    return "";
-#endif
+    return command_line;
 }
 
 namespace

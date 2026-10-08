@@ -240,12 +240,14 @@ static uint32_t rinos_gss_map_kerberos_supplementary(
  * leaving the other KRB-ERROR values as mechanism failure until their
  * direction-specific GSS mapping is implemented. */
 static uint32_t rinos_gss_map_kerberos_major(
-    uint32_t providerStatus, const uint32_t* minorStatus)
+    uint32_t providerStatus, const uint32_t* minorStatus,
+    int initiator_context)
 {
     const uint32_t protocolErrorBit = UINT32_C(0x80000000);
     const uint32_t krbApErrTicketExpired = UINT32_C(32);
 
-    if (providerStatus == RIN_AUTH_PROVIDER_KRB_ERROR &&
+    if (initiator_context != 0 &&
+        providerStatus == RIN_AUTH_PROVIDER_KRB_ERROR &&
         minorStatus != NULL && (*minorStatus & protocolErrorBit) != 0u &&
         (*minorStatus & ~protocolErrorBit) == krbApErrTicketExpired)
         return PAL_GSS_S_CREDENTIALS_EXPIRED;
@@ -313,9 +315,10 @@ static int rinos_gss_prepare_provider_buffer(
 
 static uint32_t rinos_gss_finish_provider_buffer(
     const RinAuthProviderV1* provider, uint32_t* minorStatus,
-    uint32_t status, PAL_GssBuffer* outBuffer)
+    uint32_t status, int initiator_context, PAL_GssBuffer* outBuffer)
 {
-    uint32_t mappedStatus = rinos_gss_map_kerberos_major(status, minorStatus);
+    uint32_t mappedStatus = rinos_gss_map_kerberos_major(
+        status, minorStatus, initiator_context);
     mappedStatus |= rinos_gss_map_kerberos_supplementary(status, minorStatus);
     const int preserve_error_token = status == RIN_AUTH_PROVIDER_KRB_ERROR;
 
@@ -360,7 +363,8 @@ static uint32_t rinos_gss_finish_provider_handle(
     uint32_t status, void** outputHandle,
     RinAuthProviderReleaseHandleCallback release)
 {
-    uint32_t mappedStatus = rinos_gss_map_kerberos_major(status, minorStatus);
+    uint32_t mappedStatus = rinos_gss_map_kerberos_major(
+        status, minorStatus, 0);
 
     /* A failed acquire must never leak a provider-owned opaque handle into
      * the SafeHandle marshaller. A successful acquire without a handle is
@@ -389,12 +393,13 @@ static uint32_t rinos_gss_finish_provider_handle(
 
 static uint32_t rinos_gss_finish_provider_context(
     const RinAuthProviderV1* provider, uint32_t* minorStatus,
-    uint32_t status, GssCtxId** contextHandle, uint32_t* retFlags,
+    uint32_t status, int initiator_context, GssCtxId** contextHandle,
+    uint32_t* retFlags,
     int32_t* isNtlmUsed, PAL_GssBuffer* outBuffer,
     RinAuthProviderReleaseHandleCallback release)
 {
     uint32_t mappedStatus = rinos_gss_finish_provider_buffer(
-        provider, minorStatus, status, outBuffer);
+        provider, minorStatus, status, initiator_context, outBuffer);
     const uint32_t savedMinorStatus =
         minorStatus != NULL ? *minorStatus : 0u;
 
@@ -525,7 +530,7 @@ PALEXPORT uint32_t NetSecurityNative_DisplayMinorStatus(
         return rinos_gss_finish_provider_buffer(provider, minorStatus,
             provider->display_minor_status(
             provider->context, minorStatus, statusValue,
-            (RinAuthProviderBufferV1*)outBuffer), outBuffer);
+            (RinAuthProviderBufferV1*)outBuffer), 0, outBuffer);
     }
 
     (void)statusValue;
@@ -551,7 +556,7 @@ PALEXPORT uint32_t NetSecurityNative_DisplayMajorStatus(
         return rinos_gss_finish_provider_buffer(provider, minorStatus,
             provider->display_major_status(
             provider->context, minorStatus, statusValue,
-            (RinAuthProviderBufferV1*)outBuffer), outBuffer);
+            (RinAuthProviderBufferV1*)outBuffer), 0, outBuffer);
     }
 
     (void)statusValue;
@@ -792,7 +797,7 @@ PALEXPORT uint32_t NetSecurityNative_InitSecContext(
             provider->context, minorStatus, claimantCredHandle,
             (void**)contextHandle, packageType, targetName, reqFlags,
             inputBytes, inputLength, (RinAuthProviderBufferV1*)outBuffer,
-                retFlags, isNtlmUsed), contextHandle, retFlags,
+                retFlags, isNtlmUsed), 1, contextHandle, retFlags,
             isNtlmUsed, outBuffer, provider->delete_sec_context);
     }
 
@@ -891,7 +896,7 @@ PALEXPORT uint32_t NetSecurityNative_InitSecContextEx(
             (void**)contextHandle, packageType, cbt, cbtSize, targetName,
             reqFlags, inputBytes, inputLength,
                 (RinAuthProviderBufferV1*)outBuffer, retFlags, isNtlmUsed),
-            contextHandle, retFlags, isNtlmUsed, outBuffer,
+            1, contextHandle, retFlags, isNtlmUsed, outBuffer,
             provider->delete_sec_context);
     }
 
@@ -967,7 +972,7 @@ PALEXPORT uint32_t NetSecurityNative_AcceptSecContext(
             provider->context, minorStatus, acceptorCredHandle,
             (void**)contextHandle, cbt, cbtSize, inputBytes, inputLength,
             (RinAuthProviderBufferV1*)outBuffer, retFlags, isNtlmUsed),
-            contextHandle, retFlags, isNtlmUsed, outBuffer,
+            0, contextHandle, retFlags, isNtlmUsed, outBuffer,
             provider->delete_sec_context);
     }
 
@@ -1053,7 +1058,8 @@ PALEXPORT uint32_t NetSecurityNative_Wrap(
         return rinos_gss_finish_provider_buffer(provider, minorStatus,
             provider->wrap(
             provider->context, minorStatus, contextHandle, isEncrypt,
-            inputBytes, count, (RinAuthProviderBufferV1*)outBuffer), outBuffer);
+            inputBytes, count, (RinAuthProviderBufferV1*)outBuffer), 0,
+            outBuffer);
     }
 
     (void)contextHandle;
@@ -1104,7 +1110,8 @@ PALEXPORT uint32_t NetSecurityNative_Unwrap(
         return rinos_gss_finish_provider_buffer(provider, minorStatus,
             provider->unwrap(
             provider->context, minorStatus, contextHandle, isEncrypt,
-            inputBytes, count, (RinAuthProviderBufferV1*)outBuffer), outBuffer);
+            inputBytes, count, (RinAuthProviderBufferV1*)outBuffer), 0,
+            outBuffer);
     }
 
     (void)contextHandle;
@@ -1153,7 +1160,7 @@ PALEXPORT uint32_t NetSecurityNative_GetMic(
         return rinos_gss_finish_provider_buffer(provider, minorStatus,
             provider->get_mic(
             provider->context, minorStatus, contextHandle, inputBytes,
-            inputLength, (RinAuthProviderBufferV1*)outBuffer), outBuffer);
+            inputLength, (RinAuthProviderBufferV1*)outBuffer), 0, outBuffer);
     }
 
     (void)contextHandle;
@@ -1298,7 +1305,7 @@ PALEXPORT uint32_t NetSecurityNative_GetUser(
         return rinos_gss_finish_provider_buffer(provider, minorStatus,
             provider->get_user(
             provider->context, minorStatus, contextHandle,
-            (RinAuthProviderBufferV1*)outBuffer), outBuffer);
+            (RinAuthProviderBufferV1*)outBuffer), 0, outBuffer);
     }
 
     (void)contextHandle;

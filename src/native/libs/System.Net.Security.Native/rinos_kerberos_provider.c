@@ -449,8 +449,19 @@ static uint32_t provider_operation(
         &operation_output_size, next_context, sizeof(next_context),
         &next_context_size, &operation_generation, &provider_result,
         &operation_return_flags);
-    if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK ||
-        provider_result > RIN_KERBEROS_OPERATION_RESULT_CONTINUE_NEEDED ||
+    if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK) {
+        if (operation_output != NULL) {
+            provider_zero(operation_output, request->output_capacity);
+            free(operation_output);
+        }
+        provider_zero(next_context, sizeof(next_context));
+        /* Preserve the owner-defined GSS-relevant failure classification.
+         * The owner is the authority for ticket/context lifetime and channel
+         * bindings; collapsing these values to UNAVAILABLE would hide a
+         * real protocol result from the PAL. */
+        return provider_status_from_owner(status, NULL);
+    }
+    if (provider_result > RIN_KERBEROS_OPERATION_RESULT_CONTINUE_NEEDED ||
         operation_generation == 0u ||
         operation_output_size > request->output_capacity ||
         next_context_size > sizeof(next_context) ||
@@ -595,7 +606,7 @@ static uint32_t provider_init_sec_context(
             free(provider_context);
             *security_context = NULL;
         }
-        return provider_unavailable(minor_status);
+        return status;
     }
     *security_context = provider_context;
     if (minor_status != NULL) *minor_status = 0u;
@@ -689,7 +700,7 @@ static uint32_t provider_init_sec_context_ex(
             free(provider_context);
             *security_context = NULL;
         }
-        return provider_unavailable(minor_status);
+        return status;
     }
     *security_context = provider_context;
     if (minor_status != NULL) *minor_status = 0u;
@@ -773,7 +784,7 @@ static uint32_t provider_accept_sec_context(
             free(provider_context);
             *security_context = NULL;
         }
-        return provider_unavailable(minor_status);
+        return status;
     }
     *security_context = provider_context;
     if (minor_status != NULL) *minor_status = 0u;
@@ -808,8 +819,11 @@ static uint32_t provider_delete_sec_context(
     status = provider_operation(&credential, provider_context, &request, NULL,
                                 0u, NULL, 0u, NULL);
     if (status != RIN_AUTH_PROVIDER_OK) {
+        provider_zero(provider_context, sizeof(*provider_context));
+        free(provider_context);
+        *security_context = NULL;
         if (minor_status != NULL) *minor_status = 0u;
-        return provider_unavailable(minor_status);
+        return status;
     }
     provider_zero(provider_context, sizeof(*provider_context));
     free(provider_context);

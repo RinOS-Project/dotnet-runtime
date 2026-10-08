@@ -2108,7 +2108,7 @@ void GlobalizationNative_CloseSortHandle(SortHandle* handle)
 
 int32_t GlobalizationNative_GetSortVersion(SortHandle* handle)
 {
-    return handle ? (int32_t)RIN_ICU_VERSION : -1;
+    return handle ? (int32_t)RIN_ICU_COLLATION_VERSION : -1;
 }
 
 static char* sort_text(const UChar* value, int32_t length, size_t* out_length)
@@ -2767,7 +2767,12 @@ void GlobalizationNative_InitICUFunctions(void* icuuc, void* icuin, const char* 
 
 int32_t GlobalizationNative_GetICUVersion(void)
 {
-    return (int32_t)RIN_ICU_VERSION;
+    /* RinICU is a product-owned PAL backend, not an ICU library.  Returning
+     * the service wire version here would make .NET feature probes interpret
+     * protocol version 2 as an ICU release.  Zero is the documented
+     * unsupported/not-loaded value for this ICU-only query; LoadICU remains
+     * the authoritative product-backend availability check. */
+    return 0;
 }
 
 int32_t GlobalizationNative_LoadICUData(const char* path)

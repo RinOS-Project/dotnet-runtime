@@ -1061,13 +1061,39 @@ void PalVirtualFree(_In_ void* pAddress, size_t size)
 
 UInt32_BOOL PalVirtualProtect(_In_ void* pAddress, size_t size, uint32_t protect)
 {
+    // mprotect rounds to whole pages, so reject invalid or overflowing ranges
+    // before doing any pointer arithmetic.  NativeAOT uses this boundary for
+    // both W^X thunk publication and GC/JIT write-protect transitions; a
+    // wrapped range must never turn into an unrelated page permission change.
+    if (pAddress == nullptr || size == 0)
+    {
+        return UInt32_FALSE;
+    }
+
+    const uintptr_t address = (uintptr_t)pAddress;
+    if (address > UINTPTR_MAX - (uintptr_t)size)
+    {
+        return UInt32_FALSE;
+    }
+
+    const uintptr_t end = address + (uintptr_t)size;
+    const uintptr_t pageMask = (uintptr_t)OS_PAGE_SIZE - 1u;
+    const uintptr_t pageStart = address & ~pageMask;
+    if (end > UINTPTR_MAX - pageMask)
+    {
+        return UInt32_FALSE;
+    }
+
+    const uintptr_t pageEnd = (end + pageMask) & ~pageMask;
+    if (pageEnd <= pageStart || pageEnd - pageStart > SIZE_MAX)
+    {
+        return UInt32_FALSE;
+    }
+
     int unixProtect = W32toUnixAccessControl(protect);
 
     // mprotect expects the address to be page-aligned
-    uint8_t* pPageStart = ALIGN_DOWN((uint8_t*)pAddress, OS_PAGE_SIZE);
-    size_t memSize = ALIGN_UP((uint8_t*)pAddress + size, OS_PAGE_SIZE) - pPageStart;
-
-    return mprotect(pPageStart, memSize, unixProtect) == 0;
+    return mprotect((void*)pageStart, (size_t)(pageEnd - pageStart), unixProtect) == 0;
 }
 
 #if (defined(HOST_MACCATALYST) || defined(HOST_IOS) || defined(HOST_TVOS)) && defined(HOST_ARM64)

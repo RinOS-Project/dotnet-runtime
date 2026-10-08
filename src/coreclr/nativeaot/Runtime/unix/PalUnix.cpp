@@ -1173,6 +1173,17 @@ static int W32toUnixAccessControl(uint32_t flProtect)
 
 _Ret_maybenull_ _Post_writable_byte_size_(size) void* PalVirtualAlloc(size_t size, uint32_t protect)
 {
+#if defined(TARGET_RINOS)
+    // RinOS enforces W^X in the kernel.  Reject a request for a writable
+    // executable mapping here instead of relying on mmap to fail after the
+    // caller has already selected an unsafe publication mode.  NativeAOT
+    // thunk mappings use RW during emission and publish the code half as RX.
+    if ((protect & 0xffu) == PAGE_EXECUTE_READWRITE)
+    {
+        return NULL;
+    }
+#endif
+
     int unixProtect = W32toUnixAccessControl(protect);
 
     int flags = MAP_ANON | MAP_PRIVATE;
@@ -1224,6 +1235,16 @@ UInt32_BOOL PalVirtualProtect(_In_ void* pAddress, size_t size, uint32_t protect
     {
         return UInt32_FALSE;
     }
+
+#if defined(TARGET_RINOS)
+    // Keep the same explicit W^X boundary for permission transitions.  The
+    // kernel applies the policy too, but the PAL must not turn an invalid
+    // managed/runtime request into a platform-dependent mprotect attempt.
+    if ((protect & 0xffu) == PAGE_EXECUTE_READWRITE)
+    {
+        return UInt32_FALSE;
+    }
+#endif
 
     int unixProtect = W32toUnixAccessControl(protect);
 

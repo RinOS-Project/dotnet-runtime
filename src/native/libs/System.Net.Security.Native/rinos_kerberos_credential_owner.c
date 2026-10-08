@@ -210,7 +210,11 @@ static int owner_initialize(void)
     uint32_t expected = 0u;
     if (__atomic_compare_exchange_n(&g_owner.initialized, &expected, 1u, 0,
                                     __ATOMIC_ACQUIRE, __ATOMIC_RELAXED)) {
-        owner_zero(&g_owner, sizeof(g_owner));
+        /* g_owner has static storage and is zero-initialized by the loader.
+         * Do not scrub the whole context after publishing 1: that would
+         * restore initialized=0 and let another thread enter this one-time
+         * initializer concurrently.  Slot scrubbing remains explicit in the
+         * acquire/release paths. */
         g_owner.magic = RINOS_KERBEROS_OWNER_MAGIC;
         g_owner.abi.struct_size = sizeof(g_owner.abi);
         g_owner.abi.version = RIN_KERBEROS_CREDENTIAL_OWNER_ABI_VERSION;

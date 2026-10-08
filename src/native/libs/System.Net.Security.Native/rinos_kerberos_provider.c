@@ -10,8 +10,9 @@
  * carries back opaque context/output tokens, and refuses to manufacture a
  * credential or a successful token when the service-side RFC implementation
  * is absent. The target build defines RINOS_KERBEROS_RFC_PROVIDER_LINKED only
- * when the RinOS keyring service has the corresponding operation; the service
- * still rejects every RFC feature it has not implemented.
+ * when the RinOS keyring service has the corresponding bounded AP-REQ/AP-REP
+ * operation; the service still rejects every RFC feature it has not
+ * implemented.
  */
 
 #include "pal_gssapi.h"

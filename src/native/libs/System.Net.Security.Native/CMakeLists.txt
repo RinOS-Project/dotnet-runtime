@@ -14,9 +14,10 @@ if (CLR_CMAKE_TARGET_RINOS)
     # implementation while producing a target RLL.  The owner client below
     # obtains only an opaque handle from the authenticated RinOS keyring; the
     # RFC 4120/4121 provider is enabled only because the root keyring service
-    # now supplies the bounded initiator operation. Unsupported AP-REP,
-    # acceptor, channel-binding, and per-message operations remain fail-closed
-    # in that service and must not be inferred from this compile definition.
+    # now supplies the bounded initiator AP-REQ plus mutual AP-REP operation.
+    # Replay/deadline, acceptor, channel-binding, and per-message operations
+    # remain fail-closed in that service and must not be inferred from this
+    # compile definition.
     set(NATIVEGSS_SOURCES
         pal_gssapi_rinos.c
         rinos_kerberos_provider.c

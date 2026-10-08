@@ -890,7 +890,14 @@ struct RinOSBackgroundWorkStart
     void* context;
     UInt32_BOOL highPriority;
     int32_t startupStatus;
+    int32_t references;
 };
+
+static void RinOSBackgroundWorkRelease(RinOSBackgroundWorkStart* start)
+{
+    if (__atomic_sub_fetch(&start->references, 1, __ATOMIC_ACQ_REL) == 0)
+        delete start;
+}
 
 static void* RinOSBackgroundWorkEntry(void* rawContext)
 {
@@ -910,13 +917,14 @@ static void* RinOSBackgroundWorkEntry(void* rawContext)
              * scheduler class, and do not fall back to a normal-priority
              * thread while claiming success. */
             __atomic_store_n(&start->startupStatus, -1, __ATOMIC_RELEASE);
+            RinOSBackgroundWorkRelease(start);
             return nullptr;
         }
     }
 
     __atomic_store_n(&start->startupStatus, 1, __ATOMIC_RELEASE);
     (void)start->callback(start->context);
-    delete start;
+    RinOSBackgroundWorkRelease(start);
     return nullptr;
 }
 #endif
@@ -933,6 +941,9 @@ bool PalStartBackgroundWork(_In_ BackgroundCallback callback, _In_opt_ void* pCa
     return false;
 #else // HOST_WASM
 #if defined(TARGET_RINOS)
+    if (callback == nullptr)
+        return false;
+
     RinOSBackgroundWorkStart* start = new (nothrow) RinOSBackgroundWorkStart{};
     if (start == nullptr)
         return false;
@@ -941,20 +952,38 @@ bool PalStartBackgroundWork(_In_ BackgroundCallback callback, _In_opt_ void* pCa
     start->context = pCallbackContext;
     start->highPriority = highPriority;
     start->startupStatus = 0;
+    // The parent owns one reference until startup is acknowledged.  The
+    // child owns the other reference until its callback exits, so a short
+    // callback cannot free the startup record while the parent reads it.
+    start->references = 2;
 
     pthread_attr_t attrs;
     int st = pthread_attr_init(&attrs);
-    ASSERT(st == 0);
+    if (st != 0)
+    {
+        delete start;
+        return false;
+    }
 
     size_t stacksize = GetDefaultStackSizeSetting();
     if (stacksize != 0)
     {
         st = pthread_attr_setstacksize(&attrs, stacksize);
-        ASSERT(st == 0);
+        if (st != 0)
+        {
+            (void)pthread_attr_destroy(&attrs);
+            delete start;
+            return false;
+        }
     }
 
     st = pthread_attr_setdetachstate(&attrs, PTHREAD_CREATE_DETACHED);
-    ASSERT(st == 0);
+    if (st != 0)
+    {
+        (void)pthread_attr_destroy(&attrs);
+        delete start;
+        return false;
+    }
 
     pthread_t threadId;
     st = pthread_create(&threadId, &attrs, &RinOSBackgroundWorkEntry, start);
@@ -978,10 +1007,11 @@ bool PalStartBackgroundWork(_In_ BackgroundCallback callback, _In_opt_ void* pCa
 
     if (startupStatus < 0)
     {
-        delete start;
+        RinOSBackgroundWorkRelease(start);
         return false;
     }
 
+    RinOSBackgroundWorkRelease(start);
     return true;
 #else
     pthread_attr_t attrs;

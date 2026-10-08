@@ -750,7 +750,8 @@ UInt32_BOOL PalFreeThunksFromTemplate(void *pBaseAddress, size_t templateSize)
 #else
     if (pBaseAddress == nullptr || templateSize == 0 ||
         templateSize > SIZE_MAX / 2 ||
-        (templateSize % OS_PAGE_SIZE) != 0)
+        (templateSize % OS_PAGE_SIZE) != 0 ||
+        ((uintptr_t)pBaseAddress % OS_PAGE_SIZE) != 0)
     {
         return UInt32_FALSE;
     }

@@ -307,6 +307,24 @@ static uint32_t owner_operation(
         input_size, output, output_capacity, output_size, next_context_token,
         next_context_capacity, next_context_token_size, generation,
         provider_result, return_flags);
+    /* A successful IPC response must still belong to the exact generation
+     * acquired for this slot.  DELETE_SEC_CONTEXT is a destruction
+     * acknowledgement and deliberately returns generation zero; every other
+     * operation publishes a generation-bound context/output response. */
+    if (result == RIN_KEYRING_OK &&
+        request->operation != RIN_KERBEROS_OPERATION_DELETE_SEC_CONTEXT &&
+        *generation != slot->handle.generation) {
+        if (output != NULL && output_capacity != 0u)
+            owner_zero(output, output_capacity);
+        if (next_context_token != NULL && next_context_capacity != 0u)
+            owner_zero(next_context_token, next_context_capacity);
+        *output_size = 0u;
+        *next_context_token_size = 0u;
+        *generation = 0u;
+        *provider_result = 0u;
+        *return_flags = 0u;
+        result = RIN_KEYRING_CONFLICT;
+    }
     owner_unlock(owner);
     if (result == RIN_KEYRING_OK)
         return RIN_KERBEROS_CREDENTIAL_OWNER_OK;

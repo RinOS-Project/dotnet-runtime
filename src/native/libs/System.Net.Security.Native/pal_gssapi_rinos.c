@@ -566,6 +566,12 @@ PALEXPORT uint32_t NetSecurityNative_ImportPrincipalName(
 
 PALEXPORT uint32_t NetSecurityNative_ReleaseName(uint32_t* minorStatus, GssName** inputName)
 {
+    if (inputName == NULL)
+    {
+        return rinos_gss_local_error(
+            minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
+    }
+
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
@@ -574,12 +580,6 @@ PALEXPORT uint32_t NetSecurityNative_ReleaseName(uint32_t* minorStatus, GssName*
     }
 
     int32_t hadHandle;
-    if (inputName == NULL)
-    {
-        return rinos_gss_local_error(
-            minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
-    }
-
     hadHandle = *inputName != NULL;
     *inputName = NULL;
     return rinos_gss_release_status(minorStatus, hadHandle);
@@ -641,6 +641,12 @@ PALEXPORT uint32_t NetSecurityNative_InitiateCredSpNego(
 
 PALEXPORT uint32_t NetSecurityNative_ReleaseCred(uint32_t* minorStatus, GssCredId** credHandle)
 {
+    if (credHandle == NULL)
+    {
+        return rinos_gss_local_error(
+            minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
+    }
+
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
@@ -649,11 +655,6 @@ PALEXPORT uint32_t NetSecurityNative_ReleaseCred(uint32_t* minorStatus, GssCredI
     }
 
     int32_t hadHandle;
-    if (credHandle == NULL)
-    {
-        return rinos_gss_unavailable(minorStatus);
-    }
-
     hadHandle = *credHandle != NULL;
     *credHandle = NULL;
     return rinos_gss_release_status(minorStatus, hadHandle);

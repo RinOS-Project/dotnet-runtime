@@ -882,9 +882,14 @@ typedef uint32_t(__stdcall *BackgroundCallback)(_In_opt_ void* pCallbackContext)
 bool PalStartBackgroundWork(_In_ BackgroundCallback callback, _In_opt_ void* pCallbackContext, UInt32_BOOL highPriority)
 {
 #ifdef HOST_WASM
-    // No threads, so we can't start one
-    ASSERT(false);
-#endif // HOST_WASM
+    // WASM has no native pthread/thread ABI in this PAL.  Do not assert and
+    // then fall through into the pthread path: release builds would attempt
+    // an operation whose result is not a valid managed background thread.
+    (void)callback;
+    (void)pCallbackContext;
+    (void)highPriority;
+    return false;
+#else // HOST_WASM
     pthread_attr_t attrs;
 
     int st = pthread_attr_init(&attrs);
@@ -923,6 +928,7 @@ bool PalStartBackgroundWork(_In_ BackgroundCallback callback, _In_opt_ void* pCa
     ASSERT(st2 == 0);
 
     return st == 0;
+#endif // HOST_WASM
 }
 
 bool PalSetCurrentThreadName(const char* name)

@@ -1372,7 +1372,11 @@ void StackFrameIterator::UnwindFuncletInvokeThunk()
 // For a given target architecture, the layout of this structure must precisely match the
 // stack frame layout used by the associated architecture-specific RhpUniversalTransition
 // implementation.
+#if defined(UNIX_AMD64_ABI)
+struct __attribute__((packed)) UniversalTransitionStackFrame
+#else
 struct UniversalTransitionStackFrame
+#endif
 {
 
 // In DAC builds, the "this" pointer refers to an object in the DAC host.
@@ -1381,9 +1385,11 @@ struct UniversalTransitionStackFrame
 
 #if defined(UNIX_AMD64_ABI)
 
+#pragma pack(push, 8)
+
     // Conservative GC reporting must be applied to everything between the base of the
     // ReturnBlock and the top of the StackPassedArgs.
-private:
+public:
     Fp128 m_fpArgRegs[8];                   // ChildSP+000 CallerSP-0D0 (0x80 bytes)    (xmm0-xmm7)
     uintptr_t m_returnBlock[2];            // ChildSP+080 CallerSP-050 (0x10 bytes)
     uintptr_t m_intArgRegs[6];             // ChildSP+090 CallerSP-040 (0x30 bytes)    (rdi,rsi,rcx,rdx,r8,r9)
@@ -1391,21 +1397,7 @@ private:
     uintptr_t m_callerRetaddr;             // ChildSP+0C8 CallerSP-008 (0x8 bytes)
     uintptr_t m_stackPassedArgs[1];        // ChildSP+0D0 CallerSP+000 (unknown size)
 
-    static_assert(sizeof(Fp128) == 0x10, "UNIX AMD64 universal transition FP register width drift");
-    static_assert(offsetof(UniversalTransitionStackFrame, m_fpArgRegs) == 0x00,
-                  "UNIX AMD64 universal transition FP register offset drift");
-    static_assert(offsetof(UniversalTransitionStackFrame, m_returnBlock) == 0x80,
-                  "UNIX AMD64 universal transition return block offset drift");
-    static_assert(offsetof(UniversalTransitionStackFrame, m_intArgRegs) == 0x90,
-                  "UNIX AMD64 universal transition integer register offset drift");
-    static_assert(offsetof(UniversalTransitionStackFrame, m_alignmentPad) == 0xC0,
-                  "UNIX AMD64 universal transition alignment offset drift");
-    static_assert(offsetof(UniversalTransitionStackFrame, m_callerRetaddr) == 0xC8,
-                  "UNIX AMD64 universal transition return address offset drift");
-    static_assert(offsetof(UniversalTransitionStackFrame, m_stackPassedArgs) == 0xD0,
-                  "UNIX AMD64 universal transition stack argument offset drift");
-    static_assert(sizeof(UniversalTransitionStackFrame) == 0xD8,
-                  "UNIX AMD64 universal transition frame size drift");
+#pragma pack(pop)
 
 public:
     PTR_uintptr_t get_CallerSP() { return GET_POINTER_TO_FIELD(m_stackPassedArgs[0]); }
@@ -1648,6 +1640,24 @@ public:
 #undef GET_POINTER_TO_FIELD
 
 };
+
+#if defined(UNIX_AMD64_ABI)
+static_assert(sizeof(Fp128) == 0x10, "UNIX AMD64 universal transition FP register width drift");
+static_assert(offsetof(UniversalTransitionStackFrame, m_fpArgRegs) == 0x00,
+              "UNIX AMD64 universal transition FP register offset drift");
+static_assert(offsetof(UniversalTransitionStackFrame, m_returnBlock) == 0x80,
+              "UNIX AMD64 universal transition return block offset drift");
+static_assert(offsetof(UniversalTransitionStackFrame, m_intArgRegs) == 0x90,
+              "UNIX AMD64 universal transition integer register offset drift");
+static_assert(offsetof(UniversalTransitionStackFrame, m_alignmentPad) == 0xC0,
+              "UNIX AMD64 universal transition alignment offset drift");
+static_assert(offsetof(UniversalTransitionStackFrame, m_callerRetaddr) == 0xC8,
+              "UNIX AMD64 universal transition return address offset drift");
+static_assert(offsetof(UniversalTransitionStackFrame, m_stackPassedArgs) == 0xD0,
+              "UNIX AMD64 universal transition stack argument offset drift");
+static_assert(sizeof(UniversalTransitionStackFrame) == 0xD8,
+              "UNIX AMD64 universal transition frame size drift");
+#endif
 
 typedef DPTR(UniversalTransitionStackFrame) PTR_UniversalTransitionStackFrame;
 

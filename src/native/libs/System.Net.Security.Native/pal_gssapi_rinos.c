@@ -198,6 +198,8 @@ static uint32_t rinos_gss_map_provider_status(uint32_t providerStatus)
             return PAL_GSS_S_BAD_BINDINGS;
         case RIN_AUTH_PROVIDER_DEFECTIVE_TOKEN:
             return PAL_GSS_S_DEFECTIVE_TOKEN;
+        case RIN_AUTH_PROVIDER_KRB_ERROR:
+            return PAL_GSS_S_DEFECTIVE_TOKEN;
         case RIN_AUTH_PROVIDER_UNAVAILABLE:
         case RIN_AUTH_PROVIDER_ABI_MISMATCH:
         default:
@@ -269,9 +271,10 @@ static uint32_t rinos_gss_finish_provider_buffer(
     uint32_t status, PAL_GssBuffer* outBuffer)
 {
     uint32_t mappedStatus = rinos_gss_map_provider_status(status);
+    const int preserve_error_token = status == RIN_AUTH_PROVIDER_KRB_ERROR;
 
     if (mappedStatus != RINOS_GSS_S_COMPLETE &&
-        mappedStatus != PAL_GSS_CONTINUE_NEEDED)
+        mappedStatus != PAL_GSS_CONTINUE_NEEDED && !preserve_error_token)
     {
         if (outBuffer != NULL && outBuffer->data != NULL)
         {
@@ -299,6 +302,8 @@ static uint32_t rinos_gss_finish_provider_buffer(
     {
         *minorStatus = 0;
     }
+
+    if (minorStatus != NULL && preserve_error_token) *minorStatus = 0;
 
     return mappedStatus;
 }

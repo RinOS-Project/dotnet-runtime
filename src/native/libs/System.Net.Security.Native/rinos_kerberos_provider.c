@@ -644,7 +644,7 @@ static uint32_t provider_operation(
          * real protocol result from the PAL. */
         return provider_status_from_owner(status, NULL);
     }
-    if (provider_result > RIN_KERBEROS_OPERATION_RESULT_CONTINUE_NEEDED ||
+    if (provider_result > RIN_KERBEROS_OPERATION_RESULT_ERROR ||
         operation_generation == 0u ||
         operation_output_size > request->output_capacity ||
         next_context_size > sizeof(next_context) ||
@@ -654,6 +654,11 @@ static uint32_t provider_operation(
         (provider_result == RIN_KERBEROS_OPERATION_RESULT_CONTINUE_NEEDED &&
          request->operation != RIN_KERBEROS_OPERATION_INIT_SEC_CONTEXT &&
          request->operation != RIN_KERBEROS_OPERATION_ACCEPT_SEC_CONTEXT) ||
+        (provider_result == RIN_KERBEROS_OPERATION_RESULT_ERROR &&
+         (request->operation != RIN_KERBEROS_OPERATION_ACCEPT_SEC_CONTEXT ||
+          operation_output_size == 0u || next_context_size != 0u ||
+          (operation_return_flags &
+           ~RIN_KERBEROS_OPERATION_RETURN_FLAG_EXTENDED_ERROR) != 0u)) ||
         (operation_return_flags &
          ~RIN_KERBEROS_OPERATION_KNOWN_RETURN_FLAGS) != 0u) {
         if (operation_output != NULL) {
@@ -688,6 +693,8 @@ static uint32_t provider_operation(
     }
     if (return_flags != NULL) *return_flags = operation_return_flags;
     provider_zero(next_context, sizeof(next_context));
+    if (provider_result == RIN_KERBEROS_OPERATION_RESULT_ERROR)
+        return RIN_AUTH_PROVIDER_KRB_ERROR;
     return provider_result == RIN_KERBEROS_OPERATION_RESULT_CONTINUE_NEEDED
                ? RIN_AUTH_PROVIDER_CONTINUE_NEEDED
                : RIN_AUTH_PROVIDER_OK;

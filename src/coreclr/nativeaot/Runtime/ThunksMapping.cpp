@@ -152,6 +152,21 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     // reduce it to RW for the data section. For the stubs section we need to increase to RWX to generate the stubs
     // instructions. After this we go back to RX for the stubs section before the stubs are used and should not be
     // changed anymore.
+#if defined(TARGET_RINOS)
+    // RinOS enforces W^X in the kernel and rejects the temporary RWX
+    // transition used by the upstream Unix allocator.  The target has no
+    // executable-at-map requirement, so build both halves as RW, emit the
+    // stubs, and publish only the code half as RX below.  The data half stays
+    // RW for the thunk slots.
+    void * pNewMapping = PalVirtualAlloc(thunksMapSize * 2, PAGE_READWRITE);
+    if (pNewMapping == NULL)
+    {
+        return E_OUTOFMEMORY;
+    }
+
+    void * pThunksSection = pNewMapping;
+    void * pDataSection = (uint8_t*)pNewMapping + thunksMapSize;
+#else
     void * pNewMapping = PalVirtualAlloc(thunksMapSize * 2, PAGE_EXECUTE_READ);
     if (pNewMapping == NULL)
     {
@@ -167,6 +182,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         PalVirtualFree(pNewMapping, THUNKS_MAP_SIZE * 2);
         return E_FAIL;
     }
+#endif
 
 #if defined(HOST_APPLE) && defined(HOST_ARM64)
 #if defined(HOST_MACCATALYST) || defined(HOST_IOS) || defined(HOST_TVOS)

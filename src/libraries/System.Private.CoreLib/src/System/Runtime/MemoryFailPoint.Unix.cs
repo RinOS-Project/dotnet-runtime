@@ -24,7 +24,7 @@ namespace System.Runtime
                 totalAddressSpaceFree = 0;
                 // A broken or unavailable product memory snapshot must not
                 // become a successful gate.
-                return true;
+                return false;
             }
 
             availPageFile = availability.AvailableVmBytes;
@@ -39,13 +39,7 @@ namespace System.Runtime
             {
                 availPageFile = 0;
                 totalAddressSpaceFree = 0;
-#if TARGET_RINOS
-                // RinOS owns this PAL contract.  A broken or unavailable
-                // product memory snapshot must not become a successful gate.
-                return true;
-#else
                 return false;
-#endif
             }
 
             ulong pageSizeUnsigned = (ulong)pageSize;

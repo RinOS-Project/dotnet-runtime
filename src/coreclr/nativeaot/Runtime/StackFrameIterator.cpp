@@ -31,7 +31,7 @@
 // warning C4061: enumerator '{blah}' in switch of enum '{blarg}' is not explicitly handled by a case label
 #pragma warning(disable:4061)
 
-#if !defined(FEATURE_PORTABLE_HELPERS) // @TODO: these are (currently) only implemented in assembly helpers
+#if !defined(FEATURE_PORTABLE_HELPERS) // Portable helpers do not expose native assembly thunk entry points.
 EXTERN_C CODE_LOCATION ReturnFromUniversalTransitionTailCall;
 #if defined(TARGET_WINDOWS) && (defined(TARGET_AMD64) || defined(TARGET_ARM64))
 EXTERN_C CODE_LOCATION ReturnFromUniversalTransitionGuardedTailCall;
@@ -174,7 +174,7 @@ void StackFrameIterator::InternalInit(Thread * pThreadToWalk, PInvokeTransitionF
     // properly walk it in parallel.
     ResetNextExInfoForSP((uintptr_t)dac_cast<TADDR>(pFrame));
 
-#if !defined(FEATURE_PORTABLE_HELPERS) // @TODO: no portable version of regdisplay
+#if !defined(FEATURE_PORTABLE_HELPERS) // Portable helpers carry interpreter context, not a native REGDISPLAY.
     memset(&m_RegDisplay, 0, sizeof(m_RegDisplay));
     m_RegDisplay.SetIP(ReturnAddressToCanonicalPC(dac_cast<TADDR>(pFrame->m_RIP)));
     SetControlPC(dac_cast<PTR_VOID>(m_RegDisplay.GetIP()));
@@ -2381,7 +2381,7 @@ PTR_VOID StackFrameIterator::AdjustReturnAddressBackward(PTR_VOID controlPC)
 // static
 StackFrameIterator::ReturnAddressCategory StackFrameIterator::CategorizeUnadjustedReturnAddress(PTR_VOID returnAddress)
 {
-#if defined(FEATURE_PORTABLE_HELPERS) // @TODO: no portable thunks are defined
+#if defined(FEATURE_PORTABLE_HELPERS) // Portable thunk ownership is an explicit product ABI boundary.
 
     return InManagedCode;
 

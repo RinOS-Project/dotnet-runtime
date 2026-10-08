@@ -334,6 +334,14 @@ PALEXPORT uint32_t NetSecurityNative_DisplayMajorStatus(
 PALEXPORT uint32_t NetSecurityNative_ImportUserName(
     uint32_t* minorStatus, char* inputName, uint32_t inputNameLen, GssName** outputName)
 {
+    /* The provider callback writes an opaque handle through this pointer. Do
+     * not call into product code when the managed/native caller supplied no
+     * writable result location. */
+    if (outputName == NULL)
+    {
+        return rinos_gss_unavailable(minorStatus);
+    }
+
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
@@ -355,6 +363,11 @@ PALEXPORT uint32_t NetSecurityNative_ImportUserName(
 PALEXPORT uint32_t NetSecurityNative_ImportPrincipalName(
     uint32_t* minorStatus, char* inputName, uint32_t inputNameLen, GssName** outputName)
 {
+    if (outputName == NULL)
+    {
+        return rinos_gss_unavailable(minorStatus);
+    }
+
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
@@ -395,6 +408,11 @@ PALEXPORT uint32_t NetSecurityNative_ReleaseName(uint32_t* minorStatus, GssName*
 
 PALEXPORT uint32_t NetSecurityNative_AcquireAcceptorCred(uint32_t* minorStatus, GssCredId** outputCredHandle)
 {
+    if (outputCredHandle == NULL)
+    {
+        return rinos_gss_unavailable(minorStatus);
+    }
+
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
@@ -414,6 +432,11 @@ PALEXPORT uint32_t NetSecurityNative_AcquireAcceptorCred(uint32_t* minorStatus, 
 PALEXPORT uint32_t NetSecurityNative_InitiateCredSpNego(
     uint32_t* minorStatus, GssName* desiredName, GssCredId** outputCredHandle)
 {
+    if (outputCredHandle == NULL)
+    {
+        return rinos_gss_unavailable(minorStatus);
+    }
+
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL &&
         (provider->package_mask & RIN_AUTH_PROVIDER_PACKAGE_NEGOTIATE) != 0u)
@@ -775,6 +798,11 @@ PALEXPORT uint32_t NetSecurityNative_InitiateCredWithPassword(
     uint32_t passwdLen,
     GssCredId** outputCredHandle)
 {
+    if (outputCredHandle == NULL)
+    {
+        return rinos_gss_unavailable(minorStatus);
+    }
+
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL && rinos_gss_supports_package(provider, (uint32_t)packageType))
     {

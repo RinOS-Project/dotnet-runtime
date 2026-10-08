@@ -84,6 +84,7 @@ static int rinos_gss_kerberos_owner_valid(const RinAuthProviderV1* provider)
         owner->acquire_session_initiator != NULL &&
         owner->acquire_acceptor_keytab != NULL &&
         owner->release_credential != NULL &&
+        owner->get_session_principal != NULL &&
         operation_owner->struct_size == sizeof(*operation_owner) &&
         operation_owner->version ==
             RIN_KERBEROS_OPERATION_OWNER_ABI_VERSION &&

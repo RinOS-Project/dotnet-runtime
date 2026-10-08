@@ -24,6 +24,7 @@
 #define RINOS_KERBEROS_NAME_MAGIC UINT32_C(0x314e4b52)
 #define RINOS_KERBEROS_CREDENTIAL_MAGIC UINT32_C(0x31434b52)
 #define RINOS_KERBEROS_CONTEXT_MAGIC UINT32_C(0x31584252)
+#define RINOS_KERBEROS_MAX_PRINCIPAL_SIZE UINT32_C(4096)
 
 #if defined(__GNUC__) || defined(__clang__)
 #define RINOS_KERBEROS_WEAK __attribute__((weak))
@@ -998,15 +999,42 @@ static uint32_t provider_get_user(
     void* context, uint32_t* minor_status, void* security_context,
     RinAuthProviderBufferV1* output)
 {
+    RinOsKerberosProviderContext* provider_context =
+        (RinOsKerberosProviderContext*)security_context;
+    const RinKerberosCredentialOwnerV1* owner;
+    uint8_t* principal;
+    uint32_t principal_size = 0u;
+    uint64_t generation = 0u;
+    uint32_t status;
     (void)context;
-    (void)security_context;
     if (output != NULL) {
         output->data = NULL;
         output->length = 0u;
     }
-    /* The operation ABI has no authenticated principal inquiry yet; do not
-     * turn a local name or fixed string into DefaultCredentials identity. */
-    return provider_unavailable(minor_status);
+    if (output == NULL || !provider_context_valid(provider_context) ||
+        provider_context->kind != RIN_KERBEROS_OPERATION_CREDENTIAL_INITIATOR ||
+        provider_context->generation == 0u)
+        return provider_unavailable(minor_status);
+    owner = provider_credential_owner();
+    if (owner == NULL || owner->get_session_principal == NULL)
+        return provider_unavailable(minor_status);
+    principal = (uint8_t*)calloc(1u, RINOS_KERBEROS_MAX_PRINCIPAL_SIZE);
+    if (principal == NULL) return provider_unavailable(minor_status);
+    status = owner->get_session_principal(
+        owner->context, minor_status, provider_context->owner_credential,
+        principal, RINOS_KERBEROS_MAX_PRINCIPAL_SIZE, &principal_size,
+        &generation);
+    if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK || principal_size == 0u ||
+        principal_size > RINOS_KERBEROS_MAX_PRINCIPAL_SIZE ||
+        generation != provider_context->generation) {
+        provider_zero(principal, RINOS_KERBEROS_MAX_PRINCIPAL_SIZE);
+        free(principal);
+        return provider_status_from_owner(status, minor_status);
+    }
+    output->data = principal;
+    output->length = principal_size;
+    if (minor_status != NULL) *minor_status = 0u;
+    return RIN_AUTH_PROVIDER_OK;
 }
 
 static RinAuthProviderV1 g_provider = {

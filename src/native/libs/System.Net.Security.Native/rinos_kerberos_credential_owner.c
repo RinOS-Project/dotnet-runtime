@@ -183,6 +183,50 @@ static uint32_t owner_acquire_acceptor_keytab(
                          output, scope, 2u);
 }
 
+static uint32_t owner_get_session_principal(
+    void* context, uint32_t* minor_status, void* credential, uint8_t* output,
+    uint32_t output_capacity, uint32_t* output_size, uint64_t* generation)
+{
+    RinOsKerberosOwnerContext* owner = (RinOsKerberosOwnerContext*)context;
+    RinOsKerberosOwnerSlot* slot;
+    uint32_t index;
+    uint32_t token_generation;
+    int result;
+
+    owner_minor(minor_status, 0u);
+    if (output_size != NULL) *output_size = 0u;
+    if (generation != NULL) *generation = 0u;
+    if (output == NULL || output_capacity == 0u ||
+        output_capacity > RIN_KEYRING_MAX_SECRET_SIZE ||
+        output_size == NULL ||
+        generation == NULL || credential == NULL ||
+        !owner_decode_token(credential, &index, &token_generation) ||
+        !owner_valid(owner) || !owner_lock(owner))
+        return RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
+    owner_zero(output, output_capacity);
+    slot = &owner->slots[index];
+    if (slot->magic != RINOS_KERBEROS_OWNER_MAGIC || slot->kind != 1u ||
+        slot->generation != token_generation) {
+        owner_unlock(owner);
+        return RIN_KERBEROS_CREDENTIAL_OWNER_INVALID_SESSION;
+    }
+    result = rin_keyring_client_kerberos_principal(
+        &slot->handle, output, output_capacity, output_size, generation);
+    if (result == RIN_KEYRING_OK && *generation != slot->handle.generation) {
+        owner_zero(output, output_capacity);
+        *output_size = 0u;
+        *generation = 0u;
+        result = RIN_KEYRING_CONFLICT;
+    }
+    owner_unlock(owner);
+    if (result == RIN_KEYRING_OK)
+        return RIN_KERBEROS_CREDENTIAL_OWNER_OK;
+    owner_zero(output, output_capacity);
+    *output_size = 0u;
+    *generation = 0u;
+    return owner_keyring_result(result);
+}
+
 static uint32_t owner_release_credential(void* context, uint32_t* minor_status,
                                          void** input)
 {
@@ -288,6 +332,7 @@ static int owner_initialize(void)
         g_owner.abi.acquire_session_initiator = owner_acquire_session_initiator;
         g_owner.abi.acquire_acceptor_keytab = owner_acquire_acceptor_keytab;
         g_owner.abi.release_credential = owner_release_credential;
+        g_owner.abi.get_session_principal = owner_get_session_principal;
         g_owner.operation_abi.struct_size = sizeof(g_owner.operation_abi);
         g_owner.operation_abi.version =
             RIN_KERBEROS_OPERATION_OWNER_ABI_VERSION;

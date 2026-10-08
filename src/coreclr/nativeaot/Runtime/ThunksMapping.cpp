@@ -414,7 +414,12 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
 
     int thunkBlocksPerMapping = RhpGetNumThunkBlocksPerMapping();
     int thunkBlockSize = RhpGetThunkBlockSize();
-    int templateSize = thunkBlocksPerMapping * thunkBlockSize;
+    if (thunkBlocksPerMapping <= 0 || thunkBlockSize <= 0 ||
+        (size_t)thunkBlocksPerMapping > SIZE_MAX / (size_t)thunkBlockSize)
+    {
+        return E_FAIL;
+    }
+    size_t templateSize = (size_t)thunkBlocksPerMapping * (size_t)thunkBlockSize;
 
 #ifndef TARGET_APPLE // Apple platforms cannot use the initial template
     if (pThunksTemplateAddress == NULL)
@@ -431,8 +436,20 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         // cannot reuse it here. Now we need to create a new mapping of the thunks section in order to have
         // more thunks
 
-        uint8_t* pModuleBase = (uint8_t*)PalGetModuleHandleFromPointer(RhpGetThunksBase());
-        int templateRva = (int)((uint8_t*)RhpGetThunksBase() - pModuleBase);
+        uint8_t* pThunkTemplate = (uint8_t*)RhpGetThunksBase();
+        if (pThunkTemplate == NULL)
+        {
+            return E_FAIL;
+        }
+        uint8_t* pModuleBase = (uint8_t*)PalGetModuleHandleFromPointer(pThunkTemplate);
+        uintptr_t thunkAddress = (uintptr_t)pThunkTemplate;
+        uintptr_t moduleAddress = (uintptr_t)pModuleBase;
+        if (pModuleBase == NULL || thunkAddress < moduleAddress ||
+            thunkAddress - moduleAddress > UINT32_MAX)
+        {
+            return E_FAIL;
+        }
+        uint32_t templateRva = (uint32_t)(thunkAddress - moduleAddress);
 
         if (!PalAllocateThunksFromTemplate((HANDLE)pModuleBase, templateRva, templateSize, &pThunkMap))
             return E_OUTOFMEMORY;

@@ -784,7 +784,9 @@ UInt32_BOOL PalMarkThunksAsValidCallTargets(
     // checked even though this Unix path only needs the mapping half-size: a
     // zero/negative layout is not a valid thunk provider contract.
     if (thunkSize <= 0 || thunksPerBlock <= 0 ||
-        thunkBlockSize != (int)OS_PAGE_SIZE)
+        thunkBlockSize != (int)OS_PAGE_SIZE ||
+        thunkSize > thunkBlockSize ||
+        (size_t)thunksPerBlock > (size_t)thunkBlockSize / (size_t)thunkSize)
     {
         return UInt32_FALSE;
     }

@@ -64,7 +64,8 @@ static int rinos_gss_kerberos_owner_valid(const RinAuthProviderV1* provider)
      * an invalid advertisement.  In particular, the PAL must not turn a
      * provider-local success stub into DefaultCredentials. */
 #if !defined(RINOS_KERBEROS_OWNER_LINKED)
-    if (rin_kerberos_credential_owner_get_v1 == NULL)
+    if (rin_kerberos_credential_owner_get_v1 == NULL ||
+        rin_kerberos_operation_owner_get_v1 == NULL)
     {
         return 0;
     }

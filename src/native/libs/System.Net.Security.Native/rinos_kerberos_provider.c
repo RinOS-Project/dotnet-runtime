@@ -926,17 +926,72 @@ static void provider_release_buffer(void* context, void* buffer,
     }
 }
 
-static uint32_t provider_display_status(
-    void* context, uint32_t* minor_status, uint32_t status_value,
+static uint32_t provider_display_status_value(
+    uint32_t* minor_status, uint32_t status_value, int is_minor,
     RinAuthProviderBufferV1* output)
 {
-    (void)context;
-    (void)status_value;
+    static const char* const hex = "0123456789ABCDEF";
+    const char* message = NULL;
+    const char* prefix = NULL;
+    char formatted[64];
+    size_t length = 0u;
+    size_t prefix_length;
+    uint32_t index;
+    uint8_t* bytes;
+
     if (output != NULL) {
         output->data = NULL;
         output->length = 0u;
     }
-    return provider_unavailable(minor_status);
+    if (output == NULL) return provider_unavailable(minor_status);
+
+    if (!is_minor && status_value == 0u)
+        message = "GSS status: complete";
+    else if (!is_minor && status_value == PAL_GSS_CONTINUE_NEEDED)
+        message = "GSS status: continuation needed";
+    else if (!is_minor && status_value == (UINT32_C(16) << 16))
+        message = "GSS status: RinOS authentication provider unavailable";
+
+    if (message != NULL) {
+        length = strlen(message);
+        memcpy(formatted, message, length);
+    } else {
+        prefix = is_minor ? "RinOS mechanism status 0x" : "GSS status 0x";
+        prefix_length = strlen(prefix);
+        memcpy(formatted, prefix, prefix_length);
+        for (index = 0u; index < 8u; ++index) {
+            const uint32_t shift = 28u - index * 4u;
+            formatted[prefix_length + index] =
+                hex[(status_value >> shift) & UINT32_C(0x0f)];
+        }
+        length = prefix_length + 8u;
+    }
+
+    bytes = (uint8_t*)malloc(length);
+    if (bytes == NULL) return provider_unavailable(minor_status);
+    memcpy(bytes, formatted, length);
+    output->data = bytes;
+    output->length = length;
+    if (minor_status != NULL) *minor_status = 0u;
+    return RIN_AUTH_PROVIDER_OK;
+}
+
+static uint32_t provider_display_minor_status(
+    void* context, uint32_t* minor_status, uint32_t status_value,
+    RinAuthProviderBufferV1* output)
+{
+    (void)context;
+    return provider_display_status_value(minor_status, status_value, 1,
+                                         output);
+}
+
+static uint32_t provider_display_major_status(
+    void* context, uint32_t* minor_status, uint32_t status_value,
+    RinAuthProviderBufferV1* output)
+{
+    (void)context;
+    return provider_display_status_value(minor_status, status_value, 0,
+                                         output);
 }
 
 static uint32_t provider_get_user(
@@ -963,8 +1018,8 @@ static RinAuthProviderV1 g_provider = {
     .max_token_size = RIN_AUTH_PROVIDER_MAX_TOKEN_SIZE,
     .context = NULL,
     .release_buffer = provider_release_buffer,
-    .display_minor_status = provider_display_status,
-    .display_major_status = provider_display_status,
+    .display_minor_status = provider_display_minor_status,
+    .display_major_status = provider_display_major_status,
     .import_user_name = provider_import_user_name,
     .import_principal_name = provider_import_principal_name,
     .release_name = provider_release_name,

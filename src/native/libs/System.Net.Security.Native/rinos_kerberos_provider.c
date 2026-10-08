@@ -99,6 +99,14 @@ static uint32_t provider_status_from_owner(uint32_t status,
         if (minor_status != NULL) *minor_status = 0u;
         return RIN_AUTH_PROVIDER_BAD_BINDINGS;
     }
+    if (status == RIN_KERBEROS_CREDENTIAL_OWNER_INVALID_SESSION) {
+        if (minor_status != NULL) *minor_status = 0u;
+        return RIN_AUTH_PROVIDER_DEFECTIVE_CREDENTIAL;
+    }
+    if (status == RIN_KERBEROS_CREDENTIAL_OWNER_EXPIRED) {
+        if (minor_status != NULL) *minor_status = 0u;
+        return RIN_AUTH_PROVIDER_CREDENTIALS_EXPIRED;
+    }
     return provider_unavailable(minor_status);
 }
 

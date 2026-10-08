@@ -198,6 +198,10 @@ static uint32_t rinos_gss_map_provider_status(uint32_t providerStatus)
             return PAL_GSS_S_BAD_BINDINGS;
         case RIN_AUTH_PROVIDER_DEFECTIVE_TOKEN:
             return PAL_GSS_S_DEFECTIVE_TOKEN;
+        case RIN_AUTH_PROVIDER_DEFECTIVE_CREDENTIAL:
+            return PAL_GSS_S_DEFECTIVE_CREDENTIAL;
+        case RIN_AUTH_PROVIDER_CREDENTIALS_EXPIRED:
+            return PAL_GSS_S_CREDENTIALS_EXPIRED;
         case RIN_AUTH_PROVIDER_KRB_ERROR:
             /* A standards-shaped KRB-ERROR is a mechanism protocol failure,
              * not a malformed GSS input token.  Preserve its output token
@@ -340,7 +344,7 @@ static uint32_t rinos_gss_finish_provider_handle(
         {
             *outputHandle = NULL;
         }
-        return rinos_gss_unavailable(minorStatus);
+        return mappedStatus;
     }
 
     return mappedStatus;

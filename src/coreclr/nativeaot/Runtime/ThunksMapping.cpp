@@ -11,6 +11,8 @@
 #include "Pal.h"
 #include "rhassert.h"
 
+#include <string.h>
+
 
 #ifdef FEATURE_RX_THUNKS
 
@@ -34,6 +36,33 @@ static_assert((THUNK_SIZE % 4) == 0, "Thunk stubs size not aligned correctly. Th
 
 // 32 K or OS page
 #define THUNKS_MAP_SIZE (max((size_t)0x8000, OS_PAGE_SIZE))
+
+/*
+ * Several thunk encodings place an immediate after a one- or three-byte
+ * opcode.  Do not write those fields through a typed pointer: the x64 thunk
+ * stores an eight-byte address at offset 2 and a four-byte displacement at
+ * offset 13, neither of which is naturally aligned.  memcpy is the portable
+ * object-representation write and keeps the code generator valid under the
+ * RinOS strict-alignment contract before the code half is published RX.
+ */
+template <typename T>
+static void WriteThunkValue(uint8_t*& cursor, const T& value)
+{
+    memcpy(cursor, &value, sizeof(value));
+    cursor += sizeof(value);
+}
+
+static void WriteThunkPointer(uint8_t*& cursor, void* value)
+{
+    memcpy(cursor, &value, sizeof(value));
+    cursor += sizeof(value);
+}
+
+static void WriteThunkBytes(uint8_t*& cursor, const void* value, size_t size)
+{
+    memcpy(cursor, value, size);
+    cursor += size;
+}
 
 #ifdef TARGET_ARM
 //*****************************************************************************
@@ -218,15 +247,13 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
             // mov r10,<thunk data address>
             // jmp [r10 + <delta to get to last qword in data page]
 
-            *((uint16_t*)pCurrentThunkAddress) = 0xba49;
-            pCurrentThunkAddress += 2;
-            *((void **)pCurrentThunkAddress) = (void *)pCurrentDataAddress;
-            pCurrentThunkAddress += 8;
-
-            *((uint32_t*)pCurrentThunkAddress) = 0x00a2ff41;
-            pCurrentThunkAddress += 3;
-            *((uint32_t*)pCurrentThunkAddress) = (uint32_t)(OS_PAGE_SIZE - POINTER_SIZE - (i * POINTER_SIZE * 2));
-            pCurrentThunkAddress += 4;
+            WriteThunkValue(pCurrentThunkAddress, (uint16_t)0xba49);
+            WriteThunkPointer(pCurrentThunkAddress, (void*)pCurrentDataAddress);
+            const uint32_t indirectJump = 0x00a2ff41;
+            WriteThunkBytes(pCurrentThunkAddress, &indirectJump, 3);
+            WriteThunkValue(
+                pCurrentThunkAddress,
+                (uint32_t)(OS_PAGE_SIZE - POINTER_SIZE - (i * POINTER_SIZE * 2)));
 
             // nops for alignment
             *pCurrentThunkAddress++ = 0x90;
@@ -239,13 +266,11 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
             // jmp [eax + <delta to get to last dword in data page]
 
             *pCurrentThunkAddress++ = 0xb8;
-            *((void **)pCurrentThunkAddress) = (void *)pCurrentDataAddress;
-            pCurrentThunkAddress += 4;
-
-            *((uint16_t*)pCurrentThunkAddress) = 0xa0ff;
-            pCurrentThunkAddress += 2;
-            *((uint32_t*)pCurrentThunkAddress) = OS_PAGE_SIZE - POINTER_SIZE - (i * POINTER_SIZE * 2);
-            pCurrentThunkAddress += 4;
+            WriteThunkPointer(pCurrentThunkAddress, (void*)pCurrentDataAddress);
+            WriteThunkValue(pCurrentThunkAddress, (uint16_t)0xa0ff);
+            WriteThunkValue(
+                pCurrentThunkAddress,
+                (uint32_t)(OS_PAGE_SIZE - POINTER_SIZE - (i * POINTER_SIZE * 2)));
 
             // nops for alignment
             *pCurrentThunkAddress++ = 0x90;
@@ -260,8 +285,11 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
             pCurrentThunkAddress += 8;
 
             // ldr pc, [r12, #offset]
-            *((uint32_t*)pCurrentThunkAddress) = 0xf000f8dc | ((OS_PAGE_SIZE - POINTER_SIZE - (i * POINTER_SIZE * 2)) << 16);
-            pCurrentThunkAddress += 4;
+            WriteThunkValue(
+                pCurrentThunkAddress,
+                (uint32_t)(0xf000f8dc |
+                           ((OS_PAGE_SIZE - POINTER_SIZE -
+                             (i * POINTER_SIZE * 2)) << 16)));
 
 #elif TARGET_ARM64
 
@@ -271,17 +299,21 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
             //brk      0xf000 //Stubs need to be 16 byte aligned therefore we fill with a break here
 
             int delta = (int)(pCurrentDataAddress - pCurrentThunkAddress);
-            *((uint32_t*)pCurrentThunkAddress) = 0x10000010 | (((delta & 0x03) << 29) | (((delta & 0x1FFFFC) >> 2) << 5));
-            pCurrentThunkAddress += 4;
+            WriteThunkValue(
+                pCurrentThunkAddress,
+                (uint32_t)(0x10000010 |
+                           (((delta & 0x03) << 29) |
+                            (((delta & 0x1FFFFC) >> 2) << 5))));
 
-            *((uint32_t*)pCurrentThunkAddress) = 0xF9400211 | (((uint32_t)((OS_PAGE_SIZE - POINTER_SIZE - (i * POINTER_SIZE * 2)) / 8) << 10));
-            pCurrentThunkAddress += 4;
-
-            *((uint32_t*)pCurrentThunkAddress) = 0xD61F0220;
-            pCurrentThunkAddress += 4;
-
-            *((uint32_t*)pCurrentThunkAddress) = 0xD43E0000;
-            pCurrentThunkAddress += 4;
+            WriteThunkValue(
+                pCurrentThunkAddress,
+                (uint32_t)(0xF9400211 |
+                           (((uint32_t)((OS_PAGE_SIZE - POINTER_SIZE -
+                                         (i * POINTER_SIZE * 2)) /
+                                        8)
+                             << 10))));
+            WriteThunkValue(pCurrentThunkAddress, (uint32_t)0xD61F0220);
+            WriteThunkValue(pCurrentThunkAddress, (uint32_t)0xD43E0000);
 
 #elif TARGET_LOONGARCH64
 
@@ -293,20 +325,20 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
             int delta = (int)(pCurrentDataAddress - pCurrentThunkAddress);
             ASSERT((-0x200000 <= delta) && (delta < 0x200000));
 
-            *((uint32_t*)pCurrentThunkAddress) = 0x18000013 | (((delta & 0x3FFFFC) >> 2) << 5);
-            pCurrentThunkAddress += 4;
+            WriteThunkValue(
+                pCurrentThunkAddress,
+                (uint32_t)(0x18000013 |
+                           (((delta & 0x3FFFFC) >> 2) << 5)));
 
             delta += OS_PAGE_SIZE - POINTER_SIZE - (i * POINTER_SIZE * 2) - 4;
             ASSERT((-0x200000 <= delta) && (delta < 0x200000));
 
-            *((uint32_t*)pCurrentThunkAddress) = 0x18000014 | (((delta & 0x3FFFFC) >> 2) << 5);
-            pCurrentThunkAddress += 4;
-
-            *((uint32_t*)pCurrentThunkAddress) = 0x28C00294;
-            pCurrentThunkAddress += 4;
-
-            *((uint32_t*)pCurrentThunkAddress) = 0x4C000280;
-            pCurrentThunkAddress += 4;
+            WriteThunkValue(
+                pCurrentThunkAddress,
+                (uint32_t)(0x18000014 |
+                           (((delta & 0x3FFFFC) >> 2) << 5)));
+            WriteThunkValue(pCurrentThunkAddress, (uint32_t)0x28C00294);
+            WriteThunkValue(pCurrentThunkAddress, (uint32_t)0x4C000280);
 
 #elif defined(TARGET_RISCV64)
 
@@ -317,20 +349,23 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
             //jalr     zero, t0, 0
 
             int delta = (int)(pCurrentDataAddress - pCurrentThunkAddress);
-            *((uint32_t*)pCurrentThunkAddress) = 0x00000317 | ((((delta + 0x800) & 0xFFFFF000) >> 12) << 12);  // auipc t1, delta[31:12]
-            pCurrentThunkAddress += 4;
-
-            *((uint32_t*)pCurrentThunkAddress) = 0x00030313 | ((delta & 0xFFF) << 20);  // addi t1, t1, delta[11:0]
-            pCurrentThunkAddress += 4;
+            WriteThunkValue(
+                pCurrentThunkAddress,
+                (uint32_t)(0x00000317 |
+                           ((((delta + 0x800) & 0xFFFFF000) >> 12) << 12)));  // auipc t1, delta[31:12]
+            WriteThunkValue(
+                pCurrentThunkAddress,
+                (uint32_t)(0x00030313 | ((delta & 0xFFF) << 20)));  // addi t1, t1, delta[11:0]
 
             delta += OS_PAGE_SIZE - POINTER_SIZE - (i * POINTER_SIZE * 2) - 8;
-            *((uint32_t*)pCurrentThunkAddress) = 0x00000297 | ((((delta + 0x800) & 0xFFFFF000) >> 12) << 12);  // auipc t0, delta[31:12]
-            pCurrentThunkAddress += 4;
-
-            *((uint32_t*)pCurrentThunkAddress) = 0x0002b283 | ((delta & 0xFFF) << 20); // ld t0, (delta[11:0])(t0)
-            pCurrentThunkAddress += 4;
-
-            *((uint32_t*)pCurrentThunkAddress) = 0x00008282;  // jalr zero, t0, 0
+            WriteThunkValue(
+                pCurrentThunkAddress,
+                (uint32_t)(0x00000297 |
+                           ((((delta + 0x800) & 0xFFFFF000) >> 12) << 12)));  // auipc t0, delta[31:12]
+            WriteThunkValue(
+                pCurrentThunkAddress,
+                (uint32_t)(0x0002b283 | ((delta & 0xFFF) << 20))); // ld t0, (delta[11:0])(t0)
+            WriteThunkValue(pCurrentThunkAddress, (uint32_t)0x00008282);  // jalr zero, t0, 0
             pCurrentThunkAddress += 4;
 
 #else

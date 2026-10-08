@@ -9,10 +9,9 @@
  * raw ccache/keytab bytes.  This provider sends bounded GSS inputs to the owner,
  * carries back opaque context/output tokens, and refuses to manufacture a
  * credential or a successful token when the service-side RFC implementation
- * is absent. The target build defines RINOS_KERBEROS_RFC_PROVIDER_LINKED only
- * when the RinOS keyring service has the corresponding bounded AP-REQ/AP-REP
- * operation; the service still rejects every RFC feature it has not
- * implemented.
+ * is absent. The linked service path now covers initiator AP-REQ/AP-REP and
+ * bounded RFC 4121 per-message operations; it still rejects every RFC feature
+ * it has not implemented.
  */
 
 #include "pal_gssapi.h"
@@ -28,6 +27,7 @@
 #define RINOS_KERBEROS_CREDENTIAL_MAGIC UINT32_C(0x31434b52)
 #define RINOS_KERBEROS_CONTEXT_MAGIC UINT32_C(0x31584252)
 #define RINOS_KERBEROS_MAX_PRINCIPAL_SIZE UINT32_C(4096)
+#define RINOS_KERBEROS_GSS_FLAG_SEALED UINT8_C(0x02)
 
 #if defined(__GNUC__) || defined(__clang__)
 #define RINOS_KERBEROS_WEAK __attribute__((weak))
@@ -818,12 +818,34 @@ static uint32_t provider_message_operation(
     RinOsKerberosProviderContext* provider_context =
         (RinOsKerberosProviderContext*)security_context;
     RinOsKerberosProviderCredential credential = {0};
+    RinKerberosProviderMessagePairInputV1 header = {0};
     RinKerberosOperationRequestV1 request = {0};
+    uint8_t* envelope;
+    uint32_t total;
+    uint32_t operation_flags =
+        operation == RIN_KERBEROS_OPERATION_WRAP && encrypt != NULL &&
+                *encrypt != 0
+            ? RIN_KERBEROS_OPERATION_FLAG_ENCRYPT
+            : 0u;
     uint32_t status;
     if (!provider_context_valid(provider_context) || output == NULL ||
         input_length < 0 ||
-        (input_length != 0 && input == NULL))
+        (input_length != 0 && input == NULL) ||
+        (uint32_t)input_length > RIN_KERBEROS_OPERATION_MAX_INPUT_SIZE -
+            sizeof(header))
         return provider_unavailable(minor_status);
+    total = (uint32_t)sizeof(header) + (uint32_t)input_length;
+    envelope = (uint8_t*)calloc(1u, total);
+    if (envelope == NULL) return provider_unavailable(minor_status);
+    header.struct_size = sizeof(header);
+    header.version = RIN_KERBEROS_PROVIDER_INPUT_ABI_VERSION;
+    header.kind = RIN_KERBEROS_PROVIDER_INPUT_MESSAGE_PAIR;
+    header.first_size = (uint32_t)input_length;
+    header.second_size = 0u;
+    header.flags = operation_flags;
+    memcpy(envelope, &header, sizeof(header));
+    if (input_length != 0)
+        memcpy(envelope + sizeof(header), input, (size_t)input_length);
     credential.magic = RINOS_KERBEROS_CREDENTIAL_MAGIC;
     credential.kind = provider_context->kind;
     credential.owner_credential = provider_context->owner_credential;
@@ -832,13 +854,20 @@ static uint32_t provider_message_operation(
     request.version = RIN_KERBEROS_OPERATION_ABI_VERSION;
     request.operation = operation;
     request.credential_kind = provider_context->kind;
-    request.flags = encrypt != NULL && *encrypt != 0
-                        ? RIN_KERBEROS_OPERATION_FLAG_ENCRYPT
-                        : 0u;
-    request.input_size = (uint32_t)input_length;
+    request.flags = operation_flags;
+    request.input_size = total;
     request.output_capacity = RIN_AUTH_PROVIDER_MAX_TOKEN_SIZE;
-    status = provider_operation(&credential, provider_context, &request, input,
-                                (uint32_t)input_length, output, 1u, NULL);
+    status = provider_operation(&credential, provider_context, &request,
+                                envelope, total, output, 1u, NULL);
+    provider_zero(envelope, total);
+    free(envelope);
+    if (status == RIN_AUTH_PROVIDER_OK && encrypt != NULL) {
+        if (operation == RIN_KERBEROS_OPERATION_WRAP)
+            *encrypt = operation_flags != 0u;
+        else if (operation == RIN_KERBEROS_OPERATION_UNWRAP &&
+                 input_length >= 3 && input != NULL)
+            *encrypt = (input[2] & RINOS_KERBEROS_GSS_FLAG_SEALED) != 0u;
+    }
     if ((status == RIN_AUTH_PROVIDER_OK ||
          status == RIN_AUTH_PROVIDER_CONTINUE_NEEDED) &&
         minor_status != NULL)
@@ -911,6 +940,7 @@ static uint32_t provider_verify_mic(
     header.kind = RIN_KERBEROS_PROVIDER_INPUT_MESSAGE_PAIR;
     header.first_size = (uint32_t)input_length;
     header.second_size = (uint32_t)token_length;
+    header.flags = 0u;
     memcpy(envelope, &header, sizeof(header));
     if (input_length != 0) memcpy(envelope + sizeof(header), input, input_length);
     if (token_length != 0)

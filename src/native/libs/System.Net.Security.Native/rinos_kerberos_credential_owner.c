@@ -193,6 +193,11 @@ static uint32_t owner_release_credential(void* context, uint32_t* minor_status,
         RinOsKerberosOwnerSlot* slot = &owner->slots[index];
         if (slot->magic == RINOS_KERBEROS_OWNER_MAGIC &&
             slot->generation == generation) {
+            const int result = rin_keyring_client_remove_handle(&slot->handle);
+            if (result != RIN_KEYRING_OK) {
+                owner_unlock(owner);
+                return owner_keyring_result(result);
+            }
             const uint32_t preserved_generation = slot->generation;
             owner_zero(slot, sizeof(*slot));
             slot->generation = preserved_generation;

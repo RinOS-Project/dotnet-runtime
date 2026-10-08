@@ -16,6 +16,7 @@ if (CLR_CMAKE_TARGET_RINOS)
     # RFC 4120/4121 token provider remains a separate capability.
     set(NATIVEGSS_SOURCES
         pal_gssapi_rinos.c
+        rinos_kerberos_provider.c
         rinos_kerberos_credential_owner.c
         "${RINOS_REPO_ROOT}/public-base/libs/rinruntime/src/rin_keyring_client.c"
         "${RINOS_REPO_ROOT}/public-base/libs/rinruntime/src/service.c"
@@ -52,6 +53,7 @@ if (CLR_CMAKE_TARGET_RINOS)
     # this only prevents a weak-reference-only archive extraction hole.
     target_compile_definitions(System.Net.Security.Native-Static PRIVATE
         RINOS_KERBEROS_OWNER_LINKED=1
+        RINOS_AUTH_PROVIDER_LINKED=1
     )
     target_include_directories(System.Net.Security.Native-Static PRIVATE
         "${RINOS_REPO_ROOT}/public-base/RinOS-SDK/include"
@@ -60,6 +62,7 @@ if (CLR_CMAKE_TARGET_RINOS)
     if (GEN_SHARED_LIB)
         target_compile_definitions(System.Net.Security.Native PRIVATE
             RINOS_KERBEROS_OWNER_LINKED=1
+            RINOS_AUTH_PROVIDER_LINKED=1
         )
         target_include_directories(System.Net.Security.Native PRIVATE
             "${RINOS_REPO_ROOT}/public-base/RinOS-SDK/include"

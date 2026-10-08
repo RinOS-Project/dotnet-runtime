@@ -14,6 +14,7 @@
 #include "pal_gssapi.h"
 #include "../../../../../../public-base/RinOS-SDK/include/rin/net/auth_provider_abi.h"
 #include "../../../../../../public-base/RinOS-SDK/include/rin/net/kerberos_credential_owner_abi.h"
+#include "../../../../../../public-base/RinOS-SDK/include/rin/net/kerberos_operation_owner_abi.h"
 
 #include <stdint.h>
 
@@ -26,8 +27,12 @@
 #define RINOS_AUTH_PROVIDER_WEAK
 #endif
 
+#if defined(RINOS_AUTH_PROVIDER_LINKED)
+extern const RinAuthProviderV1* rin_auth_provider_get_v1(void);
+#else
 extern const RinAuthProviderV1* rin_auth_provider_get_v1(void)
     RINOS_AUTH_PROVIDER_WEAK;
+#endif
 
 #if defined(RINOS_KERBEROS_OWNER_LINKED)
 /* The target static archive must retain the owner object: a strong reference
@@ -36,14 +41,19 @@ extern const RinAuthProviderV1* rin_auth_provider_get_v1(void)
  * boundary below so the PAL remains independently testable. */
 extern const RinKerberosCredentialOwnerV1*
     rin_kerberos_credential_owner_get_v1(void);
+extern const RinKerberosOperationOwnerV1*
+    rin_kerberos_operation_owner_get_v1(void);
 #else
 extern const RinKerberosCredentialOwnerV1*
     rin_kerberos_credential_owner_get_v1(void) RINOS_AUTH_PROVIDER_WEAK;
+extern const RinKerberosOperationOwnerV1*
+    rin_kerberos_operation_owner_get_v1(void) RINOS_AUTH_PROVIDER_WEAK;
 #endif
 
 static int rinos_gss_kerberos_owner_valid(const RinAuthProviderV1* provider)
 {
     const RinKerberosCredentialOwnerV1* owner;
+    const RinKerberosOperationOwnerV1* operation_owner;
 
     if ((provider->package_mask & RIN_AUTH_PROVIDER_PACKAGE_KERBEROS) == 0u)
     {
@@ -61,7 +71,8 @@ static int rinos_gss_kerberos_owner_valid(const RinAuthProviderV1* provider)
 #endif
 
     owner = rin_kerberos_credential_owner_get_v1();
-    return owner != NULL &&
+    operation_owner = rin_kerberos_operation_owner_get_v1();
+    return owner != NULL && operation_owner != NULL &&
         owner->struct_size == sizeof(*owner) &&
         owner->version == RIN_KERBEROS_CREDENTIAL_OWNER_ABI_VERSION &&
         owner->reserved0 == 0u &&
@@ -72,7 +83,12 @@ static int rinos_gss_kerberos_owner_valid(const RinAuthProviderV1* provider)
             ~RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES) == 0u &&
         owner->acquire_session_initiator != NULL &&
         owner->acquire_acceptor_keytab != NULL &&
-        owner->release_credential != NULL;
+        owner->release_credential != NULL &&
+        operation_owner->struct_size == sizeof(*operation_owner) &&
+        operation_owner->version ==
+            RIN_KERBEROS_OPERATION_OWNER_ABI_VERSION &&
+        operation_owner->reserved0 == 0u &&
+        operation_owner->operation != NULL;
 }
 
 static const RinAuthProviderV1* rinos_gss_provider(void)

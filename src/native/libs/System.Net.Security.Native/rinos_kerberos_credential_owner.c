@@ -10,6 +10,7 @@
  */
 
 #include "../../../../../../public-base/RinOS-SDK/include/rin/net/kerberos_credential_owner_abi.h"
+#include "../../../../../../public-base/RinOS-SDK/include/rin/net/kerberos_operation_owner_abi.h"
 #include "../../../../../../public-base/libs/rinruntime/include/rinruntime/rin_keyring_client.h"
 
 #include <stddef.h>
@@ -37,6 +38,7 @@ typedef struct RinOsKerberosOwnerContext {
     uint32_t reserved;
     RinOsKerberosOwnerSlot slots[RINOS_KERBEROS_OWNER_MAX_HANDLES];
     RinKerberosCredentialOwnerV1 abi;
+    RinKerberosOperationOwnerV1 operation_abi;
 } RinOsKerberosOwnerContext;
 
 static RinOsKerberosOwnerContext g_owner;
@@ -63,7 +65,12 @@ static int owner_valid(const RinOsKerberosOwnerContext* context)
            context->initialized == RINOS_KERBEROS_OWNER_INITIALIZED &&
            context->abi.struct_size == sizeof(context->abi) &&
            context->abi.version == RIN_KERBEROS_CREDENTIAL_OWNER_ABI_VERSION &&
-           context->abi.context == (void*)context;
+           context->abi.context == (void*)context &&
+           context->operation_abi.struct_size ==
+               sizeof(context->operation_abi) &&
+           context->operation_abi.version ==
+               RIN_KERBEROS_OPERATION_OWNER_ABI_VERSION &&
+           context->operation_abi.context == (void*)context;
 }
 
 static void owner_minor(uint32_t* minor_status, uint32_t value)
@@ -210,6 +217,58 @@ static uint32_t owner_release_credential(void* context, uint32_t* minor_status,
     return RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
 }
 
+static uint32_t owner_operation(
+    void* context, uint32_t* minor_status, void* credential,
+    const RinKerberosOperationRequestV1* request,
+    const uint8_t* context_token, uint32_t context_token_size,
+    const uint8_t* input, uint32_t input_size, uint8_t* output,
+    uint32_t output_capacity, uint32_t* output_size,
+    uint8_t* next_context_token, uint32_t next_context_capacity,
+    uint32_t* next_context_token_size, uint64_t* generation,
+    uint32_t* provider_result, uint32_t* return_flags)
+{
+    RinOsKerberosOwnerContext* owner = (RinOsKerberosOwnerContext*)context;
+    RinOsKerberosOwnerSlot* slot;
+    uint32_t index;
+    uint32_t token_generation;
+    int result;
+
+    owner_minor(minor_status, 0u);
+    if (output_size != NULL) *output_size = 0u;
+    if (next_context_token_size != NULL) *next_context_token_size = 0u;
+    if (generation != NULL) *generation = 0u;
+    if (provider_result != NULL) *provider_result = 0u;
+    if (return_flags != NULL) *return_flags = 0u;
+    if (output != NULL && output_capacity != 0u)
+        owner_zero(output, output_capacity);
+    if (next_context_token != NULL && next_context_capacity != 0u)
+        owner_zero(next_context_token, next_context_capacity);
+    if (credential == NULL || request == NULL || output_size == NULL ||
+        next_context_token_size == NULL || generation == NULL ||
+        provider_result == NULL || return_flags == NULL ||
+        request->struct_size != sizeof(*request) ||
+        request->version != RIN_KERBEROS_OPERATION_ABI_VERSION ||
+        !owner_decode_token(credential, &index, &token_generation) ||
+        !owner_valid(owner) || !owner_lock(owner))
+        return RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
+    slot = &owner->slots[index];
+    if (slot->magic != RINOS_KERBEROS_OWNER_MAGIC ||
+        slot->generation != token_generation ||
+        slot->kind != request->credential_kind) {
+        owner_unlock(owner);
+        return RIN_KERBEROS_CREDENTIAL_OWNER_INVALID_SESSION;
+    }
+    result = rin_keyring_client_kerberos_operation(
+        &slot->handle, request, context_token, context_token_size, input,
+        input_size, output, output_capacity, output_size, next_context_token,
+        next_context_capacity, next_context_token_size, generation,
+        provider_result, return_flags);
+    owner_unlock(owner);
+    if (result == RIN_KEYRING_OK)
+        return RIN_KERBEROS_CREDENTIAL_OWNER_OK;
+    return owner_keyring_result(result);
+}
+
 static int owner_initialize(void)
 {
     uint32_t expected = 0u;
@@ -229,6 +288,11 @@ static int owner_initialize(void)
         g_owner.abi.acquire_session_initiator = owner_acquire_session_initiator;
         g_owner.abi.acquire_acceptor_keytab = owner_acquire_acceptor_keytab;
         g_owner.abi.release_credential = owner_release_credential;
+        g_owner.operation_abi.struct_size = sizeof(g_owner.operation_abi);
+        g_owner.operation_abi.version =
+            RIN_KERBEROS_OPERATION_OWNER_ABI_VERSION;
+        g_owner.operation_abi.context = &g_owner;
+        g_owner.operation_abi.operation = owner_operation;
         __atomic_store_n(&g_owner.initialized,
                          RINOS_KERBEROS_OWNER_INITIALIZED, __ATOMIC_RELEASE);
         return 1;
@@ -245,4 +309,12 @@ const RinKerberosCredentialOwnerV1* rin_kerberos_credential_owner_get_v1(void)
     if (!owner_initialize() || rin_keyring_client_status() != RIN_KEYRING_OK)
         return NULL;
     return &g_owner.abi;
+}
+
+const RinKerberosOperationOwnerV1*
+rin_kerberos_operation_owner_get_v1(void)
+{
+    if (!owner_initialize() || rin_keyring_client_status() != RIN_KEYRING_OK)
+        return NULL;
+    return &g_owner.operation_abi;
 }

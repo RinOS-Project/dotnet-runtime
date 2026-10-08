@@ -214,6 +214,30 @@ static uint32_t rinos_gss_finish_provider_handle(
     return mappedStatus;
 }
 
+typedef uint32_t (*RinAuthProviderReleaseHandleCallback)(
+    void* context, uint32_t* minor_status, void** input);
+
+static uint32_t rinos_gss_release_provider_handle(
+    const RinAuthProviderV1* provider, uint32_t* minorStatus, void** input,
+    RinAuthProviderReleaseHandleCallback release)
+{
+    uint32_t status;
+
+    if (input == NULL || release == NULL)
+    {
+        return rinos_gss_unavailable(minorStatus);
+    }
+
+    status = release(provider->context, minorStatus, input);
+
+    /* Provider callbacks receive the address so they can release their
+     * opaque object. The PAL owns the ABI-visible pointer lifetime: clear it
+     * even when the provider reports an error or forgets to consume it, so a
+     * failed cleanup can never be retried through a stale handle. */
+    *input = NULL;
+    return rinos_gss_map_provider_status(status);
+}
+
 static uint32_t rinos_gss_release_status(uint32_t* minorStatus, int32_t hadHandle)
 {
     return hadHandle ? rinos_gss_unavailable(minorStatus) : rinos_gss_complete(minorStatus);
@@ -321,8 +345,8 @@ PALEXPORT uint32_t NetSecurityNative_ReleaseName(uint32_t* minorStatus, GssName*
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
-        return rinos_gss_map_provider_status(provider->release_name(
-            provider->context, minorStatus, (void**)inputName));
+        return rinos_gss_release_provider_handle(
+            provider, minorStatus, (void**)inputName, provider->release_name);
     }
 
     int32_t hadHandle;
@@ -380,8 +404,8 @@ PALEXPORT uint32_t NetSecurityNative_ReleaseCred(uint32_t* minorStatus, GssCredI
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
-        return rinos_gss_map_provider_status(provider->release_cred(
-            provider->context, minorStatus, (void**)credHandle));
+        return rinos_gss_release_provider_handle(
+            provider, minorStatus, (void**)credHandle, provider->release_cred);
     }
 
     int32_t hadHandle;
@@ -543,8 +567,9 @@ PALEXPORT uint32_t NetSecurityNative_DeleteSecContext(uint32_t* minorStatus, Gss
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
-        return rinos_gss_map_provider_status(provider->delete_sec_context(
-            provider->context, minorStatus, (void**)contextHandle));
+        return rinos_gss_release_provider_handle(
+            provider, minorStatus, (void**)contextHandle,
+            provider->delete_sec_context);
     }
 
     int32_t hadHandle;

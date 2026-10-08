@@ -133,10 +133,15 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     *ppThunksSection = NULL;
 
     size_t thunksMapSize = THUNKS_MAP_SIZE;
+    if (thunksMapSize == 0 || thunksMapSize > SIZE_MAX / 2)
+    {
+        return E_INVALIDARG;
+    }
+    const size_t mappingSize = thunksMapSize * 2;
 
 #ifdef WIN32
 
-    void * pNewMapping = PalVirtualAlloc(thunksMapSize * 2, PAGE_READWRITE);
+    void * pNewMapping = PalVirtualAlloc(mappingSize, PAGE_READWRITE);
     if (pNewMapping == NULL)
     {
         return E_OUTOFMEMORY;
@@ -158,7 +163,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     // executable-at-map requirement, so build both halves as RW, emit the
     // stubs, and publish only the code half as RX below.  The data half stays
     // RW for the thunk slots.
-    void * pNewMapping = PalVirtualAlloc(thunksMapSize * 2, PAGE_READWRITE);
+    void * pNewMapping = PalVirtualAlloc(mappingSize, PAGE_READWRITE);
     if (pNewMapping == NULL)
     {
         return E_OUTOFMEMORY;
@@ -167,7 +172,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     void * pThunksSection = pNewMapping;
     void * pDataSection = (uint8_t*)pNewMapping + thunksMapSize;
 #else
-    void * pNewMapping = PalVirtualAlloc(thunksMapSize * 2, PAGE_EXECUTE_READ);
+    void * pNewMapping = PalVirtualAlloc(mappingSize, PAGE_EXECUTE_READ);
     if (pNewMapping == NULL)
     {
         return E_OUTOFMEMORY;
@@ -179,7 +184,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     if (!PalVirtualProtect(pDataSection, thunksMapSize, PAGE_READWRITE) ||
         !PalVirtualProtect(pThunksSection, thunksMapSize, PAGE_EXECUTE_READWRITE))
     {
-        PalVirtualFree(pNewMapping, THUNKS_MAP_SIZE * 2);
+        PalVirtualFree(pNewMapping, mappingSize);
         return E_FAIL;
     }
 #endif

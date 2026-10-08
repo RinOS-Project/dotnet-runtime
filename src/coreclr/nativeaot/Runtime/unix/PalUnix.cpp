@@ -879,6 +879,48 @@ HANDLE PalCreateEventW(_In_opt_ LPSECURITY_ATTRIBUTES pEventAttributes, UInt32_B
 
 typedef uint32_t(__stdcall *BackgroundCallback)(_In_opt_ void* pCallbackContext);
 
+#if defined(TARGET_RINOS)
+/* RinOS maps POSIX SCHED_RR priorities 25..49 to its bounded HIGH scheduler
+ * class.  NativeAOT's highPriority flag is used by the finalizer thread, so
+ * use the lowest value in that product class rather than silently discarding
+ * the request or escalating to the realtime class. */
+struct RinOSBackgroundWorkStart
+{
+    BackgroundCallback callback;
+    void* context;
+    UInt32_BOOL highPriority;
+    int32_t startupStatus;
+};
+
+static void* RinOSBackgroundWorkEntry(void* rawContext)
+{
+    RinOSBackgroundWorkStart* start =
+        static_cast<RinOSBackgroundWorkStart*>(rawContext);
+    if (start == nullptr)
+        return nullptr;
+
+    if (start->highPriority)
+    {
+        sched_param parameters = {};
+        parameters.sched_priority = 25;
+        if (pthread_setschedparam(pthread_self(), SCHED_RR, &parameters) != 0)
+        {
+            /* The parent waits for this acknowledgement before reporting
+             * success.  Do not run a finalizer callback without its requested
+             * scheduler class, and do not fall back to a normal-priority
+             * thread while claiming success. */
+            __atomic_store_n(&start->startupStatus, -1, __ATOMIC_RELEASE);
+            return nullptr;
+        }
+    }
+
+    __atomic_store_n(&start->startupStatus, 1, __ATOMIC_RELEASE);
+    (void)start->callback(start->context);
+    delete start;
+    return nullptr;
+}
+#endif
+
 bool PalStartBackgroundWork(_In_ BackgroundCallback callback, _In_opt_ void* pCallbackContext, UInt32_BOOL highPriority)
 {
 #ifdef HOST_WASM
@@ -890,6 +932,58 @@ bool PalStartBackgroundWork(_In_ BackgroundCallback callback, _In_opt_ void* pCa
     (void)highPriority;
     return false;
 #else // HOST_WASM
+#if defined(TARGET_RINOS)
+    RinOSBackgroundWorkStart* start = new (nothrow) RinOSBackgroundWorkStart{};
+    if (start == nullptr)
+        return false;
+
+    start->callback = callback;
+    start->context = pCallbackContext;
+    start->highPriority = highPriority;
+    start->startupStatus = 0;
+
+    pthread_attr_t attrs;
+    int st = pthread_attr_init(&attrs);
+    ASSERT(st == 0);
+
+    size_t stacksize = GetDefaultStackSizeSetting();
+    if (stacksize != 0)
+    {
+        st = pthread_attr_setstacksize(&attrs, stacksize);
+        ASSERT(st == 0);
+    }
+
+    st = pthread_attr_setdetachstate(&attrs, PTHREAD_CREATE_DETACHED);
+    ASSERT(st == 0);
+
+    pthread_t threadId;
+    st = pthread_create(&threadId, &attrs, &RinOSBackgroundWorkEntry, start);
+
+    int st2 = pthread_attr_destroy(&attrs);
+    ASSERT(st2 == 0);
+
+    if (st != 0)
+    {
+        delete start;
+        return false;
+    }
+
+    int32_t startupStatus;
+    do
+    {
+        startupStatus = __atomic_load_n(&start->startupStatus, __ATOMIC_ACQUIRE);
+        if (startupStatus == 0)
+            sched_yield();
+    } while (startupStatus == 0);
+
+    if (startupStatus < 0)
+    {
+        delete start;
+        return false;
+    }
+
+    return true;
+#else
     pthread_attr_t attrs;
 
     int st = pthread_attr_init(&attrs);
@@ -928,6 +1022,7 @@ bool PalStartBackgroundWork(_In_ BackgroundCallback callback, _In_opt_ void* pCa
     ASSERT(st2 == 0);
 
     return st == 0;
+#endif // TARGET_RINOS
 #endif // HOST_WASM
 }
 

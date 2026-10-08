@@ -66,6 +66,22 @@ void * TypeManager::GetModuleSection(ReadyToRunSectionType sectionId, int * leng
 {
     ModuleInfoRow * pModuleInfoRows = (ModuleInfoRow *)(m_pHeader + 1);
 
+    auto returnValidatedSection = [length](ModuleInfoRow* section) -> void*
+    {
+        // A malformed externally-produced header must not publish a wrapped
+        // length or a non-empty section with no backing address to managed
+        // startup code. Treat both cases as an absent section.
+        if (section->Length < 0 ||
+            (section->Length != 0 && section->Start == nullptr))
+        {
+            *length = 0;
+            return nullptr;
+        }
+
+        *length = section->Length;
+        return section->Start;
+    };
+
     ASSERT(m_pHeader->EntrySize == sizeof(ModuleInfoRow));
 
     if (m_sectionsSorted)
@@ -78,10 +94,7 @@ void * TypeManager::GetModuleSection(ReadyToRunSectionType sectionId, int * leng
             int middle = low + (high - low) / 2;
             ModuleInfoRow* pCurrent = pModuleInfoRows + middle;
             if ((int32_t)sectionId == pCurrent->SectionId)
-            {
-                *length = pCurrent->Length;
-                return pCurrent->Start;
-            }
+                return returnValidatedSection(pCurrent);
             if (pCurrent->SectionId < (int32_t)sectionId)
                 low = middle + 1;
             else
@@ -97,10 +110,7 @@ void * TypeManager::GetModuleSection(ReadyToRunSectionType sectionId, int * leng
     {
         ModuleInfoRow * pCurrent = pModuleInfoRows + i;
         if ((int32_t)sectionId == pCurrent->SectionId)
-        {
-            *length = pCurrent->Length;
-            return pCurrent->Start;
-        }
+            return returnValidatedSection(pCurrent);
     }
 
     *length = 0;

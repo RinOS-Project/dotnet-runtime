@@ -247,6 +247,31 @@ static uint32_t rinos_gss_finish_provider_context(
     uint32_t mappedStatus = rinos_gss_finish_provider_buffer(
         provider, minorStatus, status, outBuffer);
 
+    /* GSS-API returns a context handle on both COMPLETE and CONTINUE_NEEDED.
+     * A provider that reports success without one cannot make progress on a
+     * subsequent token exchange. Do not publish its output token as a
+     * successful authentication step; release it and fail closed instead. */
+    if ((mappedStatus == RINOS_GSS_S_COMPLETE ||
+         mappedStatus == PAL_GSS_CONTINUE_NEEDED) &&
+        (contextHandle == NULL || *contextHandle == NULL))
+    {
+        if (outBuffer != NULL && outBuffer->data != NULL)
+        {
+            provider->release_buffer(provider->context,
+                                     outBuffer->data, outBuffer->length);
+        }
+        rinos_gss_clear_buffer(outBuffer);
+        if (retFlags != NULL)
+        {
+            *retFlags = 0;
+        }
+        if (isNtlmUsed != NULL)
+        {
+            *isNtlmUsed = 0;
+        }
+        return rinos_gss_unavailable(minorStatus);
+    }
+
     /* A provider must not leave a failed security-context handle or status
      * flags reachable through the managed SafeHandle path.  This is the
      * context analogue of rinos_gss_finish_provider_handle: provider-owned

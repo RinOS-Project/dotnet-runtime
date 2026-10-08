@@ -37,6 +37,7 @@ typedef enum
 #define PAL_GSS_S_DEFECTIVE_TOKEN UINT32_C(9u << 16)
 #define PAL_GSS_S_UNAVAILABLE UINT32_C(16u << 16)
 #define PAL_GSS_S_CONTEXT_EXPIRED UINT32_C(12u << 16)
+#define PAL_GSS_S_FAILURE UINT32_C(13u << 16)
 
 typedef enum
 {

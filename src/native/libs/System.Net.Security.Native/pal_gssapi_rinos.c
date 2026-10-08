@@ -199,7 +199,10 @@ static uint32_t rinos_gss_map_provider_status(uint32_t providerStatus)
         case RIN_AUTH_PROVIDER_DEFECTIVE_TOKEN:
             return PAL_GSS_S_DEFECTIVE_TOKEN;
         case RIN_AUTH_PROVIDER_KRB_ERROR:
-            return PAL_GSS_S_DEFECTIVE_TOKEN;
+            /* A standards-shaped KRB-ERROR is a mechanism protocol failure,
+             * not a malformed GSS input token.  Preserve its output token
+             * while exposing RFC 2743 GSS_S_FAILURE to the caller. */
+            return PAL_GSS_S_FAILURE;
         case RIN_AUTH_PROVIDER_UNAVAILABLE:
         case RIN_AUTH_PROVIDER_ABI_MISMATCH:
         default:

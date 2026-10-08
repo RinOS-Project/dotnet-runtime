@@ -89,7 +89,14 @@ FCIMPL1(void*, RhpGetThunkDataBlockAddress, void* pThunkStubAddress)
         return NULL;
     }
 
-    return (void*)(((uintptr_t)pThunkStubAddress & ~(OS_PAGE_SIZE - 1)) + THUNKS_MAP_SIZE);
+    uintptr_t pageAddress = (uintptr_t)pThunkStubAddress &
+        ~((uintptr_t)OS_PAGE_SIZE - 1u);
+    if (pageAddress > UINTPTR_MAX - (uintptr_t)THUNKS_MAP_SIZE)
+    {
+        return NULL;
+    }
+
+    return (void*)(pageAddress + (uintptr_t)THUNKS_MAP_SIZE);
 }
 FCIMPLEND
 
@@ -100,7 +107,14 @@ FCIMPL1(void*, RhpGetThunkStubsBlockAddress, void* pThunkDataAddress)
         return NULL;
     }
 
-    return (void*)(((uintptr_t)pThunkDataAddress & ~(OS_PAGE_SIZE - 1)) - THUNKS_MAP_SIZE);
+    uintptr_t pageAddress = (uintptr_t)pThunkDataAddress &
+        ~((uintptr_t)OS_PAGE_SIZE - 1u);
+    if (pageAddress < (uintptr_t)THUNKS_MAP_SIZE)
+    {
+        return NULL;
+    }
+
+    return (void*)(pageAddress - (uintptr_t)THUNKS_MAP_SIZE);
 }
 FCIMPLEND
 

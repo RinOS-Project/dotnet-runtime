@@ -411,6 +411,14 @@ static uint32_t rinos_gss_release_provider_handle(
         return rinos_gss_unavailable(minorStatus);
     }
 
+    /* Releasing an absent GSS object is a successful no-op.  Do not ask a
+     * provider to interpret a NULL object: this is PAL-owned lifetime state,
+     * not a provider operation. */
+    if (*input == NULL)
+    {
+        return rinos_gss_complete(minorStatus);
+    }
+
     status = release(provider->context, minorStatus, input);
 
     /* Provider callbacks receive the address so they can release their

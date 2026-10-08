@@ -46,6 +46,10 @@
 #include <minipal/memorybarrierprocesswide.h>
 #include <minipal/thread.h>
 
+#if defined(TARGET_RINOS)
+#include "pal/rinos_contract.h"
+#endif
+
 #if !defined(HOST_WASM)
 #include <unwind.h>
 #endif
@@ -1171,6 +1175,14 @@ static int W32toUnixAccessControl(uint32_t flProtect)
     return prot;
 }
 
+#if defined(TARGET_RINOS)
+static bool RinOSUserRangeValid(uintptr_t begin, uintptr_t end)
+{
+    return begin < RINOS_PAL_USER_ADDRESS_LIMIT &&
+           end >= begin && end <= RINOS_PAL_USER_ADDRESS_LIMIT;
+}
+#endif
+
 _Ret_maybenull_ _Post_writable_byte_size_(size) void* PalVirtualAlloc(size_t size, uint32_t protect)
 {
 #if defined(TARGET_RINOS)
@@ -1179,6 +1191,10 @@ _Ret_maybenull_ _Post_writable_byte_size_(size) void* PalVirtualAlloc(size_t siz
     // caller has already selected an unsafe publication mode.  NativeAOT
     // thunk mappings use RW during emission and publish the code half as RX.
     if ((protect & 0xffu) == PAGE_EXECUTE_READWRITE)
+    {
+        return NULL;
+    }
+    if (size == 0 || size > (size_t)RINOS_PAL_USER_ADDRESS_LIMIT)
     {
         return NULL;
     }
@@ -1197,6 +1213,16 @@ _Ret_maybenull_ _Post_writable_byte_size_(size) void* PalVirtualAlloc(size_t siz
     void* pMappedMemory = mmap(NULL, size, unixProtect, flags, -1, 0);
     if (pMappedMemory == MAP_FAILED)
         return NULL;
+#if defined(TARGET_RINOS)
+    const uintptr_t mappingBegin = (uintptr_t)pMappedMemory;
+    if (mappingBegin > UINTPTR_MAX - (uintptr_t)size ||
+        !RinOSUserRangeValid(mappingBegin,
+                             mappingBegin + (uintptr_t)size))
+    {
+        (void)munmap(pMappedMemory, size);
+        return NULL;
+    }
+#endif
     return pMappedMemory;
 }
 
@@ -1235,6 +1261,13 @@ UInt32_BOOL PalVirtualProtect(_In_ void* pAddress, size_t size, uint32_t protect
     {
         return UInt32_FALSE;
     }
+
+#if defined(TARGET_RINOS)
+    if (!RinOSUserRangeValid(pageStart, pageEnd))
+    {
+        return UInt32_FALSE;
+    }
+#endif
 
 #if defined(TARGET_RINOS)
     // Keep the same explicit W^X boundary for permission transitions.  The

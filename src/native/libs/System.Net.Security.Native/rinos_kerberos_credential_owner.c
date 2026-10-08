@@ -18,10 +18,15 @@
 #define RINOS_KERBEROS_OWNER_MAGIC UINT32_C(0x314f4b52)
 #define RINOS_KERBEROS_OWNER_MAX_HANDLES UINT32_C(8)
 #define RINOS_KERBEROS_OWNER_INITIALIZED UINT32_C(2)
+#define RINOS_KERBEROS_OWNER_SLOT_BITS UINT32_C(3)
+#define RINOS_KERBEROS_OWNER_SLOT_MASK \
+    ((uintptr_t)((UINT32_C(1) << RINOS_KERBEROS_OWNER_SLOT_BITS) - 1u))
 
 typedef struct RinOsKerberosOwnerSlot {
     uint32_t magic;
     uint32_t kind;
+    uint32_t generation;
+    uint32_t reserved;
     RinKeyringHandleV1 handle;
 } RinOsKerberosOwnerSlot;
 
@@ -66,6 +71,29 @@ static void owner_minor(uint32_t* minor_status, uint32_t value)
     if (minor_status != NULL) *minor_status = value;
 }
 
+static void* owner_make_token(uint32_t index, uint32_t generation)
+{
+    const uintptr_t value =
+        ((uintptr_t)generation << RINOS_KERBEROS_OWNER_SLOT_BITS) |
+        (uintptr_t)(index + 1u);
+    return (void*)value;
+}
+
+static int owner_decode_token(void* input, uint32_t* index,
+                              uint32_t* generation)
+{
+    const uintptr_t value = (uintptr_t)input;
+    const uintptr_t slot = value & RINOS_KERBEROS_OWNER_SLOT_MASK;
+    const uintptr_t serial = value >> RINOS_KERBEROS_OWNER_SLOT_BITS;
+    if (value == 0u || slot == 0u ||
+        slot > RINOS_KERBEROS_OWNER_MAX_HANDLES || serial == 0u ||
+        serial > UINT32_MAX || index == NULL || generation == NULL)
+        return 0;
+    *index = (uint32_t)(slot - 1u);
+    *generation = (uint32_t)serial;
+    return 1;
+}
+
 static RinOsKerberosOwnerSlot* owner_find_free(
     RinOsKerberosOwnerContext* context)
 {
@@ -89,6 +117,9 @@ static uint32_t owner_acquire(RinOsKerberosOwnerContext* context,
                               const char* scope, uint32_t kind)
 {
     RinOsKerberosOwnerSlot* slot;
+    uint32_t index;
+    uint32_t generation;
+    const uintptr_t max_generation = UINTPTR_MAX >> RINOS_KERBEROS_OWNER_SLOT_BITS;
     int result;
 
     owner_minor(minor_status, 0u);
@@ -100,15 +131,26 @@ static uint32_t owner_acquire(RinOsKerberosOwnerContext* context,
         owner_unlock(context);
         return RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
     }
+    index = (uint32_t)(slot - context->slots);
+    if (slot->generation >= UINT32_MAX ||
+        (uintptr_t)(slot->generation + 1u) > max_generation) {
+        owner_unlock(context);
+        return RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
+    }
+    generation = slot->generation + 1u;
     result = rin_keyring_client_acquire_handle(scope, &slot->handle);
     if (result != RIN_KEYRING_OK) {
         owner_zero(&slot->handle, sizeof(slot->handle));
+        slot->generation = generation;
         owner_unlock(context);
         return owner_keyring_result(result);
     }
+    slot->generation = generation;
     slot->kind = kind;
     slot->magic = RINOS_KERBEROS_OWNER_MAGIC;
-    *output = slot;
+    /* This is a non-dereferenceable owner token.  Only this table may decode
+     * it, which lets release reject a stale token after slot reuse. */
+    *output = owner_make_token(index, generation);
     owner_unlock(context);
     return RIN_KERBEROS_CREDENTIAL_OWNER_OK;
 }
@@ -139,16 +181,21 @@ static uint32_t owner_release_credential(void* context, uint32_t* minor_status,
 {
     RinOsKerberosOwnerContext* owner = (RinOsKerberosOwnerContext*)context;
     uint32_t index;
+    uint32_t generation;
 
     owner_minor(minor_status, 0u);
     if (input == NULL) return RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
     if (*input == NULL) return RIN_KERBEROS_CREDENTIAL_OWNER_OK;
-    if (!owner_valid(owner) || !owner_lock(owner))
+    if (!owner_decode_token(*input, &index, &generation) ||
+        !owner_valid(owner) || !owner_lock(owner))
         return RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
-    for (index = 0u; index < RINOS_KERBEROS_OWNER_MAX_HANDLES; ++index) {
+    {
         RinOsKerberosOwnerSlot* slot = &owner->slots[index];
-        if (*input == slot && slot->magic == RINOS_KERBEROS_OWNER_MAGIC) {
+        if (slot->magic == RINOS_KERBEROS_OWNER_MAGIC &&
+            slot->generation == generation) {
+            const uint32_t preserved_generation = slot->generation;
             owner_zero(slot, sizeof(*slot));
+            slot->generation = preserved_generation;
             *input = NULL;
             owner_unlock(owner);
             return RIN_KERBEROS_CREDENTIAL_OWNER_OK;

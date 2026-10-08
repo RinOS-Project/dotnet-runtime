@@ -233,6 +233,25 @@ static uint32_t rinos_gss_map_kerberos_supplementary(
     return errorCode == krbApErrRepeat ? PAL_GSS_S_DUPLICATE_TOKEN : 0u;
 }
 
+/* MIT krb5 treats an expired service ticket returned during initiator
+ * establishment as an expired credential (see its init_sec_context path).
+ * Preserve that standards-shaped classification at the PAL boundary while
+ * leaving the other KRB-ERROR values as mechanism failure until their
+ * direction-specific GSS mapping is implemented. */
+static uint32_t rinos_gss_map_kerberos_major(
+    uint32_t providerStatus, const uint32_t* minorStatus)
+{
+    const uint32_t protocolErrorBit = UINT32_C(0x80000000);
+    const uint32_t krbApErrTicketExpired = UINT32_C(32);
+
+    if (providerStatus == RIN_AUTH_PROVIDER_KRB_ERROR &&
+        minorStatus != NULL && (*minorStatus & protocolErrorBit) != 0u &&
+        (*minorStatus & ~protocolErrorBit) == krbApErrTicketExpired)
+        return PAL_GSS_S_CREDENTIALS_EXPIRED;
+
+    return rinos_gss_map_provider_status(providerStatus);
+}
+
 static uint32_t rinos_gss_package_bit(uint32_t packageType)
 {
     switch (packageType)
@@ -295,7 +314,7 @@ static uint32_t rinos_gss_finish_provider_buffer(
     const RinAuthProviderV1* provider, uint32_t* minorStatus,
     uint32_t status, PAL_GssBuffer* outBuffer)
 {
-    uint32_t mappedStatus = rinos_gss_map_provider_status(status);
+    uint32_t mappedStatus = rinos_gss_map_kerberos_major(status, minorStatus);
     mappedStatus |= rinos_gss_map_kerberos_supplementary(status, minorStatus);
     const int preserve_error_token = status == RIN_AUTH_PROVIDER_KRB_ERROR;
 
@@ -340,7 +359,7 @@ static uint32_t rinos_gss_finish_provider_handle(
     uint32_t status, void** outputHandle,
     RinAuthProviderReleaseHandleCallback release)
 {
-    uint32_t mappedStatus = rinos_gss_map_provider_status(status);
+    uint32_t mappedStatus = rinos_gss_map_kerberos_major(status, minorStatus);
 
     /* A failed acquire must never leak a provider-owned opaque handle into
      * the SafeHandle marshaller. A successful acquire without a handle is

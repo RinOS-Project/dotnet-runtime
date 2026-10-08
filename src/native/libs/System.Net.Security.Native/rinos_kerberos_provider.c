@@ -28,6 +28,8 @@
 #define RINOS_KERBEROS_CONTEXT_MAGIC UINT32_C(0x31584252)
 #define RINOS_KERBEROS_MAX_PRINCIPAL_SIZE UINT32_C(4096)
 #define RINOS_KERBEROS_GSS_FLAG_SEALED UINT8_C(0x02)
+#define RINOS_KERBEROS_CONTEXT_NEGOTIATING UINT32_C(1)
+#define RINOS_KERBEROS_CONTEXT_ESTABLISHED UINT32_C(2)
 /* Keep a peer-supplied RFC 4120 error code distinguishable from local
  * provider diagnostics while preserving every non-negative Int32 code. */
 #define RINOS_KERBEROS_MINOR_PROTOCOL_ERROR UINT32_C(0x80000000)
@@ -69,6 +71,7 @@ typedef struct RinOsKerberosProviderContext {
     uint32_t kind;
     uint64_t generation;
     uint32_t token_size;
+    uint32_t state;
     uint32_t reserved;
     void* owner_credential;
     const RinKerberosOperationOwnerV1* owner;
@@ -569,6 +572,8 @@ static int provider_context_valid(
             context->kind == RIN_KERBEROS_OPERATION_CREDENTIAL_ACCEPTOR) &&
            context->owner != NULL && context->owner_credential != NULL &&
            context->owner->operation != NULL &&
+           (context->state == RINOS_KERBEROS_CONTEXT_NEGOTIATING ||
+            context->state == RINOS_KERBEROS_CONTEXT_ESTABLISHED) &&
            context->token_size <= RIN_KERBEROS_OPERATION_MAX_CONTEXT_TOKEN_SIZE;
 }
 
@@ -887,6 +892,12 @@ static uint32_t provider_operation(
                 credential->owner_credential ||
             provider_context->kind != request->credential_kind)
             return RIN_AUTH_PROVIDER_UNAVAILABLE;
+        if ((request->operation == RIN_KERBEROS_OPERATION_WRAP ||
+             request->operation == RIN_KERBEROS_OPERATION_UNWRAP ||
+             request->operation == RIN_KERBEROS_OPERATION_GET_MIC ||
+             request->operation == RIN_KERBEROS_OPERATION_VERIFY_MIC) &&
+            provider_context->state != RINOS_KERBEROS_CONTEXT_ESTABLISHED)
+            return RIN_AUTH_PROVIDER_UNAVAILABLE;
         request->context_token_size = provider_context->token_size;
     }
     if (request->operation == RIN_KERBEROS_OPERATION_INIT_SEC_CONTEXT ||
@@ -1002,6 +1013,13 @@ static uint32_t provider_operation(
         provider_zero(provider_context->token, sizeof(provider_context->token));
         if (next_context_size != 0u)
             memcpy(provider_context->token, next_context, next_context_size);
+        if (request->operation == RIN_KERBEROS_OPERATION_INIT_SEC_CONTEXT ||
+            request->operation == RIN_KERBEROS_OPERATION_ACCEPT_SEC_CONTEXT) {
+            provider_context->state =
+                provider_result == RIN_KERBEROS_OPERATION_RESULT_COMPLETE
+                    ? RINOS_KERBEROS_CONTEXT_ESTABLISHED
+                    : RINOS_KERBEROS_CONTEXT_NEGOTIATING;
+        }
     }
     if (output != NULL && operation_output_size != 0u) {
         output->data = operation_output;
@@ -1081,6 +1099,7 @@ static uint32_t provider_init_sec_context(
             return provider_unavailable(minor_status);
         provider_context->magic = RINOS_KERBEROS_CONTEXT_MAGIC;
         provider_context->kind = RIN_KERBEROS_OPERATION_CREDENTIAL_INITIATOR;
+        provider_context->state = RINOS_KERBEROS_CONTEXT_NEGOTIATING;
         provider_context->owner_credential = credential->owner_credential;
         provider_context->owner = provider_operation_owner();
         created_context = 1;
@@ -1198,6 +1217,7 @@ static uint32_t provider_init_sec_context_ex(
             return provider_unavailable(minor_status);
         provider_context->magic = RINOS_KERBEROS_CONTEXT_MAGIC;
         provider_context->kind = RIN_KERBEROS_OPERATION_CREDENTIAL_INITIATOR;
+        provider_context->state = RINOS_KERBEROS_CONTEXT_NEGOTIATING;
         provider_context->owner_credential = credential->owner_credential;
         provider_context->owner = provider_operation_owner();
         created_context = 1;
@@ -1285,6 +1305,7 @@ static uint32_t provider_accept_sec_context(
             return provider_unavailable(minor_status);
         provider_context->magic = RINOS_KERBEROS_CONTEXT_MAGIC;
         provider_context->kind = RIN_KERBEROS_OPERATION_CREDENTIAL_ACCEPTOR;
+        provider_context->state = RINOS_KERBEROS_CONTEXT_NEGOTIATING;
         provider_context->owner_credential = credential->owner_credential;
         provider_context->owner = provider_operation_owner();
         created_context = 1;
@@ -1385,7 +1406,9 @@ static uint32_t provider_message_operation(
             ? RIN_KERBEROS_OPERATION_FLAG_ENCRYPT
             : 0u;
     uint32_t status;
-    if (!provider_context_valid(provider_context) || output == NULL ||
+    if (!provider_context_valid(provider_context) ||
+        provider_context->state != RINOS_KERBEROS_CONTEXT_ESTABLISHED ||
+        output == NULL ||
         input_length < 0 ||
         (input_length != 0 && input == NULL) ||
         (uint32_t)input_length > RIN_KERBEROS_OPERATION_MAX_INPUT_SIZE -
@@ -1478,7 +1501,9 @@ static uint32_t provider_verify_mic(
     uint32_t total;
     uint32_t status;
     (void)context;
-    if (!provider_context_valid(provider_context) || input_length < 0 ||
+    if (!provider_context_valid(provider_context) ||
+        provider_context->state != RINOS_KERBEROS_CONTEXT_ESTABLISHED ||
+        input_length < 0 ||
         token_length < 0 ||
         (input_length != 0 && input == NULL) ||
         (token_length != 0 && token == NULL) ||
@@ -1631,6 +1656,7 @@ static uint32_t provider_get_user(
     }
     if (output == NULL || !provider_context_valid(provider_context) ||
         provider_context->kind != RIN_KERBEROS_OPERATION_CREDENTIAL_INITIATOR ||
+        provider_context->state != RINOS_KERBEROS_CONTEXT_ESTABLISHED ||
         provider_context->generation == 0u)
         return provider_unavailable(minor_status);
     owner = provider_credential_owner();

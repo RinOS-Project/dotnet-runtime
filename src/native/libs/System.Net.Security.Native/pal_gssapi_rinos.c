@@ -158,6 +158,32 @@ static uint32_t rinos_gss_unavailable(uint32_t* minorStatus)
     return RINOS_GSS_S_UNAVAILABLE;
 }
 
+static uint32_t rinos_gss_local_error(uint32_t* minorStatus,
+                                      uint32_t majorStatus)
+{
+    if (minorStatus != NULL)
+    {
+        *minorStatus = 0;
+    }
+
+    return majorStatus;
+}
+
+static void rinos_gss_clear_buffer(PAL_GssBuffer* outBuffer);
+
+static uint32_t rinos_gss_local_buffer_error(
+    const RinAuthProviderV1* provider, uint32_t* minorStatus,
+    PAL_GssBuffer* outBuffer, uint32_t majorStatus)
+{
+    if (provider != NULL && outBuffer != NULL && outBuffer->data != NULL)
+    {
+        provider->release_buffer(provider->context, outBuffer->data,
+                                 outBuffer->length);
+    }
+    rinos_gss_clear_buffer(outBuffer);
+    return rinos_gss_local_error(minorStatus, majorStatus);
+}
+
 static uint32_t rinos_gss_map_provider_status(uint32_t providerStatus)
 {
     switch (providerStatus)
@@ -416,6 +442,11 @@ PALEXPORT void NetSecurityNative_ReleaseGssBuffer(void* buffer, uint64_t length)
 PALEXPORT uint32_t NetSecurityNative_DisplayMinorStatus(
     uint32_t* minorStatus, uint32_t statusValue, PAL_GssBuffer* outBuffer)
 {
+    if (outBuffer == NULL)
+    {
+        return rinos_gss_local_error(
+            minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
+    }
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
@@ -437,6 +468,11 @@ PALEXPORT uint32_t NetSecurityNative_DisplayMinorStatus(
 PALEXPORT uint32_t NetSecurityNative_DisplayMajorStatus(
     uint32_t* minorStatus, uint32_t statusValue, PAL_GssBuffer* outBuffer)
 {
+    if (outBuffer == NULL)
+    {
+        return rinos_gss_local_error(
+            minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
+    }
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
@@ -463,12 +499,14 @@ PALEXPORT uint32_t NetSecurityNative_ImportUserName(
      * writable result location. */
     if (outputName == NULL)
     {
-        return rinos_gss_unavailable(minorStatus);
+        return rinos_gss_local_error(
+            minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
     }
     if (!rinos_gss_valid_input_buffer(inputName, inputNameLen))
     {
         *outputName = NULL;
-        return rinos_gss_unavailable(minorStatus);
+        return rinos_gss_local_error(
+            minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_READ);
     }
 
     const RinAuthProviderV1* provider = rinos_gss_provider();
@@ -496,12 +534,14 @@ PALEXPORT uint32_t NetSecurityNative_ImportPrincipalName(
 {
     if (outputName == NULL)
     {
-        return rinos_gss_unavailable(minorStatus);
+        return rinos_gss_local_error(
+            minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
     }
     if (!rinos_gss_valid_input_buffer(inputName, inputNameLen))
     {
         *outputName = NULL;
-        return rinos_gss_unavailable(minorStatus);
+        return rinos_gss_local_error(
+            minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_READ);
     }
 
     const RinAuthProviderV1* provider = rinos_gss_provider();
@@ -536,7 +576,8 @@ PALEXPORT uint32_t NetSecurityNative_ReleaseName(uint32_t* minorStatus, GssName*
     int32_t hadHandle;
     if (inputName == NULL)
     {
-        return rinos_gss_unavailable(minorStatus);
+        return rinos_gss_local_error(
+            minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
     }
 
     hadHandle = *inputName != NULL;
@@ -548,7 +589,8 @@ PALEXPORT uint32_t NetSecurityNative_AcquireAcceptorCred(uint32_t* minorStatus, 
 {
     if (outputCredHandle == NULL)
     {
-        return rinos_gss_unavailable(minorStatus);
+        return rinos_gss_local_error(
+            minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
     }
 
     const RinAuthProviderV1* provider = rinos_gss_provider();
@@ -573,7 +615,8 @@ PALEXPORT uint32_t NetSecurityNative_InitiateCredSpNego(
 {
     if (outputCredHandle == NULL)
     {
-        return rinos_gss_unavailable(minorStatus);
+        return rinos_gss_local_error(
+            minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
     }
 
     const RinAuthProviderV1* provider = rinos_gss_provider();
@@ -632,8 +675,14 @@ PALEXPORT uint32_t NetSecurityNative_InitSecContext(
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (contextHandle == NULL)
     {
-        rinos_gss_clear_buffer(outBuffer);
-        return rinos_gss_unavailable(minorStatus);
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer,
+            PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
+    }
+    if (outBuffer == NULL)
+    {
+        return rinos_gss_local_error(
+            minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
     }
     if (retFlags != NULL)
     {
@@ -643,17 +692,30 @@ PALEXPORT uint32_t NetSecurityNative_InitSecContext(
     {
         *isNtlmUsed = 0;
     }
-    if (provider != NULL && rinos_gss_supports_package(provider, packageType))
+    if (!rinos_gss_valid_input_buffer(inputBytes, inputLength))
+    {
+        *contextHandle = NULL;
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer,
+            PAL_GSS_S_CALL_INACCESSIBLE_READ);
+    }
+    if (targetName == NULL)
+    {
+        *contextHandle = NULL;
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer, PAL_GSS_S_BAD_NAME);
+    }
+    if (provider != NULL &&
+        !rinos_gss_supports_package(provider, packageType))
+    {
+        *contextHandle = NULL;
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer, PAL_GSS_S_BAD_MECH);
+    }
+    if (provider != NULL)
     {
         if (!rinos_gss_prepare_provider_buffer(provider, outBuffer))
         {
-            return rinos_gss_unavailable(minorStatus);
-        }
-        if (!rinos_gss_valid_input_buffer(inputBytes, inputLength) ||
-            targetName == NULL)
-        {
-            *contextHandle = NULL;
-            rinos_gss_clear_buffer(outBuffer);
             return rinos_gss_unavailable(minorStatus);
         }
         return rinos_gss_finish_provider_context(provider, minorStatus,
@@ -705,8 +767,14 @@ PALEXPORT uint32_t NetSecurityNative_InitSecContextEx(
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (contextHandle == NULL)
     {
-        rinos_gss_clear_buffer(outBuffer);
-        return rinos_gss_unavailable(minorStatus);
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer,
+            PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
+    }
+    if (outBuffer == NULL)
+    {
+        return rinos_gss_local_error(
+            minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
     }
     if (retFlags != NULL)
     {
@@ -716,18 +784,36 @@ PALEXPORT uint32_t NetSecurityNative_InitSecContextEx(
     {
         *isNtlmUsed = 0;
     }
-    if (provider != NULL && rinos_gss_supports_package(provider, packageType))
+    if (!rinos_gss_valid_input_buffer(inputBytes, inputLength))
+    {
+        *contextHandle = NULL;
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer,
+            PAL_GSS_S_CALL_INACCESSIBLE_READ);
+    }
+    if (!rinos_gss_valid_channel_binding(cbt, cbtSize))
+    {
+        *contextHandle = NULL;
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer, PAL_GSS_S_BAD_BINDINGS);
+    }
+    if (targetName == NULL)
+    {
+        *contextHandle = NULL;
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer, PAL_GSS_S_BAD_NAME);
+    }
+    if (provider != NULL &&
+        !rinos_gss_supports_package(provider, packageType))
+    {
+        *contextHandle = NULL;
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer, PAL_GSS_S_BAD_MECH);
+    }
+    if (provider != NULL)
     {
         if (!rinos_gss_prepare_provider_buffer(provider, outBuffer))
         {
-            return rinos_gss_unavailable(minorStatus);
-        }
-        if (!rinos_gss_valid_input_buffer(inputBytes, inputLength) ||
-            !rinos_gss_valid_channel_binding(cbt, cbtSize) ||
-            targetName == NULL)
-        {
-            *contextHandle = NULL;
-            rinos_gss_clear_buffer(outBuffer);
             return rinos_gss_unavailable(minorStatus);
         }
         return rinos_gss_finish_provider_context(provider, minorStatus,
@@ -771,8 +857,27 @@ PALEXPORT uint32_t NetSecurityNative_AcceptSecContext(
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (contextHandle == NULL)
     {
-        rinos_gss_clear_buffer(outBuffer);
-        return rinos_gss_unavailable(minorStatus);
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer,
+            PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
+    }
+    if (outBuffer == NULL)
+    {
+        return rinos_gss_local_error(
+            minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
+    }
+    if (!rinos_gss_valid_input_buffer(inputBytes, inputLength))
+    {
+        *contextHandle = NULL;
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer,
+            PAL_GSS_S_CALL_INACCESSIBLE_READ);
+    }
+    if (!rinos_gss_valid_channel_binding(cbt, cbtSize))
+    {
+        *contextHandle = NULL;
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer, PAL_GSS_S_BAD_BINDINGS);
     }
     if (retFlags != NULL)
     {
@@ -786,13 +891,6 @@ PALEXPORT uint32_t NetSecurityNative_AcceptSecContext(
     {
         if (!rinos_gss_prepare_provider_buffer(provider, outBuffer))
         {
-            return rinos_gss_unavailable(minorStatus);
-        }
-        if (!rinos_gss_valid_input_buffer(inputBytes, inputLength) ||
-            !rinos_gss_valid_channel_binding(cbt, cbtSize))
-        {
-            *contextHandle = NULL;
-            rinos_gss_clear_buffer(outBuffer);
             return rinos_gss_unavailable(minorStatus);
         }
         return rinos_gss_finish_provider_context(provider, minorStatus,
@@ -828,6 +926,11 @@ PALEXPORT uint32_t NetSecurityNative_AcceptSecContext(
 PALEXPORT uint32_t NetSecurityNative_DeleteSecContext(uint32_t* minorStatus, GssCtxId** contextHandle)
 {
     const RinAuthProviderV1* provider = rinos_gss_provider();
+    if (contextHandle == NULL)
+    {
+        return rinos_gss_local_error(
+            minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
+    }
     if (provider != NULL)
     {
         return rinos_gss_release_provider_handle(
@@ -836,11 +939,6 @@ PALEXPORT uint32_t NetSecurityNative_DeleteSecContext(uint32_t* minorStatus, Gss
     }
 
     int32_t hadHandle;
-    if (contextHandle == NULL)
-    {
-        return rinos_gss_unavailable(minorStatus);
-    }
-
     hadHandle = *contextHandle != NULL;
     *contextHandle = NULL;
     return rinos_gss_release_status(minorStatus, hadHandle);
@@ -855,17 +953,27 @@ PALEXPORT uint32_t NetSecurityNative_Wrap(
     PAL_GssBuffer* outBuffer)
 {
     const RinAuthProviderV1* provider = rinos_gss_provider();
-    if (provider != NULL &&
-        (contextHandle == NULL || isEncrypt == NULL || count < 0 ||
-         !rinos_gss_valid_input_buffer(
-             inputBytes, count < 0 ? 0u : (uint64_t)count)))
+    if (contextHandle == NULL)
     {
-        if (!rinos_gss_prepare_provider_buffer(provider, outBuffer))
-        {
-            return rinos_gss_unavailable(minorStatus);
-        }
-        rinos_gss_clear_buffer(outBuffer);
-        return rinos_gss_unavailable(minorStatus);
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer, PAL_GSS_S_NO_CONTEXT);
+    }
+    if (isEncrypt == NULL || outBuffer == NULL)
+    {
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer,
+            PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
+    }
+    if (count < 0)
+    {
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer, PAL_GSS_S_BAD_STRUCTURE);
+    }
+    if (!rinos_gss_valid_input_buffer(inputBytes, (uint64_t)count))
+    {
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer,
+            PAL_GSS_S_CALL_INACCESSIBLE_READ);
     }
     if (provider != NULL)
     {
@@ -896,17 +1004,27 @@ PALEXPORT uint32_t NetSecurityNative_Unwrap(
     PAL_GssBuffer* outBuffer)
 {
     const RinAuthProviderV1* provider = rinos_gss_provider();
-    if (provider != NULL &&
-        (contextHandle == NULL || isEncrypt == NULL || count < 0 ||
-         !rinos_gss_valid_input_buffer(
-             inputBytes, count < 0 ? 0u : (uint64_t)count)))
+    if (contextHandle == NULL)
     {
-        if (!rinos_gss_prepare_provider_buffer(provider, outBuffer))
-        {
-            return rinos_gss_unavailable(minorStatus);
-        }
-        rinos_gss_clear_buffer(outBuffer);
-        return rinos_gss_unavailable(minorStatus);
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer, PAL_GSS_S_NO_CONTEXT);
+    }
+    if (isEncrypt == NULL || outBuffer == NULL)
+    {
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer,
+            PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
+    }
+    if (count < 0)
+    {
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer, PAL_GSS_S_BAD_STRUCTURE);
+    }
+    if (!rinos_gss_valid_input_buffer(inputBytes, (uint64_t)count))
+    {
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer,
+            PAL_GSS_S_CALL_INACCESSIBLE_READ);
     }
     if (provider != NULL)
     {
@@ -936,17 +1054,26 @@ PALEXPORT uint32_t NetSecurityNative_GetMic(
     PAL_GssBuffer* outBuffer)
 {
     const RinAuthProviderV1* provider = rinos_gss_provider();
-    if (provider != NULL &&
-        (contextHandle == NULL || inputLength < 0 ||
-         !rinos_gss_valid_input_buffer(
-             inputBytes, inputLength < 0 ? 0u : (uint64_t)inputLength)))
+    if (contextHandle == NULL)
     {
-        if (!rinos_gss_prepare_provider_buffer(provider, outBuffer))
-        {
-            return rinos_gss_unavailable(minorStatus);
-        }
-        rinos_gss_clear_buffer(outBuffer);
-        return rinos_gss_unavailable(minorStatus);
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer, PAL_GSS_S_NO_CONTEXT);
+    }
+    if (outBuffer == NULL)
+    {
+        return rinos_gss_local_error(
+            minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
+    }
+    if (inputLength < 0)
+    {
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer, PAL_GSS_S_BAD_STRUCTURE);
+    }
+    if (!rinos_gss_valid_input_buffer(inputBytes, (uint64_t)inputLength))
+    {
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer,
+            PAL_GSS_S_CALL_INACCESSIBLE_READ);
     }
     if (provider != NULL)
     {
@@ -976,10 +1103,21 @@ PALEXPORT uint32_t NetSecurityNative_VerifyMic(
     int32_t tokenLength)
 {
     const RinAuthProviderV1* provider = rinos_gss_provider();
-    if (provider != NULL && contextHandle != NULL &&
-        rinos_gss_valid_input_buffer(inputBytes, inputLength < 0 ? 0u : (uint64_t)inputLength) &&
-        rinos_gss_valid_input_buffer(tokenBytes, tokenLength < 0 ? 0u : (uint64_t)tokenLength) &&
-        inputLength >= 0 && tokenLength >= 0)
+    if (contextHandle == NULL)
+    {
+        return rinos_gss_local_error(minorStatus, PAL_GSS_S_NO_CONTEXT);
+    }
+    if (inputLength < 0 || tokenLength < 0)
+    {
+        return rinos_gss_local_error(minorStatus, PAL_GSS_S_BAD_STRUCTURE);
+    }
+    if (!rinos_gss_valid_input_buffer(inputBytes, (uint64_t)inputLength) ||
+        !rinos_gss_valid_input_buffer(tokenBytes, (uint64_t)tokenLength))
+    {
+        return rinos_gss_local_error(
+            minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_READ);
+    }
+    if (provider != NULL)
     {
         return rinos_gss_map_provider_status(provider->verify_mic(
             provider->context, minorStatus, contextHandle, inputBytes,
@@ -1013,13 +1151,21 @@ PALEXPORT uint32_t NetSecurityNative_InitiateCredWithPassword(
         {
             *outputCredHandle = NULL;
         }
-        return rinos_gss_unavailable(minorStatus);
+        return rinos_gss_local_error(
+            minorStatus, outputCredHandle == NULL
+                ? PAL_GSS_S_CALL_INACCESSIBLE_WRITE
+                : PAL_GSS_S_CALL_INACCESSIBLE_READ);
     }
 
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL &&
-        provider->initiate_cred_with_password != NULL &&
-        rinos_gss_supports_package(provider, (uint32_t)packageType))
+        !rinos_gss_supports_package(provider, (uint32_t)packageType))
+    {
+        *outputCredHandle = NULL;
+        return rinos_gss_local_error(minorStatus, PAL_GSS_S_BAD_MECH);
+    }
+    if (provider != NULL &&
+        provider->initiate_cred_with_password != NULL)
     {
         *outputCredHandle = NULL;
         return rinos_gss_finish_provider_handle(provider, minorStatus,
@@ -1064,6 +1210,16 @@ PALEXPORT uint32_t NetSecurityNative_GetUser(
     uint32_t* minorStatus, GssCtxId* contextHandle, PAL_GssBuffer* outBuffer)
 {
     const RinAuthProviderV1* provider = rinos_gss_provider();
+    if (contextHandle == NULL)
+    {
+        return rinos_gss_local_buffer_error(
+            provider, minorStatus, outBuffer, PAL_GSS_S_NO_CONTEXT);
+    }
+    if (outBuffer == NULL)
+    {
+        return rinos_gss_local_error(
+            minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
+    }
     if (provider != NULL)
     {
         if (!rinos_gss_prepare_provider_buffer(provider, outBuffer))

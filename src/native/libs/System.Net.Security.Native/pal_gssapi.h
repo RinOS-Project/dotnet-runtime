@@ -23,6 +23,20 @@ typedef enum
     PAL_GSS_CONTINUE_NEEDED = 1
 } PAL_GssStatus;
 
+/* RFC 2744 major-status values used by the RinOS PAL for errors that can be
+ * classified at this ABI boundary.  Provider-local failures remain mapped to
+ * GSS_S_UNAVAILABLE until the authenticated service exposes a versioned
+ * Kerberos/GSS error classification. */
+#define PAL_GSS_S_CALL_INACCESSIBLE_READ UINT32_C(1u << 24)
+#define PAL_GSS_S_CALL_INACCESSIBLE_WRITE UINT32_C(2u << 24)
+#define PAL_GSS_S_BAD_STRUCTURE UINT32_C(3u << 24)
+#define PAL_GSS_S_BAD_MECH UINT32_C(1u << 16)
+#define PAL_GSS_S_BAD_NAME UINT32_C(2u << 16)
+#define PAL_GSS_S_BAD_BINDINGS UINT32_C(4u << 16)
+#define PAL_GSS_S_NO_CONTEXT UINT32_C(8u << 16)
+#define PAL_GSS_S_DEFECTIVE_TOKEN UINT32_C(9u << 16)
+#define PAL_GSS_S_UNAVAILABLE UINT32_C(16u << 16)
+
 typedef enum
 {
     PAL_GSS_C_DELEG_FLAG = 0x1,

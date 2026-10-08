@@ -56,7 +56,7 @@ internal static partial class Interop
         [LibraryImport(Interop.Libraries.NetSecurityNative, EntryPoint = "NetSecurityNative_InitiateCredSpNego")]
         internal static partial Status InitiateCredSpNego(
             out Status minorStatus,
-            SafeGssNameHandle desiredName,
+            SafeGssNameHandle? desiredName,
             out SafeGssCredHandle outputCredHandle);
 
         [LibraryImport(Interop.Libraries.NetSecurityNative, EntryPoint = "NetSecurityNative_InitiateCredWithPassword", StringMarshalling = StringMarshalling.Utf8)]

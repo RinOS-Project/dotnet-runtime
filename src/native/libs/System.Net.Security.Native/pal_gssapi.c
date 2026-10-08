@@ -159,7 +159,6 @@ static uint32_t AcquireCredSpNego(uint32_t* minorStatus,
                                   GssCredId** outputCredHandle)
 {
     assert(minorStatus != NULL);
-    assert(desiredName != NULL);
     assert(outputCredHandle != NULL);
     assert(*outputCredHandle == NULL);
 

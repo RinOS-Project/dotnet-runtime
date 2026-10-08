@@ -193,6 +193,27 @@ static uint32_t rinos_gss_finish_provider_buffer(
     return mappedStatus;
 }
 
+static uint32_t rinos_gss_finish_provider_handle(
+    uint32_t* minorStatus, uint32_t status, void** outputHandle)
+{
+    uint32_t mappedStatus = rinos_gss_map_provider_status(status);
+
+    /* A failed acquire must never leak a provider-owned opaque handle into
+     * the SafeHandle marshaller. A successful acquire without a handle is
+     * equally invalid and is treated as provider unavailability. */
+    if (mappedStatus != RINOS_GSS_S_COMPLETE ||
+        outputHandle == NULL || *outputHandle == NULL)
+    {
+        if (outputHandle != NULL)
+        {
+            *outputHandle = NULL;
+        }
+        return rinos_gss_unavailable(minorStatus);
+    }
+
+    return mappedStatus;
+}
+
 static uint32_t rinos_gss_release_status(uint32_t* minorStatus, int32_t hadHandle)
 {
     return hadHandle ? rinos_gss_unavailable(minorStatus) : rinos_gss_complete(minorStatus);
@@ -259,9 +280,10 @@ PALEXPORT uint32_t NetSecurityNative_ImportUserName(
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
-        return rinos_gss_map_provider_status(provider->import_user_name(
+        return rinos_gss_finish_provider_handle(minorStatus,
+            provider->import_user_name(
             provider->context, minorStatus, inputName, inputNameLen,
-            (void**)outputName));
+            (void**)outputName), (void**)outputName);
     }
 
     (void)inputName;
@@ -279,9 +301,10 @@ PALEXPORT uint32_t NetSecurityNative_ImportPrincipalName(
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
-        return rinos_gss_map_provider_status(provider->import_principal_name(
+        return rinos_gss_finish_provider_handle(minorStatus,
+            provider->import_principal_name(
             provider->context, minorStatus, inputName, inputNameLen,
-            (void**)outputName));
+            (void**)outputName), (void**)outputName);
     }
 
     (void)inputName;
@@ -318,8 +341,10 @@ PALEXPORT uint32_t NetSecurityNative_AcquireAcceptorCred(uint32_t* minorStatus, 
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL)
     {
-        return rinos_gss_map_provider_status(provider->acquire_acceptor_cred(
-            provider->context, minorStatus, (void**)outputCredHandle));
+        return rinos_gss_finish_provider_handle(minorStatus,
+            provider->acquire_acceptor_cred(
+                provider->context, minorStatus, (void**)outputCredHandle),
+            (void**)outputCredHandle);
     }
 
     if (outputCredHandle != NULL)
@@ -336,9 +361,10 @@ PALEXPORT uint32_t NetSecurityNative_InitiateCredSpNego(
     if (provider != NULL &&
         (provider->package_mask & RIN_AUTH_PROVIDER_PACKAGE_NEGOTIATE) != 0u)
     {
-        return rinos_gss_map_provider_status(provider->initiate_cred_spnego(
-            provider->context, minorStatus, desiredName,
-            (void**)outputCredHandle));
+        return rinos_gss_finish_provider_handle(minorStatus,
+            provider->initiate_cred_spnego(
+                provider->context, minorStatus, desiredName,
+                (void**)outputCredHandle), (void**)outputCredHandle);
     }
 
     (void)desiredName;
@@ -652,9 +678,11 @@ PALEXPORT uint32_t NetSecurityNative_InitiateCredWithPassword(
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (provider != NULL && rinos_gss_supports_package(provider, (uint32_t)packageType))
     {
-        return rinos_gss_map_provider_status(provider->initiate_cred_with_password(
-            provider->context, minorStatus, packageType, desiredName,
-            password, passwdLen, (void**)outputCredHandle));
+        return rinos_gss_finish_provider_handle(minorStatus,
+            provider->initiate_cred_with_password(
+                provider->context, minorStatus, packageType, desiredName,
+                password, passwdLen, (void**)outputCredHandle),
+            (void**)outputCredHandle);
     }
 
     (void)packageType;

@@ -88,8 +88,11 @@ namespace Microsoft.Win32.SafeHandles
         }
 
         /// <summary>
-        ///  returns the handle for the given credentials.
-        ///  The method returns an invalid handle if the username is null or empty.
+        ///  Returns the handle for the given credentials.
+        ///  An empty username requests the provider's session-bound default
+        ///  credentials. It must not be represented by an empty handle: GSS
+        ///  providers use that handle value for GSS_C_NO_CREDENTIAL, which
+        ///  would bypass the RinOS auth-provider acquisition boundary.
         /// </summary>
         public static SafeGssCredHandle Create(string username, string password, Interop.NetSecurityNative.PackageType packageType)
         {
@@ -101,30 +104,45 @@ namespace Microsoft.Win32.SafeHandles
                     SR.net_gssapi_ntlm_missing_plugin);
             }
 
+            SafeGssCredHandle? retHandle = null;
+            Interop.NetSecurityNative.Status status;
+            Interop.NetSecurityNative.Status minorStatus;
+
             if (string.IsNullOrEmpty(username))
             {
-                return new SafeGssCredHandle();
-            }
+                if (!string.IsNullOrEmpty(password))
+                {
+                    throw new Interop.NetSecurityNative.GssApiException(
+                        Interop.NetSecurityNative.Status.GSS_S_BAD_NAME, 0);
+                }
 
-            SafeGssCredHandle? retHandle = null;
-            using (SafeGssNameHandle userHandle = SafeGssNameHandle.CreateUser(username))
+                // GSS_C_NO_NAME asks the provider for the current session's
+                // default initiator credentials. RinOS providers must bind
+                // this to the kernel credential/session owner; no username,
+                // password, or synthetic token is supplied here.
+                status = Interop.NetSecurityNative.InitiateCredSpNego(
+                    out minorStatus, null, out retHandle);
+            }
+            else
             {
-                Interop.NetSecurityNative.Status status;
-                Interop.NetSecurityNative.Status minorStatus;
+                using SafeGssNameHandle userHandle = SafeGssNameHandle.CreateUser(username);
                 if (string.IsNullOrEmpty(password))
                 {
-                    status = Interop.NetSecurityNative.InitiateCredSpNego(out minorStatus, userHandle, out retHandle);
+                    status = Interop.NetSecurityNative.InitiateCredSpNego(
+                        out minorStatus, userHandle, out retHandle);
                 }
                 else
                 {
-                    status = Interop.NetSecurityNative.InitiateCredWithPassword(out minorStatus, packageType, userHandle, password, Encoding.UTF8.GetByteCount(password), out retHandle);
+                    status = Interop.NetSecurityNative.InitiateCredWithPassword(
+                        out minorStatus, packageType, userHandle, password,
+                        Encoding.UTF8.GetByteCount(password), out retHandle);
                 }
+            }
 
-                if (status != Interop.NetSecurityNative.Status.GSS_S_COMPLETE)
-                {
-                    retHandle.Dispose();
-                    throw new Interop.NetSecurityNative.GssApiException(status, minorStatus);
-                }
+            if (status != Interop.NetSecurityNative.Status.GSS_S_COMPLETE)
+            {
+                retHandle?.Dispose();
+                throw new Interop.NetSecurityNative.GssApiException(status, minorStatus);
             }
 
             return retHandle;

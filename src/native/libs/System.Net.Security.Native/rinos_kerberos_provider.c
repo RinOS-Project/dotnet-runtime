@@ -102,6 +102,148 @@ static uint32_t provider_status_from_owner(uint32_t status,
     return provider_unavailable(minor_status);
 }
 
+static uint32_t provider_defective_token(uint32_t* minor_status)
+{
+    if (minor_status != NULL) *minor_status = 0u;
+    return RIN_AUTH_PROVIDER_DEFECTIVE_TOKEN;
+}
+
+/* The service owns the full RFC 4120/4121 decoder.  The runtime-side check is
+ * intentionally only a bounded GSS framing check: it rejects truncated or
+ * malformed wrappers before IPC, while leaving token semantics, KRB-ERROR,
+ * and integrity failures to the product provider. */
+static int provider_der_value_bounds(const uint8_t* input, uint32_t size,
+                                     uint32_t* header_size,
+                                     uint32_t* value_size)
+{
+    uint8_t length_byte;
+    uint32_t length_octets;
+    uint32_t value = 0u;
+
+    if (input == NULL || header_size == NULL || value_size == NULL ||
+        size < 2u)
+        return 0;
+    length_byte = input[1];
+    if (length_byte < 0x80u) {
+        *header_size = 2u;
+        *value_size = length_byte;
+        return *value_size <= size - *header_size;
+    }
+    length_octets = (uint32_t)(length_byte & 0x7fu);
+    if (length_octets == 0u || length_octets > 4u ||
+        length_octets > size - 2u)
+        return 0;
+    if (input[2] == 0u) return 0;
+    for (uint32_t index = 0u; index < length_octets; ++index)
+        value = (value << 8u) | input[2u + index];
+    if (value < 0x80u || value > size - 2u - length_octets)
+        return 0;
+    *header_size = 2u + length_octets;
+    *value_size = value;
+    return 1;
+}
+
+static int provider_gss_token_has_framing(const uint8_t* token,
+                                          uint32_t token_size)
+{
+    static const uint8_t kerberos_oid[] = {
+        0x2au, 0x86u, 0x48u, 0x86u, 0xf7u,
+        0x12u, 0x01u, 0x02u, 0x02u,
+    };
+    uint32_t outer_header;
+    uint32_t outer_size;
+    uint32_t oid_header;
+    uint32_t oid_size;
+    uint32_t offset;
+
+    if (token == NULL || token_size < 2u || token[0] != 0x60u ||
+        !provider_der_value_bounds(token, token_size, &outer_header,
+                                   &outer_size) ||
+        outer_header > token_size ||
+        outer_size != token_size - outer_header)
+        return 0;
+    offset = outer_header;
+    if (offset >= token_size || token[offset] != 0x06u ||
+        !provider_der_value_bounds(token + offset, token_size - offset,
+                                   &oid_header, &oid_size) ||
+        oid_size != sizeof(kerberos_oid) ||
+        oid_header + oid_size > token_size - offset ||
+        memcmp(token + offset + oid_header, kerberos_oid,
+               sizeof(kerberos_oid)) != 0)
+        return 0;
+    offset += oid_header + oid_size;
+    /* A valid Kerberos GSS token has a two-octet TOK_ID.  Do not interpret
+     * the identifier here: RFC 4121's unknown-TOK_ID KRB-ERROR response is a
+     * service/provider responsibility, not a reason to invent a runtime
+     * success path. */
+    return token_size - offset >= 2u;
+}
+
+static int provider_sec_context_token(
+    const uint8_t* input, uint32_t input_size,
+    const uint8_t** token_out, uint32_t* token_size_out)
+{
+    RinKerberosProviderSecContextInputV1 header = {0};
+    uint32_t offset;
+
+    if (input == NULL || token_out == NULL || token_size_out == NULL ||
+        input_size < sizeof(header))
+        return 0;
+    memcpy(&header, input, sizeof(header));
+    if (header.struct_size != sizeof(header) ||
+        header.version != RIN_KERBEROS_PROVIDER_INPUT_ABI_VERSION ||
+        header.kind != RIN_KERBEROS_PROVIDER_INPUT_SEC_CONTEXT ||
+        header.reserved != 0u ||
+        header.target_name_size > RIN_KERBEROS_PROVIDER_MAX_TARGET_NAME_SIZE ||
+        header.channel_binding_size >
+            RIN_KERBEROS_PROVIDER_MAX_CHANNEL_BINDING_SIZE ||
+        header.token_size > RIN_KERBEROS_OPERATION_MAX_INPUT_SIZE)
+        return 0;
+    offset = (uint32_t)sizeof(header);
+    if (header.target_name_size > input_size - offset)
+        return 0;
+    offset += header.target_name_size;
+    if (header.channel_binding_size > input_size - offset)
+        return 0;
+    offset += header.channel_binding_size;
+    if (header.token_size > input_size - offset ||
+        offset + header.token_size != input_size)
+        return 0;
+    *token_out = input + offset;
+    *token_size_out = header.token_size;
+    return 1;
+}
+
+static int provider_message_pair(
+    const uint8_t* input, uint32_t input_size,
+    const uint8_t** message_out, uint32_t* message_size_out,
+    const uint8_t** token_out, uint32_t* token_size_out)
+{
+    RinKerberosProviderMessagePairInputV1 header;
+    uint32_t offset;
+
+    if (input == NULL || message_out == NULL || message_size_out == NULL ||
+        token_out == NULL || token_size_out == NULL ||
+        input_size < sizeof(header))
+        return 0;
+    memcpy(&header, input, sizeof(header));
+    if (header.struct_size != sizeof(header) ||
+        header.version != RIN_KERBEROS_PROVIDER_INPUT_ABI_VERSION ||
+        header.kind != RIN_KERBEROS_PROVIDER_INPUT_MESSAGE_PAIR ||
+        (header.flags & ~RIN_KERBEROS_OPERATION_FLAG_ENCRYPT) != 0u ||
+        header.first_size > input_size - sizeof(header))
+        return 0;
+    offset = (uint32_t)sizeof(header);
+    if (header.second_size > input_size - offset - header.first_size ||
+        offset + header.first_size + header.second_size != input_size)
+        return 0;
+    *message_out = input + offset;
+    *message_size_out = header.first_size;
+    *token_out = input + offset + header.first_size;
+    *token_size_out = header.second_size;
+    return 1;
+}
+
 static int provider_name_valid(const RinOsKerberosProviderName* name)
 {
     return name != NULL && name->magic == RINOS_KERBEROS_NAME_MAGIC &&
@@ -334,7 +476,7 @@ static uint32_t provider_build_sec_context_input(
     uint32_t channel_binding_size, const uint8_t* token, uint32_t token_size,
     uint8_t** output, uint32_t* output_size)
 {
-    RinKerberosProviderSecContextInputV1 header;
+    RinKerberosProviderSecContextInputV1 header = {0};
     uint32_t total;
     uint8_t* bytes;
     if (output == NULL || output_size == NULL ||
@@ -379,7 +521,10 @@ static uint32_t provider_build_sec_context_input(
         memcpy(bytes + total, channel_binding, channel_binding_size);
         total += channel_binding_size;
     }
-    if (token_size != 0u) memcpy(bytes + total, token, token_size);
+    if (token_size != 0u) {
+        memcpy(bytes + total, token, token_size);
+        total += token_size;
+    }
     *output = bytes;
     *output_size = total;
     return 1u;
@@ -401,6 +546,10 @@ static uint32_t provider_operation(
     uint32_t provider_result = 0u;
     uint32_t operation_return_flags = 0u;
     uint32_t status;
+    const uint8_t* first_input = NULL;
+    const uint8_t* second_input = NULL;
+    uint32_t first_input_size = 0u;
+    uint32_t second_input_size = 0u;
 
     memset(next_context, 0, sizeof(next_context));
     if (return_flags != NULL) *return_flags = 0u;
@@ -436,6 +585,40 @@ static uint32_t provider_operation(
             provider_context->kind != request->credential_kind)
             return RIN_AUTH_PROVIDER_UNAVAILABLE;
         request->context_token_size = provider_context->token_size;
+    }
+    if (request->operation == RIN_KERBEROS_OPERATION_INIT_SEC_CONTEXT ||
+        request->operation == RIN_KERBEROS_OPERATION_ACCEPT_SEC_CONTEXT) {
+        int continuation = provider_context != NULL &&
+                           provider_context->token_size != 0u;
+        if (!provider_sec_context_token(input, input_size, &first_input,
+                                        &first_input_size))
+            return RIN_AUTH_PROVIDER_UNAVAILABLE;
+        /* The initial initiator call legitimately has no input token. Every
+         * accept call and every continuation call must carry a bounded GSS
+         * wrapper; malformed framing is an RFC 2743 defective token. */
+        if ((request->operation == RIN_KERBEROS_OPERATION_ACCEPT_SEC_CONTEXT ||
+             continuation) &&
+            (first_input_size == 0u ||
+             !provider_gss_token_has_framing(first_input, first_input_size))) {
+            return provider_defective_token(NULL);
+        }
+    } else if (request->operation == RIN_KERBEROS_OPERATION_UNWRAP ||
+               request->operation == RIN_KERBEROS_OPERATION_VERIFY_MIC) {
+        if (!provider_message_pair(input, input_size, &first_input,
+                                   &first_input_size, &second_input,
+                                   &second_input_size))
+            return RIN_AUTH_PROVIDER_UNAVAILABLE;
+        /* These are only syntax checks.  A token with a valid header but a
+         * bad checksum remains a provider/service integrity failure and is
+         * never relabeled as defective framing here. */
+        if (request->operation == RIN_KERBEROS_OPERATION_UNWRAP &&
+            (first_input_size < 16u || first_input[0] != 0x05u ||
+             first_input[1] != 0x04u))
+            return provider_defective_token(NULL);
+        if (request->operation == RIN_KERBEROS_OPERATION_VERIFY_MIC &&
+            (second_input_size != 28u || second_input[0] != 0x04u ||
+             second_input[1] != 0x04u))
+            return provider_defective_token(NULL);
     }
     if (request->output_capacity != 0u) {
         operation_output = (uint8_t*)calloc(1u, request->output_capacity);

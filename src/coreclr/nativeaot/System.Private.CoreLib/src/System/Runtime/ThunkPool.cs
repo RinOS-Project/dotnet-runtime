@@ -220,9 +220,22 @@ namespace System.Runtime
             *((IntPtr*)(nextAvailableThunkPtr + IntPtr.Size)) = IntPtr.Zero;
 #endif
 
-            int thunkIndex = (int)(((nuint)(nint)nextAvailableThunkPtr) - ((nuint)(nint)nextAvailableThunkPtr & ~Constants.PageSizeMask));
-            Debug.Assert((thunkIndex % Constants.ThunkDataSize) == 0);
-            thunkIndex /= Constants.ThunkDataSize;
+            nuint nextAvailableThunkValue = (nuint)(nint)nextAvailableThunkPtr;
+            nuint dataPageOffset = nextAvailableThunkValue & Constants.PageSizeMask;
+            if (dataPageOffset % (nuint)Constants.ThunkDataSize != 0)
+            {
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
+
+            nuint thunkIndexValue = dataPageOffset / (nuint)Constants.ThunkDataSize;
+            if (thunkIndexValue >= (nuint)Constants.NumThunksPerBlock)
+            {
+                // The final cell in a data page stores the common stub address;
+                // it is not an allocatable thunk node.  Do not turn a malformed
+                // free-list value into an executable thunk address.
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
+            int thunkIndex = (int)thunkIndexValue;
 
             IntPtr thunkStubsBlock = RuntimeImports.RhpGetThunkStubsBlockAddress(nextAvailableThunkPtr);
             if (thunkStubsBlock == IntPtr.Zero)
@@ -246,7 +259,13 @@ namespace System.Runtime
             // or at least change it to a per-heap lock instead of a global lock.
 
             IntPtr dataAddress = TryGetThunkDataAddress(thunkAddress);
-            Debug.Assert(dataAddress != IntPtr.Zero);
+            if (dataAddress == IntPtr.Zero || !IsThunkInHeap(thunkAddress))
+            {
+                // FreeThunk is an internal runtime primitive.  A malformed or
+                // stale address must not let the release build write a linked
+                // list pointer into an unrelated writable page.
+                return;
+            }
 
 #if DEBUG
             Debug.Assert(IsThunkInHeap(thunkAddress));
@@ -294,7 +313,11 @@ namespace System.Runtime
                 return IntPtr.Zero;
 
             // Compute the thunk's index
-            int thunkIndex = (int)((thunkAddressValue - currentThunksBlockAddress) / (nuint)Constants.ThunkCodeSize);
+            nuint codePageOffset = thunkAddressValue - currentThunksBlockAddress;
+            nuint thunkIndexValue = codePageOffset / (nuint)Constants.ThunkCodeSize;
+            if (thunkIndexValue >= (nuint)Constants.NumThunksPerBlock)
+                return IntPtr.Zero;
+            int thunkIndex = (int)thunkIndexValue;
 
             // Compute the address of the data block that corresponds to the current thunk
             IntPtr thunkDataBlockAddress = RuntimeImports.RhpGetThunkDataBlockAddress((IntPtr)((nint)thunkAddressValue));
@@ -302,7 +325,12 @@ namespace System.Runtime
             if (thunkDataBlockAddress == IntPtr.Zero)
                 return IntPtr.Zero;
 
-            return thunkDataBlockAddress + thunkIndex * Constants.ThunkDataSize;
+            nuint dataBlockValue = (nuint)(nint)thunkDataBlockAddress;
+            nuint dataOffset = (nuint)thunkIndex * (nuint)Constants.ThunkDataSize;
+            if (dataBlockValue > nuint.MaxValue - dataOffset)
+                return IntPtr.Zero;
+
+            return (IntPtr)(nint)(dataBlockValue + dataOffset);
         }
 
         /// <summary>

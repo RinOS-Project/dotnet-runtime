@@ -879,8 +879,17 @@ PALEXPORT uint32_t NetSecurityNative_InitiateCredWithPassword(
     uint32_t passwdLen,
     GssCredId** outputCredHandle)
 {
-    if (outputCredHandle == NULL)
+    /* A provider must never receive a non-empty password with no backing
+     * address.  This is the password analogue of the token/name input guards
+     * above: the provider owns the actual credential acquisition, while the
+     * PAL owns the native pointer/length safety boundary. */
+    if (outputCredHandle == NULL ||
+        !rinos_gss_valid_input_buffer(password, passwdLen))
     {
+        if (outputCredHandle != NULL)
+        {
+            *outputCredHandle = NULL;
+        }
         return rinos_gss_unavailable(minorStatus);
     }
 

@@ -81,6 +81,25 @@ namespace Microsoft.Win32.SafeHandles
                     defaultTimeout: (int)TimeSpan.FromSeconds(120).TotalMilliseconds, // same as the default for CreatePipe
                     ref securityAttributes);
 
+                // The LOCAL namespace is required for AppContainer processes, but a restricted
+                // desktop token can be denied access to it even when ordinary named pipes are
+                // available. Preserve the AppContainer-first behavior and retry only the
+                // namespace-specific access failure using the normal named-pipe namespace.
+                if (tempReadHandle.IsInvalid && Marshal.GetLastPInvokeError() == Interop.Errors.ERROR_ACCESS_DENIED)
+                {
+                    tempReadHandle.Dispose();
+                    pipeName = $@"\\.\pipe\dotnet_{Guid.NewGuid():N}";
+                    tempReadHandle = Interop.Kernel32.CreateNamedPipeFileHandle(
+                        pipeName,
+                        openMode,
+                        pipeMode,
+                        maxInstances: 1,
+                        outBufferSize: 0,
+                        inBufferSize: 4 * 4096,
+                        defaultTimeout: (int)TimeSpan.FromSeconds(120).TotalMilliseconds,
+                        ref securityAttributes);
+                }
+
                 try
                 {
                     if (tempReadHandle.IsInvalid)

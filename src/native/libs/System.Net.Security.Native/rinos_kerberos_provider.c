@@ -1002,9 +1002,9 @@ static uint32_t provider_delete_sec_context(
     status = provider_operation(&credential, provider_context, &request, NULL,
                                 0u, NULL, 0u, NULL);
     if (status != RIN_AUTH_PROVIDER_OK) {
-        provider_zero(provider_context, sizeof(*provider_context));
-        free(provider_context);
-        *security_context = NULL;
+        /* The owner still owns the remote context when cleanup fails.  Keep
+         * the local handle alive so the caller can retry after a transient
+         * transport failure; successful cleanup below is the commit point. */
         if (minor_status != NULL) *minor_status = 0u;
         return status;
     }

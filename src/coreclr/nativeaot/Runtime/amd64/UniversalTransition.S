@@ -38,7 +38,8 @@
 // a new location while preserving the input arguments.  The usage of this thunk also
 // ensures arguments passed are properly reported.
 //
-// TODO: This code currently only tailcalls, and does not return.
+// This transition intentionally tailcalls the return target after restoring
+// the saved argument frame; it does not return to the original caller.
 //
 // Inputs:
 //      rdi, esi, rcx, rdx, r8, r9, stack space: arguments as normal

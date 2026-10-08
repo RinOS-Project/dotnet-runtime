@@ -769,9 +769,36 @@ UInt32_BOOL PalMarkThunksAsValidCallTargets(
     int thunkBlockSize,
     int thunkBlocksPerMapping)
 {
+    // The Unix implementation has no per-call-target API.  It publishes the
+    // writable data half of the paired mapping instead.  Keep this boundary
+    // failure-atomic: all values below come from the thunk layout provider,
+    // but malformed metadata must never turn into an out-of-range mprotect.
+    if (virtualAddress == nullptr || thunkBlocksPerMapping <= 0 ||
+        ((uintptr_t)virtualAddress % OS_PAGE_SIZE) != 0 ||
+        (size_t)thunkBlocksPerMapping > SIZE_MAX / OS_PAGE_SIZE)
+    {
+        return UInt32_FALSE;
+    }
+
+    // These parameters are part of the common PAL ABI.  They are intentionally
+    // checked even though this Unix path only needs the mapping half-size: a
+    // zero/negative layout is not a valid thunk provider contract.
+    if (thunkSize <= 0 || thunksPerBlock <= 0 ||
+        thunkBlockSize != (int)OS_PAGE_SIZE)
+    {
+        return UInt32_FALSE;
+    }
+
+    const size_t mappingHalfSize = (size_t)thunkBlocksPerMapping * OS_PAGE_SIZE;
+    const uintptr_t baseAddress = (uintptr_t)virtualAddress;
+    if (baseAddress > UINTPTR_MAX - mappingHalfSize)
+    {
+        return UInt32_FALSE;
+    }
+
     int ret = mprotect(
-        (void*)((uintptr_t)virtualAddress + (thunkBlocksPerMapping * OS_PAGE_SIZE)),
-        thunkBlocksPerMapping * OS_PAGE_SIZE,
+        (void*)(baseAddress + mappingHalfSize),
+        mappingHalfSize,
         PROT_READ | PROT_WRITE);
     return ret == 0 ? UInt32_TRUE : UInt32_FALSE;
 }

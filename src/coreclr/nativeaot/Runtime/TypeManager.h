@@ -4,6 +4,8 @@
 #include "ModuleHeaders.h"
 #include "ICodeManager.h"
 
+class Object;
+
 class TypeManager
 {
     friend struct ::cdac_data<TypeManager>;
@@ -14,6 +16,7 @@ class TypeManager
     bool                        m_sectionsSorted;
     uint8_t*                    m_pStaticsGCDataSection;
     uint8_t*                    m_pThreadStaticsDataSection;
+    void*                       m_pGCStaticSpineHandle;
     void**                      m_pClasslibFunctions;
     uint32_t                    m_nClasslibFunctions;
 
@@ -24,6 +27,8 @@ public:
     void * GetModuleSection(ReadyToRunSectionType sectionId, int * length);
     HANDLE GetOsModuleHandle();
     void* GetClasslibFunction(ClasslibFunctionId functionId);
+    bool SetGCStaticSpine(Object* pSpine);
+    Object* GetGCStaticSpine();
 
 private:
 

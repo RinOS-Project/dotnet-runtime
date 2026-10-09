@@ -452,6 +452,13 @@ FCIMPL3(void*, RhpGetModuleSection, TypeManagerHandle *pModule, int32_t headerId
 }
 FCIMPLEND
 
+FCIMPL2(FC_BOOL_RET, RhpSetGCStaticSpine, TypeManagerHandle *pModule, Object* pSpine)
+{
+    FC_RETURN_BOOL(pModule != nullptr && pModule->AsTypeManager() != nullptr &&
+                   pModule->AsTypeManager()->SetGCStaticSpine(pSpine));
+}
+FCIMPLEND
+
 FCIMPL2(void, RhGetCurrentThreadStackBounds, PTR_VOID * ppStackLow, PTR_VOID * ppStackHigh)
 {
     ThreadStore::GetCurrentThread()->GetStackBounds(ppStackLow, ppStackHigh);

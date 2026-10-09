@@ -527,6 +527,15 @@ namespace System.Runtime
         internal static extern unsafe TypeManagerHandle RhpCreateTypeManager(IntPtr osModule, IntPtr moduleHeader, IntPtr* pClasslibFunctions, int nClasslibFunctions);
 
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
+        [RuntimeImport(RuntimeLibrary, "RhpSetGCStaticSpine")]
+        private static extern bool RhpSetGCStaticSpine(ref TypeManagerHandle module, object spine);
+
+        internal static bool RhpSetGCStaticSpine(TypeManagerHandle module, object spine)
+        {
+            return RhpSetGCStaticSpine(ref module, spine);
+        }
+
+        [MethodImplAttribute(MethodImplOptions.InternalCall)]
         [RuntimeImport(RuntimeLibrary, "RhpRegisterOsModule")]
         internal static extern unsafe IntPtr RhpRegisterOsModule(IntPtr osModule);
 

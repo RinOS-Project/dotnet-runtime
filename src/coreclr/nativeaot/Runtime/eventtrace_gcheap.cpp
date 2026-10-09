@@ -56,10 +56,10 @@ BOOL ETW::GCLog::ShouldTrackMovementForEtw()
 
 BOOL ETW::GCLog::ShouldWalkStaticsAndCOMForEtw()
 {
-    // NativeAOT does not provide a COM/RCW or static-root enumerator to this
-    // ETW owner. Keep the capability probe false until that owner and its
-    // root identity contract exist; advertising the heap walk would otherwise
-    // make WalkStaticsAndCOMForETW look successful while emitting no roots.
+    // NativeAOT does not provide a COM/RCW enumerator for this combined ETW
+    // hook. Static roots have a separate owner in the normal heap-root walk;
+    // keep this combined capability false until the COM root identity contract
+    // exists so this hook cannot advertise a partial walk as complete.
     return FALSE;
 }
 
@@ -481,9 +481,9 @@ HRESULT ETW::GCLog::ForceGCForDiagnostics()
 
 void ETW::GCLog::WalkStaticsAndCOMForETW()
 {
-    // Deliberately empty: the NativeAOT runtime has no COM/RCW or static-root
-    // enumeration owner. ShouldWalkStaticsAndCOMForEtw() must remain false so
-    // this unsupported path is never reported as a completed heap walk.
+    // COM/RCW enumeration is still not available in NativeAOT. GC static roots
+    // are handled by WalkGCStaticRootsForETW during the normal heap-root walk,
+    // so this combined CoreCLR hook remains disabled until the COM owner exists.
 }
 
 // Holds state that batches of roots, nodes, edges, and types as the GC walks the heap
@@ -971,6 +971,31 @@ void ETW::GCLog::EndHeapDump(ProfilerWalkHeapContext* profilerWalkHeapContext)
 
 namespace
 {
+    void WalkGCStaticRootsForETW(ProfilingScanContext* pSC)
+    {
+        RuntimeInstance::TypeManagerList& typeManagers = GetRuntimeInstance()->GetTypeManagerList();
+        for (RuntimeInstance::TypeManagerList::Iterator it = typeManagers.Begin(); it != typeManagers.End(); ++it)
+        {
+            TypeManager* typeManager = it->m_pTypeManager;
+            Object* spineObject = typeManager->GetGCStaticSpine();
+            if (spineObject == nullptr)
+                continue;
+
+            Array* spine = (Array*)spineObject;
+            Object** roots = (Object**)spine->GetArrayData();
+            for (uint32_t i = 0; i < spine->GetArrayLength(); i++)
+            {
+                Object* rootedObject = roots[i];
+                if (rootedObject == nullptr ||
+                    !GCHeapUtilities::GetGCHeap()->IsHeapPointer(rootedObject))
+                    continue;
+
+                ETW::GCLog::RootReference(
+                    &roots[i], rootedObject, nullptr, FALSE, pSC, 0, 0);
+            }
+        }
+    }
+
     void ProfScanRootsHelper(Object** ppObject, ScanContext* pSC, uint32_t dwFlags)
     {
         Object* pObj = *ppObject;
@@ -1042,6 +1067,12 @@ namespace
             // Handles are kept independent of wks/svr/concurrent builds
             SC.dwEtwRootKind = kEtwGCRootKindHandle;
             GCHeapUtilities::GetGCHeap()->DiagScanHandles(&ScanHandleForETW, max_generation, &SC);
+
+            // NativeAOT stores generated GC static bases in a managed spine
+            // registered by TypeManager. Report those bases as static roots;
+            // COM/RCW roots remain a separate unsupported capability.
+            SC.dwEtwRootKind = kEtwGCRootKindOther;
+            WalkGCStaticRootsForETW(&SC);
         }
 
         // **** Scan dependent handles: only if ETW wants roots

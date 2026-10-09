@@ -136,6 +136,11 @@ namespace Internal.Runtime.CompilerHelpers
 
                 object[] spine = InitializeStatics(staticsSection, length);
 
+                if (!RuntimeImports.RhpSetGCStaticSpine(typeManager, spine))
+                {
+                    RuntimeExceptionHelpers.FailFast("Failed registering GC static spine");
+                }
+
                 // Call write barrier directly. Assigning object reference does a type check.
                 Debug.Assert((uint)moduleIndex < (uint)gcStaticBaseSpines.Length);
                 ref object rawSpineIndexData = ref Unsafe.As<byte, object>(ref Unsafe.As<RawArrayData>(gcStaticBaseSpines).Data);

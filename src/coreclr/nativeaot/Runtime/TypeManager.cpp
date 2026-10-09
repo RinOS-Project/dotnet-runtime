@@ -17,6 +17,7 @@
 #include "event.h"
 #include "threadstore.h"
 #include "TypeManager.h"
+#include "gchandleutilities.h"
 
 /* static */
 TypeManager * TypeManager::Create(HANDLE osModule, void * pModuleHeader, void** pClasslibFunctions, uint32_t nClasslibFunctions)
@@ -45,6 +46,7 @@ TypeManager * TypeManager::Create(HANDLE osModule, void * pModuleHeader, void** 
 TypeManager::TypeManager(HANDLE osModule, ReadyToRunHeader * pHeader, void** pClasslibFunctions, uint32_t nClasslibFunctions)
     : m_osModule(osModule), m_pHeader(pHeader),
       m_sectionsSorted(true),
+      m_pGCStaticSpineHandle(nullptr),
       m_pClasslibFunctions(pClasslibFunctions), m_nClasslibFunctions(nClasslibFunctions)
 {
     int length;
@@ -130,6 +132,28 @@ void * TypeManager::GetClasslibFunction(ClasslibFunctionId functionId)
 HANDLE TypeManager::GetOsModuleHandle()
 {
     return m_osModule;
+}
+
+bool TypeManager::SetGCStaticSpine(Object* pSpine)
+{
+    if (pSpine == nullptr || m_pGCStaticSpineHandle != nullptr)
+        return false;
+
+    OBJECTHANDLE handle = GCHandleUtilities::GetGCHandleManager()->GetGlobalHandleStore()->CreateHandleOfType(
+        pSpine, HNDTYPE_STRONG);
+    if (handle == nullptr)
+        return false;
+
+    m_pGCStaticSpineHandle = handle;
+    return true;
+}
+
+Object* TypeManager::GetGCStaticSpine()
+{
+    if (m_pGCStaticSpineHandle == nullptr)
+        return nullptr;
+
+    return ObjectFromHandle((OBJECTHANDLE)m_pGCStaticSpineHandle);
 }
 
 TypeManager* TypeManagerHandle::AsTypeManager()

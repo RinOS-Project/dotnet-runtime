@@ -1433,6 +1433,28 @@ private:
     uintptr_t m_intArgRegs[4];             // ChildSP+080 CallerSP+000 (0x20 bytes)    (rcx,rdx,r8,r9)
     uintptr_t m_stackPassedArgs[1];        // ChildSP+0a0 CallerSP+020 (unknown size)
 
+#if defined(TARGET_WINDOWS)
+    // Keep the Windows assembly thunk and the unwind view coupled at compile
+    // time.  These offsets are consumed by UniversalTransition.asm; a normal
+    // C++ layout change must not silently turn stack walking into a fabricated
+    // caller or an invalid conservative-GC range.
+    static_assert(sizeof(Fp128) == 0x10, "Windows AMD64 universal transition FP register width drift");
+    static_assert(offsetof(UniversalTransitionStackFrame, m_calleeArgumentHomes) == 0x00,
+                  "Windows AMD64 universal transition callee-home offset drift");
+    static_assert(offsetof(UniversalTransitionStackFrame, m_fpArgRegs) == 0x20,
+                  "Windows AMD64 universal transition FP register offset drift");
+    static_assert(offsetof(UniversalTransitionStackFrame, m_returnBlock) == 0x60,
+                  "Windows AMD64 universal transition return block offset drift");
+    static_assert(offsetof(UniversalTransitionStackFrame, m_alignmentPad) == 0x70,
+                  "Windows AMD64 universal transition alignment offset drift");
+    static_assert(offsetof(UniversalTransitionStackFrame, m_callerRetaddr) == 0x78,
+                  "Windows AMD64 universal transition return address offset drift");
+    static_assert(offsetof(UniversalTransitionStackFrame, m_intArgRegs) == 0x80,
+                  "Windows AMD64 universal transition integer register offset drift");
+    static_assert(offsetof(UniversalTransitionStackFrame, m_stackPassedArgs) == 0xA0,
+                  "Windows AMD64 universal transition stack argument offset drift");
+#endif
+
 public:
     PTR_uintptr_t get_CallerSP() { return GET_POINTER_TO_FIELD(m_intArgRegs[0]); }
     PTR_uintptr_t get_AddressOfPushedCallerIP() { return GET_POINTER_TO_FIELD(m_callerRetaddr); }
@@ -1657,6 +1679,10 @@ static_assert(offsetof(UniversalTransitionStackFrame, m_stackPassedArgs) == 0xD0
               "UNIX AMD64 universal transition stack argument offset drift");
 static_assert(sizeof(UniversalTransitionStackFrame) == 0xD8,
               "UNIX AMD64 universal transition frame size drift");
+#endif
+#if defined(TARGET_AMD64) && defined(TARGET_WINDOWS)
+static_assert(sizeof(UniversalTransitionStackFrame) == 0xA8,
+              "Windows AMD64 universal transition frame size drift");
 #endif
 
 typedef DPTR(UniversalTransitionStackFrame) PTR_UniversalTransitionStackFrame;

@@ -1919,6 +1919,13 @@ const RinAuthProviderV1* rin_auth_provider_get_v1(void)
     /* A transport-only build must not advertise a usable Kerberos provider. */
     return NULL;
 #else
+    /* Capability advertisement is also conditional on the live RinOS
+     * credential and operation owners.  The provider must never make a
+     * username, fixed token, or success-only stub look like session
+     * credentials. */
+    if (provider_credential_owner() == NULL ||
+        provider_operation_owner() == NULL)
+        return NULL;
     return &g_provider;
 #endif
 }

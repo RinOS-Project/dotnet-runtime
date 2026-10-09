@@ -1760,6 +1760,8 @@ static int product_pattern(const char* source, size_t source_capacity,
         } else if (!time_pattern && i + 2u <= source_length && strncmp(source + i, "DD", 2u) == 0) {
             replacement = "dd";
             consumed = 2u;
+        } else if (!time_pattern && source[i] == 'D') {
+            replacement = "d";
         } else if (!time_pattern && source[i] == 'Y') {
             replacement = "yyyy";
         } else if (time_pattern && source[i] == 'a') {

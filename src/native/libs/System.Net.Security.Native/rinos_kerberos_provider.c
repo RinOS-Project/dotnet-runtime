@@ -1736,6 +1736,8 @@ static uint32_t provider_get_user(
     RinOsKerberosProviderContext* provider_context =
         (RinOsKerberosProviderContext*)security_context;
     const RinKerberosCredentialOwnerV1* owner;
+    RinOsKerberosProviderCredential credential = {0};
+    RinKerberosOperationRequestV1 request = {0};
     uint8_t* principal;
     uint32_t principal_size = 0u;
     uint64_t generation = 0u;
@@ -1746,9 +1748,43 @@ static uint32_t provider_get_user(
         output->length = 0u;
     }
     if (output == NULL || !provider_context_valid(provider_context) ||
-        provider_context->kind != RIN_KERBEROS_OPERATION_CREDENTIAL_INITIATOR ||
         provider_context->state != RINOS_KERBEROS_CONTEXT_ESTABLISHED ||
         provider_context->generation == 0u)
+        return provider_unavailable(minor_status);
+
+    if (provider_context->kind ==
+        RIN_KERBEROS_OPERATION_CREDENTIAL_ACCEPTOR) {
+        owner = provider_credential_owner();
+        if (owner == NULL)
+            return provider_unavailable(minor_status);
+        credential.magic = RINOS_KERBEROS_CREDENTIAL_MAGIC;
+        credential.kind = provider_context->kind;
+        credential.owner_credential = provider_context->owner_credential;
+        credential.owner = owner;
+        request.struct_size = sizeof(request);
+        request.version = RIN_KERBEROS_OPERATION_ABI_VERSION;
+        request.operation = RIN_KERBEROS_OPERATION_GET_PEER_PRINCIPAL;
+        request.credential_kind = provider_context->kind;
+        request.output_capacity = RINOS_KERBEROS_MAX_PRINCIPAL_SIZE;
+        status = provider_operation(
+            &credential, provider_context, &request, NULL, 0u, output, 0u,
+            NULL, minor_status);
+        if (status != RIN_AUTH_PROVIDER_OK || output->data == NULL ||
+            output->length == 0u ||
+            output->length > RINOS_KERBEROS_MAX_PRINCIPAL_SIZE) {
+            if (output->data != NULL) {
+                provider_release_buffer(context, output->data, output->length);
+                output->data = NULL;
+                output->length = 0u;
+            }
+            return status == RIN_AUTH_PROVIDER_OK
+                ? provider_unavailable(minor_status) : status;
+        }
+        return status;
+    }
+
+    if (provider_context->kind !=
+        RIN_KERBEROS_OPERATION_CREDENTIAL_INITIATOR)
         return provider_unavailable(minor_status);
     owner = provider_credential_owner();
     if (owner == NULL || owner->get_session_principal == NULL)

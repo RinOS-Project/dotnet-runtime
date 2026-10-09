@@ -777,11 +777,22 @@ static uint32_t provider_release_cred(void* context, uint32_t* minor_status,
     }
     status = credential->owner->release_credential(
         credential->owner->context, minor_status, &credential->owner_credential);
-    if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK ||
-        credential->owner_credential != NULL)
+    if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK) {
+        /* An owner may report failure after consuming its opaque handle (for
+         * example, the service removed the keyring record but lost the final
+         * acknowledgement).  In that case the wrapper is no longer
+         * retryable; retain it only while the owner still exposes a handle.
+         * Never leave an invalid wrapper reachable through the provider ABI. */
+        if (credential->owner_credential == NULL) {
+            provider_zero(credential, sizeof(*credential));
+            free(credential);
+            *input = NULL;
+        }
+        return provider_status_from_owner(status, minor_status);
+    }
+    if (credential->owner_credential != NULL)
         return provider_status_from_owner(
-            status == RIN_KERBEROS_CREDENTIAL_OWNER_OK
-                ? RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE : status,
+            RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE,
             minor_status);
     provider_zero(credential, sizeof(*credential));
     free(credential);

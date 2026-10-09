@@ -970,6 +970,13 @@ static uint32_t provider_operation(
         (provider_result == RIN_KERBEROS_OPERATION_RESULT_CONTINUE_NEEDED &&
          request->operation != RIN_KERBEROS_OPERATION_INIT_SEC_CONTEXT &&
          request->operation != RIN_KERBEROS_OPERATION_ACCEPT_SEC_CONTEXT) ||
+        ((request->operation == RIN_KERBEROS_OPERATION_INIT_SEC_CONTEXT &&
+          (provider_result == RIN_KERBEROS_OPERATION_RESULT_COMPLETE ||
+           provider_result == RIN_KERBEROS_OPERATION_RESULT_CONTINUE_NEEDED)) &&
+         next_context_size == 0u) ||
+        (request->operation == RIN_KERBEROS_OPERATION_ACCEPT_SEC_CONTEXT &&
+         provider_result == RIN_KERBEROS_OPERATION_RESULT_COMPLETE &&
+         next_context_size == 0u) ||
         (provider_result == RIN_KERBEROS_OPERATION_RESULT_ERROR &&
          (request->operation != RIN_KERBEROS_OPERATION_ACCEPT_SEC_CONTEXT ||
           operation_output_size == 0u || next_context_size != 0u ||

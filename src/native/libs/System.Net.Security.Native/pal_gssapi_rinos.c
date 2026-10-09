@@ -217,17 +217,20 @@ static uint32_t rinos_gss_map_provider_status(uint32_t providerStatus)
 }
 
 /* The Kerberos provider preserves RFC 4120 AP error codes in the high-bit
- * minor-status namespace.  Do not infer a GSS supplementary status from an
- * arbitrary provider-local value: only the standards-defined replay error
- * is admitted here. */
+ * minor-status namespace.  RFC 2744's GSS_S_DUPLICATE_TOKEN describes the
+ * acceptor's duplicate input token, not an initiator receiving a KRB-ERROR
+ * from its peer.  Keep this direction-sensitive so a server protocol error
+ * cannot be misreported as a duplicate client token. */
 static uint32_t rinos_gss_map_kerberos_supplementary(
-    uint32_t providerStatus, const uint32_t* minorStatus)
+    uint32_t providerStatus, const uint32_t* minorStatus,
+    int initiator_context)
 {
     const uint32_t protocolErrorBit = UINT32_C(0x80000000);
     const uint32_t krbApErrRepeat = UINT32_C(34);
     uint32_t errorCode;
 
-    if (providerStatus != RIN_AUTH_PROVIDER_KRB_ERROR ||
+    if (initiator_context != 0 ||
+        providerStatus != RIN_AUTH_PROVIDER_KRB_ERROR ||
         minorStatus == NULL || (*minorStatus & protocolErrorBit) == 0u)
         return 0u;
     errorCode = *minorStatus & ~protocolErrorBit;
@@ -319,7 +322,8 @@ static uint32_t rinos_gss_finish_provider_buffer(
 {
     uint32_t mappedStatus = rinos_gss_map_kerberos_major(
         status, minorStatus, initiator_context);
-    mappedStatus |= rinos_gss_map_kerberos_supplementary(status, minorStatus);
+    mappedStatus |= rinos_gss_map_kerberos_supplementary(
+        status, minorStatus, initiator_context);
     const int preserve_error_token = status == RIN_AUTH_PROVIDER_KRB_ERROR;
 
     if (mappedStatus != RINOS_GSS_S_COMPLETE &&

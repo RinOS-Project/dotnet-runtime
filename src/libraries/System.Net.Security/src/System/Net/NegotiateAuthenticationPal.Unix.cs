@@ -762,20 +762,37 @@ namespace System.Net
                     case Interop.NetSecurityNative.Status.GSS_S_UNAVAILABLE:
                         return NegotiateAuthenticationStatusCode.Unsupported;
                     case Interop.NetSecurityNative.Status.GSS_S_FAILURE:
-                        // KRB5KDC_ERR_S_PRINCIPAL_UNKNOWN - server principal is unknown in the KDC
-                        // MIT/Heimdal expose com_err's krb5 table value. RinOS
-                        // keeps the RFC KDC error code in a provider-owned
-                        // minor namespace (0x80000000 | code), so accept both
-                        // the upstream value and the product transport form.
-                        // Do not classify other KRB-ERROR values here: the
-                        // remaining direction-specific matrix is still a
-                        // provider contract item.
-                        if ((uint)exception.MinorStatus == 0x96C73A07u ||
-                            (uint)exception.MinorStatus == 0x80000007u)
+                        // RFC 4120 KRB-ERROR values are carried by the RinOS
+                        // provider in its private minor namespace.  Preserve
+                        // the upstream MIT/Heimdal com_err value for the one
+                        // status .NET already recognizes, then classify only
+                        // error codes whose GSS meaning is unambiguous.  Do
+                        // not turn an unknown protocol value into a guessed
+                        // success or credential state.
+                        switch ((uint)exception.MinorStatus)
                         {
-                            return NegotiateAuthenticationStatusCode.TargetUnknown;
+                            case 0x96C73A07u: // KRB5KDC_ERR_S_PRINCIPAL_UNKNOWN
+                            case 0x80000007u: // KDC_ERR_S_PRINCIPAL_UNKNOWN
+                                return NegotiateAuthenticationStatusCode.TargetUnknown;
+                            case 0x80000006u: // KDC_ERR_C_PRINCIPAL_UNKNOWN
+                                return NegotiateAuthenticationStatusCode.UnknownCredentials;
+                            case 0x80000014u: // KDC_ERR_ETYPE_NOSUPP
+                                return NegotiateAuthenticationStatusCode.Unsupported;
+                            case 0x80000017u: // KDC_ERR_KEY_EXP
+                            case 0x80000020u: // KRB_AP_ERR_TKT_EXPIRED
+                                return NegotiateAuthenticationStatusCode.CredentialsExpired;
+                            case 0x80000018u: // KDC_ERR_PREAUTH_FAILED
+                            case 0x80000012u: // KDC_ERR_CLIENT_REVOKED
+                                return NegotiateAuthenticationStatusCode.InvalidCredentials;
+                            case 0x8000001Fu: // KRB_AP_ERR_BAD_INTEGRITY
+                            case 0x80000032u: // KRB_AP_ERR_INAPP_CKSUM
+                                return NegotiateAuthenticationStatusCode.MessageAltered;
+                            case 0x80000022u: // KRB_AP_ERR_REPEAT
+                            case 0x80000031u: // KRB_AP_ERR_BADSEQ
+                                return NegotiateAuthenticationStatusCode.OutOfSequence;
+                            default:
+                                return NegotiateAuthenticationStatusCode.GenericFailure;
                         }
-                        return NegotiateAuthenticationStatusCode.GenericFailure;
                     case Interop.NetSecurityNative.Status.GSS_S_NO_CONTEXT:
                     default:
                         return NegotiateAuthenticationStatusCode.GenericFailure;

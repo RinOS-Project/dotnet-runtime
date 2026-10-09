@@ -243,7 +243,13 @@ static int provider_der_read_integer(ProviderDerCursorV1* cursor,
     if (value_out == NULL || !provider_der_read_tlv(
             cursor, 0x02u, &bytes, &size) || size == 0u || size > 5u ||
         (size == 5u && (bytes[0] != 0u || (bytes[1] & 0x80u) == 0u)) ||
-        (size < 5u && (bytes[0] & 0x80u) != 0u) ||
+        /* All callers of this helper consume non-negative KRB-ERROR
+         * fields (pvno, msg-type, times, and error-code).  Keep the
+         * signed ASN.1 INTEGER representation from being reinterpreted as
+         * uint32_t.  The one-octet case must be checked explicitly before
+         * the value loop; otherwise 0xff would bypass the old size==1
+         * fast path and become the positive value 255. */
+        (bytes[0] & 0x80u) != 0u ||
         (size > 1u && size < 5u && bytes[0] == 0u &&
          (bytes[1] & 0x80u) == 0u))
         return 0;

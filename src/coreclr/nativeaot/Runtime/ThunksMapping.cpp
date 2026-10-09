@@ -478,6 +478,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     void* pThunks = RhpGetThunkStubsBlockAddress(pThunkDataBlock);
     if (pThunks == NULL || RhpGetThunkDataBlockAddress(pThunks) != pThunkDataBlock)
     {
+        VirtualFree(pThunkDataBlock, thunkDataMappingSize, MEM_DECOMMIT);
         return E_FAIL;
     }
 

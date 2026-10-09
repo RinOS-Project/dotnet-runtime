@@ -1764,6 +1764,14 @@ static int product_pattern(const char* source, size_t source_capacity,
             replacement = "d";
         } else if (!time_pattern && source[i] == 'Y') {
             replacement = "yyyy";
+        } else if (!time_pattern && source[i] == 'G') {
+            size_t era_count = 1u;
+            while (i + era_count < source_length &&
+                   source[i + era_count] == 'G') {
+                ++era_count;
+            }
+            replacement = era_count == 1u ? "g" : "gg";
+            consumed = era_count;
         } else if (time_pattern && source[i] == 'a') {
             replacement = "tt";
         }

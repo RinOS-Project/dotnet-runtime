@@ -229,6 +229,7 @@ static uint32_t rinos_gss_map_kerberos_supplementary(
 {
     const uint32_t protocolErrorBit = UINT32_C(0x80000000);
     const uint32_t krbApErrRepeat = UINT32_C(34);
+    const uint32_t krbApErrBadOrder = UINT32_C(42);
     uint32_t errorCode;
 
     if (initiator_context != 0 ||
@@ -236,7 +237,13 @@ static uint32_t rinos_gss_map_kerberos_supplementary(
         minorStatus == NULL || (*minorStatus & protocolErrorBit) == 0u)
         return 0u;
     errorCode = *minorStatus & ~protocolErrorBit;
-    return errorCode == krbApErrRepeat ? PAL_GSS_S_DUPLICATE_TOKEN : 0u;
+    if (errorCode == krbApErrRepeat)
+        return PAL_GSS_S_DUPLICATE_TOKEN;
+    /* RFC 4120 calls this an out-of-order message.  RFC 2743 defines
+     * GSS_S_UNSEQ_TOKEN as the supplementary status for an early/reordered
+     * token, including during context establishment.  Keep the protocol
+     * error in the minor status while exposing that standard classification. */
+    return errorCode == krbApErrBadOrder ? PAL_GSS_S_UNSEQ_TOKEN : 0u;
 }
 
 /* MIT krb5 treats an expired service ticket returned during initiator

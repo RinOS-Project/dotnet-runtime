@@ -1228,6 +1228,28 @@ _Ret_maybenull_ _Post_writable_byte_size_(size) void* PalVirtualAlloc(size_t siz
 
 void PalVirtualFree(_In_ void* pAddress, size_t size)
 {
+#if defined(TARGET_RINOS)
+    // The Unix PAL exposes a void-returning release API, so an invalid range
+    // must be rejected before reaching munmap rather than reported after the
+    // kernel has attempted a platform-dependent partial operation. Keep the
+    // same user-VA and overflow contract as PalVirtualAlloc/PalVirtualProtect.
+    if (pAddress == nullptr || size == 0)
+    {
+        return;
+    }
+
+    const uintptr_t address = (uintptr_t)pAddress;
+    if (address > UINTPTR_MAX - (uintptr_t)size)
+    {
+        return;
+    }
+
+    const uintptr_t end = address + (uintptr_t)size;
+    if (!RinOSUserRangeValid(address, end))
+    {
+        return;
+    }
+#endif
     munmap(pAddress, size);
 }
 

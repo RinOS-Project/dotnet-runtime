@@ -14,6 +14,8 @@
 #include "UnixSignals.h"
 #include "PalCreateDump.h"
 
+#include <string.h>
+
 #if defined(HOST_APPLE)
 #include <mach/mach.h>
 #include <mach/mach_error.h>
@@ -54,6 +56,19 @@
 
 struct sigaction g_previousSIGSEGV;
 struct sigaction g_previousSIGFPE;
+
+/* Instruction immediates and faulting operands are not required to be
+ * naturally aligned.  NativeAOT's RinOS ABI also treats typed unaligned
+ * loads as invalid, so keep the signal-time decoder's object reads explicit.
+ * The fixed-size copies are compiler-builtin/inlined on the supported host
+ * and do not allocate or acquire a lock. */
+template <typename T>
+static T ReadUnaligned(const void* address)
+{
+    T value;
+    memcpy(&value, address, sizeof(value));
+    return value;
+}
 
 // Exception handler for hardware exceptions
 static PHARDWARE_EXCEPTION_HANDLER g_hardwareExceptionHandler = NULL;
@@ -143,7 +158,7 @@ uint64_t GetModRMOperandValue(uint8_t rex, uint8_t* ip, void* context, bool is8B
             {
                 if (base == 5)
                 {
-                    result += *((int32_t*)ip);
+                    result += (uint64_t)ReadUnaligned<int32_t>(ip);
                 }
             }
             else if (mod == 1)
@@ -152,7 +167,7 @@ uint64_t GetModRMOperandValue(uint8_t rex, uint8_t* ip, void* context, bool is8B
             }
             else // mod == 2
             {
-                result += *((int32_t*)ip);
+                result += (uint64_t)ReadUnaligned<int32_t>(ip);
             }
 
         }
@@ -165,7 +180,8 @@ uint64_t GetModRMOperandValue(uint8_t rex, uint8_t* ip, void* context, bool is8B
             // Check for RIP-relative addressing mode.
             if ((mod == 0) && (rm == 5))
             {
-                result = (uint64_t)ip + sizeof(int32_t) + *(int32_t*)ip;
+                result = (uint64_t)ip + sizeof(int32_t) +
+                         (uint64_t)ReadUnaligned<int32_t>(ip);
             }
             else
             {
@@ -177,7 +193,7 @@ uint64_t GetModRMOperandValue(uint8_t rex, uint8_t* ip, void* context, bool is8B
                 }
                 else if (mod == 2)
                 {
-                    result += *((int32_t*)ip);
+                    result += (uint64_t)ReadUnaligned<int32_t>(ip);
                 }
             }
         }
@@ -214,15 +230,15 @@ uint64_t GetModRMOperandValue(uint8_t rex, uint8_t* ip, void* context, bool is8B
     }
     else if (rex_w != 0)
     {
-        result = *((uint64_t*)result);
+        result = ReadUnaligned<uint64_t>((const void*)result);
     }
     else if (hasOpSizePrefix)
     {
-        result = *((uint16_t*)result);
+        result = ReadUnaligned<uint16_t>((const void*)result);
     }
     else
     {
-        result = *((uint32_t*)result);
+        result = ReadUnaligned<uint32_t>((const void*)result);
     }
 
     return result;

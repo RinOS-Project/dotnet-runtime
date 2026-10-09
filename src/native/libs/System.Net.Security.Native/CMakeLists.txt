@@ -13,11 +13,12 @@ if (CLR_CMAKE_TARGET_RINOS)
     # used by Negotiate/Kerberos/NTLM; do not discover or link a host GSS
     # implementation while producing a target RLL.  The owner client below
     # obtains only an opaque handle from the authenticated RinOS keyring; the
-    # RFC 4120/4121 provider is enabled only because the root keyring service
-    # now supplies the bounded initiator AP-REQ plus mutual AP-REP operation.
-    # Replay/deadline, acceptor, channel-binding, and per-message operations
-    # remain fail-closed in that service and must not be inferred from this
-    # compile definition.
+    # RFC 4120/4121 provider is enabled because the root keyring service
+    # supplies bounded initiator/acceptor AP-REQ/AP-REP, channel binding, and
+    # established-context MIC/Wrap/Unwrap operations. This compile definition
+    # selects the linked source; it does not claim complete deadline policy,
+    # delegation, credential production/refresh, or the full KRB-ERROR/GSS
+    # status matrix.
     set(NATIVEGSS_SOURCES
         pal_gssapi_rinos.c
         rinos_kerberos_provider.c

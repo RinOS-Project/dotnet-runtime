@@ -424,20 +424,41 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     int thunkBlockSize = RhpGetThunkBlockSize();
     int blockCount = RhpGetThunkBlockCount();
 
-    ASSERT(blockCount % thunkBlocksPerMapping == 0)
+    // These values come from the platform-specific fixed thunk pool.  Treat
+    // them as untrusted configuration at this boundary: the old code divided
+    // by thunkBlocksPerMapping and multiplied into int before validating either
+    // value, which could turn a malformed pool description into an invalid
+    // VirtualAlloc/commit range.
+    if (thunkBlocksPerMapping <= 0 || thunkBlockSize <= 0 || blockCount <= 0 ||
+        blockCount % thunkBlocksPerMapping != 0)
+    {
+        return E_FAIL;
+    }
 
-    int thunkDataMappingSize = thunkBlocksPerMapping * thunkBlockSize;
-    int thunkDataMappingCount = blockCount / thunkBlocksPerMapping;
+    size_t thunkDataMappingSize = (size_t)thunkBlocksPerMapping;
+    if (thunkDataMappingSize > SIZE_MAX / (size_t)thunkBlockSize)
+    {
+        return E_FAIL;
+    }
+    thunkDataMappingSize *= (size_t)thunkBlockSize;
 
-    if (nextThunkDataMapping == thunkDataMappingCount)
+    size_t thunkDataMappingCount =
+        (size_t)(blockCount / thunkBlocksPerMapping);
+    if (thunkDataMappingCount == 0 ||
+        thunkDataMappingSize > SIZE_MAX / thunkDataMappingCount)
+    {
+        return E_FAIL;
+    }
+
+    size_t thunkDataSize = thunkDataMappingSize * thunkDataMappingCount;
+    if (nextThunkDataMapping < 0 ||
+        (size_t)nextThunkDataMapping >= thunkDataMappingCount)
     {
         return E_FAIL;
     }
 
     if (g_pThunkStubData == NULL)
     {
-        int thunkDataSize = thunkDataMappingSize * thunkDataMappingCount;
-
         g_pThunkStubData = (uintptr_t)VirtualAlloc(NULL, thunkDataSize, MEM_RESERVE, PAGE_READWRITE);
 
         if (g_pThunkStubData == NULL)
@@ -446,18 +467,21 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         }
     }
 
-    void* pThunkDataBlock = (int8_t*)g_pThunkStubData + nextThunkDataMapping * thunkDataMappingSize;
+    size_t blockOffset = thunkDataMappingSize * (size_t)nextThunkDataMapping;
+    void* pThunkDataBlock = (int8_t*)g_pThunkStubData + blockOffset;
 
     if (VirtualAlloc(pThunkDataBlock, thunkDataMappingSize, MEM_COMMIT, PAGE_READWRITE) == NULL)
     {
         return E_OUTOFMEMORY;
     }
 
-    nextThunkDataMapping++;
-
     void* pThunks = RhpGetThunkStubsBlockAddress(pThunkDataBlock);
-    ASSERT(RhpGetThunkDataBlockAddress(pThunks) == pThunkDataBlock);
+    if (pThunks == NULL || RhpGetThunkDataBlockAddress(pThunks) != pThunkDataBlock)
+    {
+        return E_FAIL;
+    }
 
+    nextThunkDataMapping++;
     *ppThunksSection = pThunks;
     return S_OK;
 }

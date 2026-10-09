@@ -744,6 +744,20 @@ namespace System.Net
             // https://www.gnu.org/software/gss/reference/gss.pdf (page 25)
             internal static NegotiateAuthenticationStatusCode GetErrorCode(Interop.NetSecurityNative.GssApiException exception)
             {
+                // RFC 2743/2744 supplementary bits are carried alongside the
+                // routine error.  A replay/old/out-of-sequence/gap token must
+                // remain OutOfSequence even when the major status is
+                // GSS_S_FAILURE | supplementary-bit; an exact enum switch
+                // would otherwise lose this classification.
+                if ((exception.MajorStatus &
+                     (Interop.NetSecurityNative.Status.GSS_S_DUPLICATE_TOKEN |
+                      Interop.NetSecurityNative.Status.GSS_S_OLD_TOKEN |
+                      Interop.NetSecurityNative.Status.GSS_S_UNSEQ_TOKEN |
+                      Interop.NetSecurityNative.Status.GSS_S_GAP_TOKEN)) != 0)
+                {
+                    return NegotiateAuthenticationStatusCode.OutOfSequence;
+                }
+
                 switch (exception.MajorStatus)
                 {
                     case Interop.NetSecurityNative.Status.GSS_S_NO_CRED:

@@ -33,6 +33,14 @@ internal static partial class Interop
             GSS_S_UNAVAILABLE = 16 << GSS_C_ROUTINE_ERROR_OFFSET,
             GSS_S_DUPLICATE_ELEMENT = 17 << GSS_C_ROUTINE_ERROR_OFFSET,
             GSS_S_NAME_NOT_MN = 18 << GSS_C_ROUTINE_ERROR_OFFSET,
+
+            // RFC 2743/2744 supplementary status bits. These are combined
+            // with a routine error (for example GSS_S_FAILURE) and are not
+            // calling-error values.
+            GSS_S_DUPLICATE_TOKEN = 1 << 1,
+            GSS_S_OLD_TOKEN = 1 << 2,
+            GSS_S_UNSEQ_TOKEN = 1 << 3,
+            GSS_S_GAP_TOKEN = 1 << 4,
         }
     }
 }

@@ -33,6 +33,41 @@
 #include "volatile.h"
 #include "yieldprocessornormalized.h"
 #include "RhConfig.h"
+
+#include <string.h>
+
+/* A rel32 is encoded immediately after the opcode bytes of an import or
+ * unboxing stub.  It is not naturally aligned on amd64 (the normal jump
+ * reads at offset 2 and the unboxing jump at offset 1).  Keep this helper
+ * independent of the host's unaligned-access behaviour and reject a wrapped
+ * signed address calculation instead of producing an unrelated code pointer.
+ */
+static bool TryAddSignedCodeOffset(uint8_t* base, int32_t offset,
+                                   uint8_t** result)
+{
+    uintptr_t address;
+    uintptr_t magnitude;
+
+    if (base == nullptr || result == nullptr)
+        return false;
+    address = (uintptr_t)base;
+    if (offset >= 0)
+    {
+        magnitude = (uintptr_t)(uint32_t)offset;
+        if (address > UINTPTR_MAX - magnitude)
+            return false;
+        *result = (uint8_t*)(address + magnitude);
+        return true;
+    }
+
+    /* Convert through int64_t so INT32_MIN is representable before taking
+     * the magnitude. */
+    magnitude = (uintptr_t)(-(int64_t)offset);
+    if (address < magnitude)
+        return false;
+    *result = (uint8_t*)(address - magnitude);
+    return true;
+}
 #include <minipal/cpuid.h>
 #include <minipal/debugger.h>
 #include <minipal/time.h>
@@ -220,16 +255,24 @@ FCIMPL1(uint8_t *, RhGetCodeTarget, uint8_t * pCodeOrg)
     if (pCode[0] == 0xff && pCode[1] == 0x25)
     {
         // normal import stub - dist to IAT cell is relative to the point *after* the instruction
-        int32_t distToIatCell = *(int32_t *)&pCode[2];
-        uint8_t ** pIatCell = (uint8_t **)(pCode + 6 + distToIatCell);
+        int32_t distToIatCell;
+        uint8_t* iatCellAddress;
+        memcpy(&distToIatCell, &pCode[2], sizeof(distToIatCell));
+        if (!TryAddSignedCodeOffset(pCode + 6, distToIatCell,
+                                    &iatCellAddress))
+            return pCodeOrg;
+        uint8_t ** pIatCell = (uint8_t **)iatCellAddress;
         return *pIatCell;
     }
     // is this an unboxing stub followed by a relative jump?
     else if (unboxingStub && pCode[0] == 0xe9)
     {
         // relative jump - dist is relative to the point *after* the instruction
-        int32_t distToTarget = *(int32_t *)&pCode[1];
-        uint8_t * target = pCode + 5 + distToTarget;
+        int32_t distToTarget;
+        uint8_t* target;
+        memcpy(&distToTarget, &pCode[1], sizeof(distToTarget));
+        if (!TryAddSignedCodeOffset(pCode + 5, distToTarget, &target))
+            return pCodeOrg;
         return target;
     }
 
@@ -247,15 +290,22 @@ FCIMPL1(uint8_t *, RhGetCodeTarget, uint8_t * pCodeOrg)
     if (pCode[0] == 0xff && pCode[1] == 0x25)
     {
         // normal import stub - address of IAT follows
-        uint8_t **pIatCell = *(uint8_t ***)&pCode[2];
+        uint8_t* iatCellAddress;
+        memcpy(&iatCellAddress, &pCode[2], sizeof(iatCellAddress));
+        if (iatCellAddress == nullptr)
+            return pCodeOrg;
+        uint8_t **pIatCell = (uint8_t **)iatCellAddress;
         return *pIatCell;
     }
     // is this an unboxing stub followed by a relative jump?
     else if (unboxingStub && pCode[0] == 0xe9)
     {
         // relative jump - dist is relative to the point *after* the instruction
-        int32_t distToTarget = *(int32_t *)&pCode[1];
-        uint8_t * pTarget = pCode + 5 + distToTarget;
+        int32_t distToTarget;
+        uint8_t* pTarget;
+        memcpy(&distToTarget, &pCode[1], sizeof(distToTarget));
+        if (!TryAddSignedCodeOffset(pCode + 5, distToTarget, &pTarget))
+            return pCodeOrg;
         return pTarget;
     }
 

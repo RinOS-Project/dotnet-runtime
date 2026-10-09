@@ -1061,7 +1061,7 @@ void StackFrameIterator::UnwindFuncletInvokeThunk()
 {
     ASSERT((m_dwFlags & MethodStateCalculated) == 0);
 
-#if defined(FEATURE_PORTABLE_HELPERS) // @TODO: Currently no funclet invoke defined in a portable way
+#if defined(FEATURE_PORTABLE_HELPERS) // PortableRuntime has no native funclet-invoke frame ABI.
     return;
 #elif defined(TARGET_WASM)
     // WASM has no native funclet-invoke frame ABI. Do not interpret the
@@ -1674,7 +1674,7 @@ void StackFrameIterator::UnwindUniversalTransitionThunk()
 {
     ASSERT((m_dwFlags & MethodStateCalculated) == 0);
 
-#if defined(FEATURE_PORTABLE_HELPERS) // @TODO: Corresponding helper code is only defined in assembly code
+#if defined(FEATURE_PORTABLE_HELPERS) // PortableRuntime has no native UniversalTransition frame ABI.
     return;
 #elif defined(TARGET_WASM)
     // The WASM build has no native UniversalTransition frame ABI. Do not
@@ -1729,7 +1729,7 @@ void StackFrameIterator::UnwindThrowSiteThunk()
 {
     ASSERT((m_dwFlags & MethodStateCalculated) == 0);
 
-#if defined(FEATURE_PORTABLE_HELPERS) // @TODO: no portable version of throw helpers
+#if defined(FEATURE_PORTABLE_HELPERS) // PortableRuntime has no native throw-helper frame ABI.
     return;
 #else // defined(FEATURE_PORTABLE_HELPERS)
     ASSERT(CategorizeUnadjustedReturnAddress(m_ControlPC) == InThrowSiteThunk);

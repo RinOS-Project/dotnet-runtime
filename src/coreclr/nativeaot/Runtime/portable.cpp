@@ -147,9 +147,13 @@ FCIMPL1(Object *, RhpNewFast, MethodTable* pEEType)
 }
 FCIMPLEND
 
-#define GC_ALLOC_FINALIZE    0x1 // TODO: Defined in gc.h
-#define GC_ALLOC_ALIGN8_BIAS 0x4 // TODO: Defined in gc.h
-#define GC_ALLOC_ALIGN8      0x8 // TODO: Defined in gc.h
+// Keep these private allocation flags synchronized with the definitions in
+// Runtime/unix/unixasmmacros.inc and the architecture-specific assembly
+// macro includes.  portable.cpp cannot include the GC implementation header:
+// these values are part of the NativeAOT GC/assembly ABI, not a gc.h API.
+#define GC_ALLOC_FINALIZE    0x1
+#define GC_ALLOC_ALIGN8_BIAS 0x4
+#define GC_ALLOC_ALIGN8      0x8
 
 FCIMPL1(Object *, RhpNewFinalizable, MethodTable* pEEType)
 {

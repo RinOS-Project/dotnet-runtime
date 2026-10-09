@@ -806,6 +806,7 @@ namespace System.Net
                             case 0x80000032u: // KRB_AP_ERR_INAPP_CKSUM
                                 return NegotiateAuthenticationStatusCode.MessageAltered;
                             case 0x80000022u: // KRB_AP_ERR_REPEAT
+                            case 0x8000002Au: // KRB_AP_ERR_BADORDER
                             case 0x80000031u: // KRB_AP_ERR_BADSEQ
                                 return NegotiateAuthenticationStatusCode.OutOfSequence;
                             default:

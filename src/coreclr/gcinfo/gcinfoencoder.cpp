@@ -24,6 +24,7 @@ extern "C" void assertAbort(const char* why, const char* file, unsigned line);
 
 
 #include <stdint.h>
+#include <string.h>
 
 #include "gcinfohelpers.h"
 #include "gcinfoencoder.h"
@@ -2496,7 +2497,7 @@ void BitStreamWriter::Write( size_t data, UINT32 count )
 
 void BitStreamWriter::CopyTo( BYTE* buffer )
 {
-    int i,c;
+    int c;
     BYTE* source = NULL;
 
     MemoryBlock* pMemBlock = m_MemoryBlocks.Head();
@@ -2506,11 +2507,8 @@ void BitStreamWriter::CopyTo( BYTE* buffer )
     while (pMemBlock->Next() != NULL)
     {
         source = (BYTE*) pMemBlock->Contents;
-        // @TODO: use memcpy instead
-        for( i = 0; i < m_MemoryBlockSize; i++ )
-        {
-            *( buffer++ ) = *( source++ );
-        }
+        memcpy(buffer, source, m_MemoryBlockSize);
+        buffer += m_MemoryBlockSize;
 
         pMemBlock = pMemBlock->Next();
     }
@@ -2519,11 +2517,9 @@ void BitStreamWriter::CopyTo( BYTE* buffer )
     // The number of bytes to copy in the last block
     c = (int) ((BYTE*) ( m_pCurrentSlot + 1 ) - source - m_FreeBitsInCurrentSlot/8);
     _ASSERTE( c >= 0 );
-    // @TODO: use memcpy instead
-    for( i = 0; i < c; i++ )
-    {
-        *( buffer++ ) = *( source++ );
-    }
+    if (c <= 0)
+        return;
+    memcpy(buffer, source, (size_t)c);
 
 }
 

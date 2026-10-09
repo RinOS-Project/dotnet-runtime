@@ -114,6 +114,8 @@ static RinOsKerberosOwnerSlot* owner_find_free(
 static uint32_t owner_keyring_result(int result)
 {
     if (result == RIN_KEYRING_LOCKED) return RIN_KERBEROS_CREDENTIAL_OWNER_EXPIRED;
+    if (result == RIN_KEYRING_INTEGRITY_FAILED)
+        return RIN_KERBEROS_CREDENTIAL_OWNER_BAD_SIGNATURE;
     if (result == RIN_KEYRING_INVALID || result == RIN_KEYRING_DENIED)
         return RIN_KERBEROS_CREDENTIAL_OWNER_INVALID_SESSION;
     if (result == RIN_KEYRING_CONTEXT_EXPIRED)

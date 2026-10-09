@@ -203,6 +203,8 @@ static uint32_t rinos_gss_map_provider_status(uint32_t providerStatus)
             return PAL_GSS_S_BAD_BINDINGS;
         case RIN_AUTH_PROVIDER_BAD_SIGNATURE:
             return PAL_GSS_S_BAD_SIG;
+        case RIN_AUTH_PROVIDER_NO_CREDENTIAL:
+            return PAL_GSS_S_NO_CRED;
         case RIN_AUTH_PROVIDER_DEFECTIVE_TOKEN:
             return PAL_GSS_S_DEFECTIVE_TOKEN;
         case RIN_AUTH_PROVIDER_DEFECTIVE_CREDENTIAL:

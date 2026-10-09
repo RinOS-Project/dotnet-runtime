@@ -375,8 +375,10 @@ FCIMPL2(void, RhGetMemoryInfo, RH_GH_MEMORY_INFO* pData, int kind)
 {
     uint64_t* genInfoRaw = (uint64_t*)&(pData->generationInfo[0]);
     uint64_t* pauseInfoRaw = (uint64_t*)&(pData->pauseDurations[0]);
+    bool isCompaction = false;
+    bool isConcurrent = false;
 
-    return GCHeapUtilities::GetGCHeap()->GetMemoryInfo(
+    GCHeapUtilities::GetGCHeap()->GetMemoryInfo(
         &(pData->highMemLoadThresholdBytes),
         &(pData->totalAvailableMemoryBytes),
         &(pData->lastRecordedMemLoadBytes),
@@ -389,11 +391,13 @@ FCIMPL2(void, RhGetMemoryInfo, RH_GH_MEMORY_INFO* pData, int kind)
         &(pData->index),
         &(pData->generation),
         &(pData->pauseTimePercent),
-        (bool*)&(pData->isCompaction),
-        (bool*)&(pData->isConcurrent),
+        &isCompaction,
+        &isConcurrent,
         genInfoRaw,
         pauseInfoRaw,
         kind);
+    pData->isCompaction = isCompaction ? 1u : 0u;
+    pData->isConcurrent = isConcurrent ? 1u : 0u;
 }
 FCIMPLEND
 

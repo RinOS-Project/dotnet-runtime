@@ -22,6 +22,8 @@
 #ifndef StressLog_h
 #define StressLog_h  1
 
+#include <string.h>
+
 #ifdef _MSC_VER
 #define SUPPRESS_WARNING_4127   \
     __pragma(warning(push))     \
@@ -377,7 +379,9 @@ public:
 template<>
 inline void* StressLog::ConvertArgument(double arg)
 {
-    return (void*)(size_t)(*((uint64_t*)&arg));
+    uint64_t bits;
+    memcpy(&bits, &arg, sizeof(bits));
+    return (void*)(size_t)bits;
 }
 
 // COMPAT: Convert 32-bit floats to 64-bit doubles.

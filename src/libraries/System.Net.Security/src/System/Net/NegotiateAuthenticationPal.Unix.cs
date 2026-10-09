@@ -789,20 +789,38 @@ namespace System.Net
                         // success or credential state.
                         switch ((uint)exception.MinorStatus)
                         {
+                            case 0x80000001u: // KDC_ERR_NAME_EXP
+                                return NegotiateAuthenticationStatusCode.CredentialsExpired;
                             case 0x96C73A07u: // KRB5KDC_ERR_S_PRINCIPAL_UNKNOWN
                             case 0x80000007u: // KDC_ERR_S_PRINCIPAL_UNKNOWN
+                            case 0x8000001Au: // KDC_ERR_SERVER_NOMATCH
+                            case 0x80000023u: // KRB_AP_ERR_NOT_US
                                 return NegotiateAuthenticationStatusCode.TargetUnknown;
                             case 0x80000006u: // KDC_ERR_C_PRINCIPAL_UNKNOWN
                                 return NegotiateAuthenticationStatusCode.UnknownCredentials;
-                            case 0x80000014u: // KDC_ERR_ETYPE_NOSUPP
+                            case 0x80000003u: // KDC_ERR_BAD_PVNO
+                            case 0x8000000Eu: // KDC_ERR_ETYPE_NOSUPP
+                            case 0x8000000Fu: // KDC_ERR_SUMTYPE_NOSUPP
+                            case 0x80000010u: // KDC_ERR_PADATA_TYPE_NOSUPP
+                            case 0x80000011u: // KDC_ERR_TRTYPE_NOSUPP
+                            case 0x80000041u: // KDC_ERR_KEY_TOO_WEAK (PKINIT)
+                            case 0x80000027u: // KRB_AP_ERR_BADVERSION
+                            case 0x80000030u: // KRB_AP_ERR_METHOD
+                            case 0x80000045u: // KRB_AP_ERR_USER_TO_USER_REQUIRED
                                 return NegotiateAuthenticationStatusCode.Unsupported;
                             case 0x80000017u: // KDC_ERR_KEY_EXP
                             case 0x80000020u: // KRB_AP_ERR_TKT_EXPIRED
                                 return NegotiateAuthenticationStatusCode.CredentialsExpired;
                             case 0x80000018u: // KDC_ERR_PREAUTH_FAILED
                             case 0x80000012u: // KDC_ERR_CLIENT_REVOKED
+                            case 0x80000013u: // KDC_ERR_SERVICE_REVOKED
+                            case 0x80000014u: // KDC_ERR_TGT_REVOKED
+                            case 0x80000021u: // KRB_AP_ERR_TKT_NYV
+                            case 0x80000024u: // KRB_AP_ERR_BADMATCH
+                            case 0x80000026u: // KRB_AP_ERR_BADADDR
                                 return NegotiateAuthenticationStatusCode.InvalidCredentials;
                             case 0x8000001Fu: // KRB_AP_ERR_BAD_INTEGRITY
+                            case 0x80000029u: // KRB_AP_ERR_MODIFIED
                             case 0x80000032u: // KRB_AP_ERR_INAPP_CKSUM
                                 return NegotiateAuthenticationStatusCode.MessageAltered;
                             case 0x80000022u: // KRB_AP_ERR_REPEAT

@@ -1560,7 +1560,12 @@ static uint32_t provider_verify_mic(
                                 minor_status);
     provider_zero(envelope, total);
     free(envelope);
-    if (minor_status != NULL) *minor_status = 0u;
+    /* Keep the operation's failure classification intact.  The other
+     * per-message paths clear the mechanism minor only after a successful
+     * operation; verify_mic must follow the same failure-atomic rule so a
+     * provider-side diagnostic is not erased on a rejected MIC. */
+    if (status == RIN_AUTH_PROVIDER_OK && minor_status != NULL)
+        *minor_status = 0u;
     return status;
 }
 

@@ -758,6 +758,10 @@ namespace System.Net
                         return NegotiateAuthenticationStatusCode.InvalidCredentials;
                     case Interop.NetSecurityNative.Status.GSS_S_BAD_SIG:
                         return NegotiateAuthenticationStatusCode.MessageAltered;
+                    case Interop.NetSecurityNative.Status.GSS_S_CONTEXT_EXPIRED:
+                        return NegotiateAuthenticationStatusCode.ContextExpired;
+                    case Interop.NetSecurityNative.Status.GSS_S_BAD_QOP:
+                        return NegotiateAuthenticationStatusCode.QopNotSupported;
                     case Interop.NetSecurityNative.Status.GSS_S_BAD_MECH:
                     case Interop.NetSecurityNative.Status.GSS_S_UNAVAILABLE:
                         return NegotiateAuthenticationStatusCode.Unsupported;

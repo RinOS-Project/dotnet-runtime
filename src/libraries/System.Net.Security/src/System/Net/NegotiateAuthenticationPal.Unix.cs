@@ -763,8 +763,15 @@ namespace System.Net
                         return NegotiateAuthenticationStatusCode.Unsupported;
                     case Interop.NetSecurityNative.Status.GSS_S_FAILURE:
                         // KRB5KDC_ERR_S_PRINCIPAL_UNKNOWN - server principal is unknown in the KDC
-                        // This is the same error code value in both MIT and Heimdal Kerberos (com_err base for "krb5" table)
-                        if ((uint)exception.MinorStatus == 0x96C73A07u)
+                        // MIT/Heimdal expose com_err's krb5 table value. RinOS
+                        // keeps the RFC KDC error code in a provider-owned
+                        // minor namespace (0x80000000 | code), so accept both
+                        // the upstream value and the product transport form.
+                        // Do not classify other KRB-ERROR values here: the
+                        // remaining direction-specific matrix is still a
+                        // provider contract item.
+                        if ((uint)exception.MinorStatus == 0x96C73A07u ||
+                            (uint)exception.MinorStatus == 0x80000007u)
                         {
                             return NegotiateAuthenticationStatusCode.TargetUnknown;
                         }

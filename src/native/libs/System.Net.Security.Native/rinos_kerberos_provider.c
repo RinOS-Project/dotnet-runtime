@@ -1577,6 +1577,36 @@ static void provider_release_buffer(void* context, void* buffer,
 static const char* provider_kerberos_error_name(uint32_t value)
 {
     switch (value) {
+    case 0u: return "KDC_ERR_NONE";
+    case 1u: return "KDC_ERR_NAME_EXP";
+    case 2u: return "KDC_ERR_SERVICE_EXP";
+    case 3u: return "KDC_ERR_BAD_PVNO";
+    case 4u: return "KDC_ERR_C_OLD_MAST_KVNO";
+    case 5u: return "KDC_ERR_S_OLD_MAST_KVNO";
+    case 6u: return "KDC_ERR_C_PRINCIPAL_UNKNOWN";
+    case 7u: return "KDC_ERR_S_PRINCIPAL_UNKNOWN";
+    case 8u: return "KDC_ERR_PRINCIPAL_NOT_UNIQUE";
+    case 9u: return "KDC_ERR_NULL_KEY";
+    case 10u: return "KDC_ERR_CANNOT_POSTDATE";
+    case 11u: return "KDC_ERR_NEVER_VALID";
+    case 12u: return "KDC_ERR_POLICY";
+    case 13u: return "KDC_ERR_BADOPTION";
+    case 14u: return "KDC_ERR_ETYPE_NOSUPP";
+    case 15u: return "KDC_ERR_SUMTYPE_NOSUPP";
+    case 16u: return "KDC_ERR_PADATA_TYPE_NOSUPP";
+    case 17u: return "KDC_ERR_TRTYPE_NOSUPP";
+    case 18u: return "KDC_ERR_CLIENT_REVOKED";
+    case 19u: return "KDC_ERR_SERVICE_REVOKED";
+    case 20u: return "KDC_ERR_TGT_REVOKED";
+    case 21u: return "KDC_ERR_CLIENT_NOTYET";
+    case 22u: return "KDC_ERR_SERVICE_NOTYET";
+    case 23u: return "KDC_ERR_KEY_EXP";
+    case 24u: return "KDC_ERR_PREAUTH_FAILED";
+    case 25u: return "KDC_ERR_PREAUTH_REQUIRED";
+    case 26u: return "KDC_ERR_SERVER_NOMATCH";
+    case 27u: return "KDC_ERR_MUST_USE_USER2USER";
+    case 28u: return "KDC_ERR_PATH_NOT_ACCEPTED";
+    case 29u: return "KDC_ERR_SVC_UNAVAILABLE";
     case 31u: return "KRB_AP_ERR_BAD_INTEGRITY";
     case 32u: return "KRB_AP_ERR_TKT_EXPIRED";
     case 33u: return "KRB_AP_ERR_TKT_NYV";
@@ -1589,6 +1619,7 @@ static const char* provider_kerberos_error_name(uint32_t value)
     case 40u: return "KRB_AP_ERR_MSG_TYPE";
     case 41u: return "KRB_AP_ERR_MODIFIED";
     case 42u: return "KRB_AP_ERR_BADORDER";
+    case 43u: return "KRB_AP_ERR_ILL_CR_TKT";
     case 44u: return "KRB_AP_ERR_BADKEYVER";
     case 45u: return "KRB_AP_ERR_NOKEY";
     case 46u: return "KRB_AP_ERR_MUT_FAIL";
@@ -1596,6 +1627,10 @@ static const char* provider_kerberos_error_name(uint32_t value)
     case 48u: return "KRB_AP_ERR_METHOD";
     case 49u: return "KRB_AP_ERR_BADSEQ";
     case 50u: return "KRB_AP_ERR_INAPP_CKSUM";
+    case 51u: return "KRB_AP_PATH_NOT_ACCEPTED";
+    case 52u: return "KRB_ERR_RESPONSE_TOO_BIG";
+    case 60u: return "KRB_ERR_GENERIC";
+    case 61u: return "KRB_ERR_FIELD_TOOLONG";
     default: return NULL;
     }
 }
@@ -1607,7 +1642,7 @@ static uint32_t provider_display_status_value(
     static const char* const hex = "0123456789ABCDEF";
     const char* message = NULL;
     const char* prefix = NULL;
-    char formatted[64];
+    char formatted[128];
     size_t length = 0u;
     size_t prefix_length;
     uint32_t index;

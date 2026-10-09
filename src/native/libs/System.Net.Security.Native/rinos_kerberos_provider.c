@@ -1570,6 +1570,36 @@ static void provider_release_buffer(void* context, void* buffer,
     }
 }
 
+/* RFC 4120 names are diagnostic metadata only.  Do not turn an unfamiliar
+ * peer error into a guessed GSS major status: the numeric mechanism minor is
+ * the contract, while this table makes the known AP-ERROR values observable
+ * during troubleshooting. */
+static const char* provider_kerberos_error_name(uint32_t value)
+{
+    switch (value) {
+    case 31u: return "KRB_AP_ERR_BAD_INTEGRITY";
+    case 32u: return "KRB_AP_ERR_TKT_EXPIRED";
+    case 33u: return "KRB_AP_ERR_TKT_NYV";
+    case 34u: return "KRB_AP_ERR_REPEAT";
+    case 35u: return "KRB_AP_ERR_NOT_US";
+    case 36u: return "KRB_AP_ERR_BADMATCH";
+    case 37u: return "KRB_AP_ERR_SKEW";
+    case 38u: return "KRB_AP_ERR_BADADDR";
+    case 39u: return "KRB_AP_ERR_BADVERSION";
+    case 40u: return "KRB_AP_ERR_MSG_TYPE";
+    case 41u: return "KRB_AP_ERR_MODIFIED";
+    case 42u: return "KRB_AP_ERR_BADORDER";
+    case 44u: return "KRB_AP_ERR_BADKEYVER";
+    case 45u: return "KRB_AP_ERR_NOKEY";
+    case 46u: return "KRB_AP_ERR_MUT_FAIL";
+    case 47u: return "KRB_AP_ERR_BADDIRECTION";
+    case 48u: return "KRB_AP_ERR_METHOD";
+    case 49u: return "KRB_AP_ERR_BADSEQ";
+    case 50u: return "KRB_AP_ERR_INAPP_CKSUM";
+    default: return NULL;
+    }
+}
+
 static uint32_t provider_display_status_value(
     uint32_t* minor_status, uint32_t status_value, int is_minor,
     RinAuthProviderBufferV1* output)
@@ -1602,8 +1632,11 @@ static uint32_t provider_display_status_value(
     } else if (is_minor &&
                (status_value & RINOS_KERBEROS_MINOR_PROTOCOL_ERROR) != 0u) {
         static const char prefix_text[] = "Kerberos protocol error ";
+        static const char name_separator[] = " (";
+        static const char name_suffix[] = ")";
         char digits[10];
         uint32_t value = status_value & ~RINOS_KERBEROS_MINOR_PROTOCOL_ERROR;
+        const char* name = provider_kerberos_error_name(value);
         size_t digit_count = 0u;
         memcpy(formatted, prefix_text, sizeof(prefix_text) - 1u);
         length = sizeof(prefix_text) - 1u;
@@ -1612,6 +1645,16 @@ static uint32_t provider_display_status_value(
             value /= 10u;
         } while (value != 0u);
         while (digit_count != 0u) formatted[length++] = digits[--digit_count];
+        if (name != NULL) {
+            const size_t name_length = strlen(name);
+            memcpy(formatted + length, name_separator,
+                   sizeof(name_separator) - 1u);
+            length += sizeof(name_separator) - 1u;
+            memcpy(formatted + length, name, name_length);
+            length += name_length;
+            memcpy(formatted + length, name_suffix, sizeof(name_suffix) - 1u);
+            length += sizeof(name_suffix) - 1u;
+        }
     } else {
         prefix = is_minor ? "RinOS mechanism status 0x" : "GSS status 0x";
         prefix_length = strlen(prefix);

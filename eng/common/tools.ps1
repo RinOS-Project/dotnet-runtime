@@ -824,7 +824,14 @@ function MSBuild() {
   # and its LOCAL\\dotnet_* pipe may be inaccessible to that token.  Use the
   # CLI's explicit build-server switch for the opt-in product path.  Do not
   # add it to Visual Studio MSBuild, which has no such CLI option.
-  if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1' -and $buildTool.Command -eq 'msbuild') {
+  # InitializeBuildTool normally reports Command='msbuild' for the dotnet
+  # host, but callers can inject the tool through _BuildToolCommand.  Use the
+  # executable path as the authoritative discriminator so the restricted
+  # RinOS cross-build cannot silently omit the dotnet CLI switch when the
+  # injected command is empty or decorated.  Visual Studio MSBuild has no
+  # --disable-build-servers option and is intentionally left unchanged.
+  if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1' -and
+      $buildTool.Path -match '(?i)(^|[\\/])dotnet(?:\.exe)?$') {
     $cmdArgs += ' --disable-build-servers'
   }
 

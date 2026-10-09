@@ -232,15 +232,38 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     int numBlocksPerMap = RhpGetNumThunkBlocksPerMapping();
     int numThunksPerBlock = RhpGetNumThunksPerBlock();
 
+    // The geometry helpers are supplied by the platform assembly on the RX
+    // thunk path.  Validate their contract before using the values in pointer
+    // arithmetic.  In particular, a malformed block count would make the
+    // two halves of the mapping overlap or run past the allocation, while a
+    // malformed thunk count would make the code/data page writes overflow.
+    const size_t thunkBlockCapacity = thunksMapSize / (size_t)OS_PAGE_SIZE;
+    const size_t thunkCodeCapacity = (size_t)OS_PAGE_SIZE / (size_t)THUNK_SIZE;
+    const size_t thunkDataCapacity = OS_PAGE_SIZE >= POINTER_SIZE
+        ? ((size_t)OS_PAGE_SIZE - POINTER_SIZE) / (POINTER_SIZE * 2)
+        : 0;
+    const size_t thunkCapacity = min(thunkCodeCapacity, thunkDataCapacity);
+    if (OS_PAGE_SIZE == 0 ||
+        thunksMapSize % (size_t)OS_PAGE_SIZE != 0 ||
+        numBlocksPerMap <= 0 ||
+        (size_t)numBlocksPerMap > thunkBlockCapacity ||
+        numThunksPerBlock <= 0 ||
+        (size_t)numThunksPerBlock > thunkCapacity)
+    {
+        PalVirtualFree(pNewMapping, mappingSize);
+        return E_FAIL;
+    }
+
     for (int m = 0; m < numBlocksPerMap; m++)
     {
-        uint8_t* pDataBlockAddress = (uint8_t*)pDataSection + m * OS_PAGE_SIZE;
-        uint8_t* pThunkBlockAddress = (uint8_t*)pThunksSection + m * OS_PAGE_SIZE;
+        uint8_t* pDataBlockAddress = (uint8_t*)pDataSection + (size_t)m * OS_PAGE_SIZE;
+        uint8_t* pThunkBlockAddress = (uint8_t*)pThunksSection + (size_t)m * OS_PAGE_SIZE;
 
         for (int i = 0; i < numThunksPerBlock; i++)
         {
-            uint8_t* pCurrentThunkAddress = pThunkBlockAddress + THUNK_SIZE * i;
-            uint8_t* pCurrentDataAddress = pDataBlockAddress + i * POINTER_SIZE * 2;
+            const size_t thunkDataOffset = (size_t)i * POINTER_SIZE * 2;
+            uint8_t* pCurrentThunkAddress = pThunkBlockAddress + (size_t)THUNK_SIZE * i;
+            uint8_t* pCurrentDataAddress = pDataBlockAddress + thunkDataOffset;
 
 #ifdef TARGET_AMD64
 
@@ -253,7 +276,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
             WriteThunkBytes(pCurrentThunkAddress, &indirectJump, 3);
             WriteThunkValue(
                 pCurrentThunkAddress,
-                (uint32_t)(OS_PAGE_SIZE - POINTER_SIZE - (i * POINTER_SIZE * 2)));
+                (uint32_t)(OS_PAGE_SIZE - POINTER_SIZE - thunkDataOffset));
 
             // nops for alignment
             *pCurrentThunkAddress++ = 0x90;
@@ -270,7 +293,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
             WriteThunkValue(pCurrentThunkAddress, (uint16_t)0xa0ff);
             WriteThunkValue(
                 pCurrentThunkAddress,
-                (uint32_t)(OS_PAGE_SIZE - POINTER_SIZE - (i * POINTER_SIZE * 2)));
+                (uint32_t)(OS_PAGE_SIZE - POINTER_SIZE - thunkDataOffset));
 
             // nops for alignment
             *pCurrentThunkAddress++ = 0x90;
@@ -289,7 +312,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
                 pCurrentThunkAddress,
                 (uint32_t)(0xf000f8dc |
                            ((OS_PAGE_SIZE - POINTER_SIZE -
-                             (i * POINTER_SIZE * 2)) << 16)));
+                             thunkDataOffset) << 16)));
 
 #elif TARGET_ARM64
 
@@ -309,7 +332,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
                 pCurrentThunkAddress,
                 (uint32_t)(0xF9400211 |
                            (((uint32_t)((OS_PAGE_SIZE - POINTER_SIZE -
-                                         (i * POINTER_SIZE * 2)) /
+                                         thunkDataOffset) /
                                         8)
                              << 10))));
             WriteThunkValue(pCurrentThunkAddress, (uint32_t)0xD61F0220);
@@ -330,7 +353,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
                 (uint32_t)(0x18000013 |
                            (((delta & 0x3FFFFC) >> 2) << 5)));
 
-            delta += OS_PAGE_SIZE - POINTER_SIZE - (i * POINTER_SIZE * 2) - 4;
+            delta += OS_PAGE_SIZE - POINTER_SIZE - thunkDataOffset - 4;
             ASSERT((-0x200000 <= delta) && (delta < 0x200000));
 
             WriteThunkValue(
@@ -357,7 +380,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
                 pCurrentThunkAddress,
                 (uint32_t)(0x00030313 | ((delta & 0xFFF) << 20)));  // addi t1, t1, delta[11:0]
 
-            delta += OS_PAGE_SIZE - POINTER_SIZE - (i * POINTER_SIZE * 2) - 8;
+            delta += OS_PAGE_SIZE - POINTER_SIZE - thunkDataOffset - 8;
             WriteThunkValue(
                 pCurrentThunkAddress,
                 (uint32_t)(0x00000297 |

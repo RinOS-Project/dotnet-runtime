@@ -410,7 +410,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
 #else
     if (!PalVirtualProtect(pThunksSection, thunksMapSize, PAGE_EXECUTE_READ))
     {
-        PalVirtualFree(pNewMapping, thunksMapSize * 2);
+        PalVirtualFree(pNewMapping, mappingSize);
         return E_FAIL;
     }
 #endif

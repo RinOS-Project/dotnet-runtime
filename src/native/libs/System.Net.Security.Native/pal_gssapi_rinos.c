@@ -21,10 +21,12 @@
 #define RINOS_GSS_S_COMPLETE ((uint32_t)0u)
 #define RINOS_GSS_S_UNAVAILABLE ((uint32_t)(16u << 16))
 
+#if !defined(RINOS_AUTH_PROVIDER_LINKED) || !defined(RINOS_KERBEROS_OWNER_LINKED)
 #if defined(__GNUC__) || defined(__clang__)
 #define RINOS_AUTH_PROVIDER_WEAK __attribute__((weak))
 #else
 #define RINOS_AUTH_PROVIDER_WEAK
+#endif
 #endif
 
 #if defined(RINOS_AUTH_PROVIDER_LINKED)
@@ -96,10 +98,12 @@ static int rinos_gss_kerberos_owner_valid(const RinAuthProviderV1* provider)
 static const RinAuthProviderV1* rinos_gss_provider(void)
 {
     const RinAuthProviderV1* provider;
+#if !defined(RINOS_AUTH_PROVIDER_LINKED)
     if (rin_auth_provider_get_v1 == NULL)
     {
         return NULL;
     }
+#endif
 
     provider = rin_auth_provider_get_v1();
     if (provider == NULL ||

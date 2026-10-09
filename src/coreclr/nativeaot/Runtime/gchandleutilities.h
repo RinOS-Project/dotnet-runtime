@@ -4,6 +4,12 @@
 #ifndef _GCHANDLEUTILITIES_H_
 #define _GCHANDLEUTILITIES_H_
 
+// gchandleutilities.h is included directly by TypeManager.cpp, before the
+// NativeAOT runtime's normal gcenv.h umbrella header.  gcinterface.h uses the
+// GC environment's callback and object-reference aliases, so establish that
+// base contract explicitly instead of relying on a translation-unit include
+// order that only happened to hold for other runtime sources.
+#include "gcenv.base.h"
 #include "gcinterface.h"
 
 extern "C" IGCHandleManager* g_pGCHandleManager;

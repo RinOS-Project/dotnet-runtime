@@ -98,6 +98,12 @@ include_directories(inc)
 include_directories(.)
 include_directories(${GC_DIR})
 include_directories(${GC_DIR}/env)
+# PalUnix.cpp consumes the target PAL contract through the public-style
+# `pal/rinos_contract.h` include name.  The generic CoreCLR PAL targets add
+# this root elsewhere, but NativeAOT builds this Runtime directory directly;
+# keep the include graph explicit so the RinOS target does not depend on an
+# unrelated sibling target having populated its include directories.
+include_directories(${CLR_DIR}/pal/src/include)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/eventpipe/inc)
 include_directories(${RUNTIME_DIR})
 

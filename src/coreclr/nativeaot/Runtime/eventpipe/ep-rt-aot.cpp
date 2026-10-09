@@ -350,7 +350,7 @@ ep_rt_aot_diagnostics_command_line_get (void)
 
     ep_char8_t *published = reinterpret_cast<ep_char8_t *>(
         PalInterlockedCompareExchangePointer(
-            reinterpret_cast<void **>(&cached_command_line), command_line, nullptr));
+            reinterpret_cast<void *volatile *>(&cached_command_line), command_line, nullptr));
     if (published != nullptr) {
         ep_rt_utf8_string_free(command_line);
         return published;

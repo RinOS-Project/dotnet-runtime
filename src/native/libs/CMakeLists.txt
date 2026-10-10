@@ -9,18 +9,20 @@ if ("${CMAKE_CURRENT_SOURCE_DIR}" STREQUAL "${CMAKE_SOURCE_DIR}")
     include(../../../eng/native/configurepaths.cmake)
     include(${CLR_ENG_NATIVE_DIR}/configurecompiler.cmake)
 
-    add_subdirectory(${CLR_SRC_NATIVE_DIR}/minipal minipal)
-endif()
+    if (CLR_CMAKE_TARGET_RINOS)
+        # System.Native and the other library shims are configured as a separate
+        # CMake project from CoreCLR.  Reapply the product target boundary here;
+        # the parent CoreCLR directory properties do not reach this standalone
+        # configure.  Without it Clang searches for the host C headers and the
+        # RinOS freestanding build fails before any shim source is compiled.
+        # This must precede minipal's add_subdirectory so its object target also
+        # inherits the product include and compiler properties.
+        include_directories(SYSTEM ${RINOS_DOTNET_TARGET_INCLUDE_DIRS})
+        add_compile_definitions(${RINOS_DOTNET_TARGET_MACROS})
+        add_compile_options(${RINOS_DOTNET_C_FLAGS})
+    endif()
 
-if (CLR_CMAKE_TARGET_RINOS)
-    # System.Native and the other library shims are configured as a separate
-    # CMake project from CoreCLR.  Reapply the product target boundary here;
-    # the parent CoreCLR directory properties do not reach this standalone
-    # configure.  Without it Clang searches for the host C headers and the
-    # RinOS freestanding build fails before any shim source is compiled.
-    include_directories(SYSTEM ${RINOS_DOTNET_TARGET_INCLUDE_DIRS})
-    add_compile_definitions(${RINOS_DOTNET_TARGET_MACROS})
-    add_compile_options(${RINOS_DOTNET_C_FLAGS})
+    add_subdirectory(${CLR_SRC_NATIVE_DIR}/minipal minipal)
 endif()
 
 include_directories(${CLR_SRC_NATIVE_DIR})

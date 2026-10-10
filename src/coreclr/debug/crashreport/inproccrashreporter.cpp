@@ -109,7 +109,6 @@ struct StackOverflowTraceSnapshot
 // Include the .NET version string instead of linking because it is "static".
 #if __has_include("_version.c")
 #include "_version.c"
-static const char sccsid[] = "@(#)Version " VER_PRODUCTVERSION_STR;
 #else
 static char sccsid[] = "@(#)Version N/A";
 #endif

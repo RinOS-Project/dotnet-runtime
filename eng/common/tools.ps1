@@ -816,24 +816,14 @@ function MSBuild() {
   # communicate over LOCAL\dotnet_* pipes.  Keep that product-owned path
   # single-node so it does not require the inaccessible child-node ACL.
   $maxNodeCount = if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1') { '/m:1' } else { '/m' }
-  $cmdArgs = "$($buildTool.Command) $maxNodeCount /nologo /clp:Summary /v:$verbosity /nr:$nodeReuse /p:ContinuousIntegrationBuild=$ci"
-
-  # A RinOS target cross-build runs under the product SDK's restricted
-  # desktop token.  The SDK MSBuild server can still be selected by the
-  # dotnet CLI even when node reuse and Roslyn shared compilation are off,
-  # and its LOCAL\\dotnet_* pipe may be inaccessible to that token.  Use the
-  # CLI's explicit build-server switch for the opt-in product path.  Do not
-  # add it to Visual Studio MSBuild, which has no such CLI option.
-  # InitializeBuildTool normally reports Command='msbuild' for the dotnet
-  # host, but callers can inject the tool through _BuildToolCommand.  Use the
-  # executable path as the authoritative discriminator so the restricted
-  # RinOS cross-build cannot silently omit the dotnet CLI switch when the
-  # injected command is empty or decorated.  Visual Studio MSBuild has no
-  # --disable-build-servers option and is intentionally left unchanged.
-  if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1' -and
-      $buildTool.Path -match '(?i)(^|[\\/])dotnet(?:\.exe)?$') {
-    $cmdArgs += ' --disable-build-servers'
-  }
+  $disableDotnetBuildServers = $env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1' -and
+    $buildTool.Path -match '(?i)(^|[\\/])dotnet(?:\.exe)?$'
+  # `--disable-build-servers` is a dotnet CLI option.  It must precede the
+  # `msbuild` verb; placing it after the verb makes the SDK pass it to MSBuild
+  # as an unknown project argument and leaves the inaccessible LOCAL\dotnet_*
+  # server path enabled.
+  $dotnetBuildServerPrefix = if ($disableDotnetBuildServers) { '--disable-build-servers ' } else { '' }
+  $cmdArgs = "$dotnetBuildServerPrefix$($buildTool.Command) $maxNodeCount /nologo /clp:Summary /v:$verbosity /nr:$nodeReuse /p:ContinuousIntegrationBuild=$ci"
 
   # Build with MSBuild's multi-threaded mode.
   if ($msbuildMultiThreaded) {

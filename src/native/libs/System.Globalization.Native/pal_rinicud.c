@@ -2637,11 +2637,25 @@ int32_t GlobalizationNative_GetLocaleInfoInt(const UChar* locale, LocaleNumberDa
 int32_t GlobalizationNative_GetLocaleInfoGroupingSizes(const UChar* locale, LocaleNumberData kind, int32_t* primary, int32_t* secondary)
 {
     RinIcuDataLocaleRecord record;
+    uint32_t grouping_primary;
+    uint32_t grouping_secondary;
     if (!primary || !secondary) return 0;
     if (kind != LocaleNumber_Digit && kind != LocaleNumber_Monetary) return 0;
     if (!get_locale_record(locale, &record)) return 0;
-    *primary = record.group_sep[0] == '\0' ? 0 : 3;
-    *secondary = strcmp(record.region, "IN") == 0 && *primary != 0 ? 2 : *primary;
+    if (record.flags & RIN_ICU_DATA_FLAG_GROUPING_PRESENT) {
+        grouping_primary = rin_icu_data_grouping_primary(record.flags);
+        grouping_secondary = rin_icu_data_grouping_secondary(record.flags);
+    } else {
+        /* Accept old RICUDB1 snapshots while the generated v1 records carry
+         * the official CLDR projection in their flags word. */
+        grouping_primary = record.group_sep[0] == '\0' ? 0u : 3u;
+        grouping_secondary = strcmp(record.region, "IN") == 0 &&
+                                     grouping_primary != 0u
+                                 ? 2u
+                                 : grouping_primary;
+    }
+    *primary = (int32_t)grouping_primary;
+    *secondary = (int32_t)grouping_secondary;
     return 1;
 }
 

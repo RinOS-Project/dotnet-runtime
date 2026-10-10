@@ -10,7 +10,10 @@ if (CLR_CMAKE_TARGET_APPLE)
   list(APPEND RUNTIME_SOURCES_ARCH_ASM
     ${ARCH_SOURCES_DIR}/ThunkPoolThunks.${ASM_SUFFIX}
   )
-else()
+elseif (NOT CLR_CMAKE_TARGET_ARCH_WASM)
+  # Runtime/CMakeLists.txt selects PortableRuntime for WASM. Keep this guard
+  # here as well so a direct Full-runtime configure cannot accidentally expose
+  # the x64/Unix executable thunk implementation to the portable target.
   add_definitions(-DFEATURE_RX_THUNKS)
 endif()
 

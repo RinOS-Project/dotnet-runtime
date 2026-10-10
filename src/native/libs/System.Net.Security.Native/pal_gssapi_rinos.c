@@ -292,7 +292,7 @@ static uint32_t rinos_gss_map_kerberos_major(
         case 15u: /* KDC_ERR_SUMTYPE_NOSUPP */
         case 16u: /* KDC_ERR_PADATA_TYPE_NOSUPP */
         case 17u: /* KDC_ERR_TRTYPE_NOSUPP */
-        case 61u: /* KDC_ERR_KEY_TOO_WEAK (PKINIT) */
+        case 65u: /* KDC_ERR_KEY_TOO_WEAK (PKINIT) */
         case 39u: /* KRB_AP_ERR_BADVERSION */
         case 48u: /* KRB_AP_ERR_METHOD */
         case 69u: /* KRB_AP_ERR_USER_TO_USER_REQUIRED */

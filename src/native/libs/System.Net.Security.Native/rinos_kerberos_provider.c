@@ -462,7 +462,7 @@ static int provider_spnego_parse_init(const uint8_t* bytes, uint32_t size,
             if (!provider_der_read_wrapped_octet(&sequence, 0xa3u,
                                                  &token_bytes, &token_size))
                 return 0;
-            return 2;
+            return sequence.offset == sequence.size ? 2 : 0;
         } else {
             return 0;
         }
@@ -527,7 +527,7 @@ static int provider_spnego_parse_response(const uint8_t* bytes, uint32_t size,
             if (!provider_der_read_wrapped_octet(&sequence, 0xa3u,
                                                  &token_bytes, &token_size))
                 return 0;
-            return 2;
+            return sequence.offset == sequence.size ? 2 : 0;
         } else {
             return 0;
         }

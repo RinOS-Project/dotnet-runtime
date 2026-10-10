@@ -118,7 +118,10 @@ FCIMPLEND
 
 FCIMPL0(int, RhpGetThunkSize)
 {
-    return THUNK_SIZE;
+    // RuntimeImports exposes this geometry as an int.  Keep the conversion
+    // failure-closed so an unsupported architecture or malformed page-size
+    // provider cannot wrap into a small positive thunk size.
+    return (size_t)THUNK_SIZE > (size_t)INT_MAX ? 0 : (int)THUNK_SIZE;
 }
 FCIMPLEND
 
@@ -160,7 +163,9 @@ FCIMPLEND
 
 FCIMPL0(int, RhpGetThunkBlockSize)
 {
-    return (int)OS_PAGE_SIZE;
+    // The managed thunk pool consumes this through an int ABI.  Do not let a
+    // provider page size wrap before the caller validates the geometry.
+    return (size_t)OS_PAGE_SIZE > (size_t)INT_MAX ? 0 : (int)OS_PAGE_SIZE;
 }
 FCIMPLEND
 

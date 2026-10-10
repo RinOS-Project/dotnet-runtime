@@ -300,7 +300,10 @@ static uint32_t rinos_gss_map_kerberos_major(
         case 18u: /* KDC_ERR_CLIENT_REVOKED */
         case 19u: /* KDC_ERR_SERVICE_REVOKED */
         case 20u: /* KDC_ERR_TGT_REVOKED */
+        case 21u: /* KDC_ERR_CLIENT_NOTYET */
         case 24u: /* KDC_ERR_PREAUTH_FAILED */
+        case 43u: /* KRB_AP_ERR_ILL_CR_TKT */
+        case 44u: /* KRB_AP_ERR_BADKEYVER */
         case 33u: /* KRB_AP_ERR_TKT_NYV */
         case 36u: /* KRB_AP_ERR_BADMATCH */
         case 38u: /* KRB_AP_ERR_BADADDR */
@@ -313,6 +316,21 @@ static uint32_t rinos_gss_map_kerberos_major(
             return initiator_context != 0
                 ? PAL_GSS_S_CREDENTIALS_EXPIRED
                 : PAL_GSS_S_FAILURE;
+        case 67u: /* KRB_AP_ERR_NO_TGT */
+            return PAL_GSS_S_NO_CRED;
+        case 90u: /* KDC_ERR_PREAUTH_EXPIRED */
+            return PAL_GSS_S_CREDENTIALS_EXPIRED;
+        case 27u: /* KDC_ERR_MUST_USE_USER2USER */
+        case 28u: /* KDC_ERR_PATH_NOT_ACCEPTED */
+        case 29u: /* KDC_ERR_SVC_UNAVAILABLE */
+        case 45u: /* KRB_AP_ERR_NOKEY */
+        case 52u: /* KRB_ERR_RESPONSE_TOO_BIG */
+        case 85u: /* KRB_AP_ERR_IAKERB_KDC_NOT_FOUND */
+        case 86u: /* KRB_AP_ERR_IAKERB_KDC_NO_RESPONSE */
+        case 91u: /* KDC_ERR_MORE_PREAUTH_DATA_REQUIRED */
+        case 93u: /* KDC_ERR_UNKNOWN_CRITICAL_FAST_OPTION */
+        case 100u: /* KDC_ERR_NO_ACCEPTABLE_KDF */
+            return PAL_GSS_S_UNAVAILABLE;
         default:
             return PAL_GSS_S_FAILURE;
     }

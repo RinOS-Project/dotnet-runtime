@@ -818,12 +818,12 @@ function MSBuild() {
   $maxNodeCount = if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1') { '/m:1' } else { '/m' }
   $disableDotnetBuildServers = $env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1' -and
     $buildTool.Path -match '(?i)(^|[\\/])dotnet(?:\.exe)?$'
-  # `--disable-build-servers` is a dotnet CLI option.  It must precede the
-  # `msbuild` verb; placing it after the verb makes the SDK pass it to MSBuild
-  # as an unknown project argument and leaves the inaccessible LOCAL\dotnet_*
-  # server path enabled.
-  $dotnetBuildServerPrefix = if ($disableDotnetBuildServers) { '--disable-build-servers ' } else { '' }
-  $cmdArgs = "$dotnetBuildServerPrefix$($buildTool.Command) $maxNodeCount /nologo /clp:Summary /v:$verbosity /nr:$nodeReuse /p:ContinuousIntegrationBuild=$ci"
+  # `--disable-build-servers` is accepted by the dotnet msbuild verb.  Keep it
+  # immediately after that verb so the CLI consumes it before the remaining
+  # MSBuild arguments; placing it before the verb makes dotnet interpret the
+  # switch as a command name.  Visual Studio MSBuild has no such CLI option.
+  $dotnetBuildServerArgs = if ($disableDotnetBuildServers) { '--disable-build-servers ' } else { '' }
+  $cmdArgs = "$($buildTool.Command) $dotnetBuildServerArgs$maxNodeCount /nologo /clp:Summary /v:$verbosity /nr:$nodeReuse /p:ContinuousIntegrationBuild=$ci"
 
   # Build with MSBuild's multi-threaded mode.
   if ($msbuildMultiThreaded) {

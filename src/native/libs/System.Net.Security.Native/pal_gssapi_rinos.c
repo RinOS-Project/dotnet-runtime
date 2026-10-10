@@ -256,25 +256,66 @@ static uint32_t rinos_gss_map_kerberos_supplementary(
         : 0u;
 }
 
-/* MIT krb5 treats an expired service ticket returned during initiator
+/* The Kerberos provider preserves RFC 4120 KRB-ERROR values in the private
+ * minor namespace.  Keep the GSS major classification aligned with the
+ * managed Unix PAL's upstream NegotiateAuthenticationStatusCode mapping for
+ * the values that have an unambiguous GSS representation.  Values such as
+ * KDC_ERR_S_PRINCIPAL_UNKNOWN remain GSS_S_FAILURE: the managed PAL uses the
+ * preserved minor value to report TargetUnknown, while GSS has no distinct
+ * target-unknown major status.  Unknown values remain failure rather than
+ * being guessed into a credential or success state.
+ *
+ * MIT krb5 treats an expired service ticket returned during initiator
  * establishment as an expired credential (see its init_sec_context path).
- * Preserve that standards-shaped classification at the PAL boundary while
- * leaving the other KRB-ERROR values as mechanism failure until their
- * direction-specific GSS mapping is implemented. */
+ * Keep that direction-sensitive behavior for KRB_AP_ERR_TKT_EXPIRED. */
 static uint32_t rinos_gss_map_kerberos_major(
     uint32_t providerStatus, const uint32_t* minorStatus,
     int initiator_context)
 {
     const uint32_t protocolErrorBit = UINT32_C(0x80000000);
-    const uint32_t krbApErrTicketExpired = UINT32_C(32);
+    uint32_t errorCode;
 
-    if (initiator_context != 0 &&
-        providerStatus == RIN_AUTH_PROVIDER_KRB_ERROR &&
-        minorStatus != NULL && (*minorStatus & protocolErrorBit) != 0u &&
-        (*minorStatus & ~protocolErrorBit) == krbApErrTicketExpired)
-        return PAL_GSS_S_CREDENTIALS_EXPIRED;
+    if (providerStatus != RIN_AUTH_PROVIDER_KRB_ERROR ||
+        minorStatus == NULL || (*minorStatus & protocolErrorBit) == 0u)
+        return rinos_gss_map_provider_status(providerStatus);
 
-    return rinos_gss_map_provider_status(providerStatus);
+    errorCode = *minorStatus & ~protocolErrorBit;
+    switch (errorCode)
+    {
+        case 1u:  /* KDC_ERR_NAME_EXP */
+        case 23u: /* KDC_ERR_KEY_EXP */
+            return PAL_GSS_S_CREDENTIALS_EXPIRED;
+        case 6u:  /* KDC_ERR_C_PRINCIPAL_UNKNOWN */
+            return PAL_GSS_S_NO_CRED;
+        case 3u:  /* KDC_ERR_BAD_PVNO */
+        case 14u: /* KDC_ERR_ETYPE_NOSUPP */
+        case 15u: /* KDC_ERR_SUMTYPE_NOSUPP */
+        case 16u: /* KDC_ERR_PADATA_TYPE_NOSUPP */
+        case 17u: /* KDC_ERR_TRTYPE_NOSUPP */
+        case 61u: /* KDC_ERR_KEY_TOO_WEAK (PKINIT) */
+        case 39u: /* KRB_AP_ERR_BADVERSION */
+        case 48u: /* KRB_AP_ERR_METHOD */
+        case 69u: /* KRB_AP_ERR_USER_TO_USER_REQUIRED */
+            return PAL_GSS_S_UNAVAILABLE;
+        case 18u: /* KDC_ERR_CLIENT_REVOKED */
+        case 19u: /* KDC_ERR_SERVICE_REVOKED */
+        case 20u: /* KDC_ERR_TGT_REVOKED */
+        case 24u: /* KDC_ERR_PREAUTH_FAILED */
+        case 33u: /* KRB_AP_ERR_TKT_NYV */
+        case 36u: /* KRB_AP_ERR_BADMATCH */
+        case 38u: /* KRB_AP_ERR_BADADDR */
+            return PAL_GSS_S_DEFECTIVE_CREDENTIAL;
+        case 31u: /* KRB_AP_ERR_BAD_INTEGRITY */
+        case 41u: /* KRB_AP_ERR_MODIFIED */
+        case 50u: /* KRB_AP_ERR_INAPP_CKSUM */
+            return PAL_GSS_S_BAD_SIG;
+        case 32u: /* KRB_AP_ERR_TKT_EXPIRED */
+            return initiator_context != 0
+                ? PAL_GSS_S_CREDENTIALS_EXPIRED
+                : PAL_GSS_S_FAILURE;
+        default:
+            return PAL_GSS_S_FAILURE;
+    }
 }
 
 static uint32_t rinos_gss_package_bit(uint32_t packageType)

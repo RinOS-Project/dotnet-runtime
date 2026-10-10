@@ -15,7 +15,15 @@ endif (MSVC)
 
 if(CLR_CMAKE_HOST_UNIX)
   add_compile_options(-fno-exceptions)    # Native AOT runtime doesn't use C++ exception handling
-  add_compile_options(-fno-asynchronous-unwind-tables)
+  # The generic NativeAOT Unix builds intentionally omit compiler-generated
+  # unwind tables.  RinOS is different: signal/exception entry and the target
+  # PAL's native stack walk consume asynchronous unwind metadata, while the
+  # explicit UniversalTransition frame remains its separate assembly ABI.
+  # Keep the upstream default for other Unix targets but do not append the
+  # disabling flag to a RinOS target build.
+  if(NOT CLR_CMAKE_TARGET_RINOS)
+    add_compile_options(-fno-asynchronous-unwind-tables)
+  endif()
   add_compile_options(-nostdlib)
 
   if(CLR_CMAKE_TARGET_APPLE)

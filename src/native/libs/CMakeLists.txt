@@ -4,6 +4,14 @@ include(CheckCCompilerFlag)
 
 project(LibsNative C)
 
+if ("${CMAKE_CURRENT_SOURCE_DIR}" STREQUAL "${CMAKE_SOURCE_DIR}")
+    # This is our root CMakeList.txt, so we need to set up some global settings and include the minipal here.
+    include(../../../eng/native/configurepaths.cmake)
+    include(${CLR_ENG_NATIVE_DIR}/configurecompiler.cmake)
+
+    add_subdirectory(${CLR_SRC_NATIVE_DIR}/minipal minipal)
+endif()
+
 if (CLR_CMAKE_TARGET_RINOS)
     # System.Native and the other library shims are configured as a separate
     # CMake project from CoreCLR.  Reapply the product target boundary here;
@@ -13,14 +21,6 @@ if (CLR_CMAKE_TARGET_RINOS)
     include_directories(SYSTEM ${RINOS_DOTNET_TARGET_INCLUDE_DIRS})
     add_compile_definitions(${RINOS_DOTNET_TARGET_MACROS})
     add_compile_options(${RINOS_DOTNET_C_FLAGS})
-endif()
-
-if ("${CMAKE_CURRENT_SOURCE_DIR}" STREQUAL "${CMAKE_SOURCE_DIR}")
-    # This is our root CMakeList.txt, so we need to set up some global settings and include the minipal here.
-    include(../../../eng/native/configurepaths.cmake)
-    include(${CLR_ENG_NATIVE_DIR}/configurecompiler.cmake)
-
-    add_subdirectory(${CLR_SRC_NATIVE_DIR}/minipal minipal)
 endif()
 
 include_directories(${CLR_SRC_NATIVE_DIR})

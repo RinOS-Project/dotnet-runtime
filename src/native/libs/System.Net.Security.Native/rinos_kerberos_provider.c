@@ -10,8 +10,9 @@
  * carries back opaque context/output tokens, and refuses to manufacture a
  * credential or a successful token when the service-side RFC implementation
  * is absent. The linked service path now covers initiator AP-REQ/AP-REP and
- * bounded RFC 4121 per-message operations; it still rejects every RFC feature
- * it has not implemented, including SPNEGO mechListMIC verification.
+ * bounded RFC 4121 per-message operations.  SPNEGO mechListMIC is verified
+ * through the same established-context GSS VerifyMIC operation; generation
+ * and request-mic policy remain separate negotiation work.
  */
 
 #include "pal_gssapi.h"
@@ -30,6 +31,7 @@
 #define RINOS_KERBEROS_GSS_FLAG_SEALED UINT8_C(0x02)
 #define RINOS_KERBEROS_CONTEXT_NEGOTIATING UINT32_C(1)
 #define RINOS_KERBEROS_CONTEXT_ESTABLISHED UINT32_C(2)
+#define RINOS_KERBEROS_MAX_MECH_LIST_SIZE UINT32_C(4096)
 /* Keep a peer-supplied RFC 4120 error code distinguishable from local
  * provider diagnostics while preserving every non-negative Int32 code. */
 #define RINOS_KERBEROS_MINOR_PROTOCOL_ERROR UINT32_C(0x80000000)
@@ -75,8 +77,14 @@ typedef struct RinOsKerberosProviderContext {
     uint32_t spnego;
     void* owner_credential;
     const RinKerberosOperationOwnerV1* owner;
+    uint32_t mech_list_size;
+    uint8_t mech_list[RINOS_KERBEROS_MAX_MECH_LIST_SIZE];
     uint8_t token[RIN_KERBEROS_OPERATION_MAX_CONTEXT_TOKEN_SIZE];
 } RinOsKerberosProviderContext;
+
+static uint32_t provider_verify_mic(
+    void* context, uint32_t* minor_status, void* security_context,
+    uint8_t* input, int32_t input_length, uint8_t* token, int32_t token_length);
 
 static void provider_zero(void* pointer, size_t size)
 {
@@ -368,8 +376,13 @@ static int provider_der_read_wrapped_enumerated(
 typedef struct ProviderSpnegoInputV1 {
     const uint8_t* mechanism_token;
     uint32_t mechanism_token_size;
+    const uint8_t* mech_list;
+    uint32_t mech_list_size;
+    const uint8_t* mechanism_mic;
+    uint32_t mechanism_mic_size;
     uint32_t is_initial;
     uint32_t has_mechanism_token;
+    uint32_t has_mechanism_mic;
     uint32_t rejected;
 } ProviderSpnegoInputV1;
 
@@ -380,6 +393,11 @@ static const uint8_t g_provider_spnego_oid[] = {
 static const uint8_t g_provider_kerberos_oid[] = {
     0x2au, 0x86u, 0x48u, 0x86u, 0xf7u,
     0x12u, 0x01u, 0x02u, 0x02u,
+};
+
+static const uint8_t g_provider_kerberos_mech_list[] = {
+    0x30u, 0x0bu, 0x06u, 0x09u, 0x2au, 0x86u, 0x48u, 0x86u,
+    0xf7u, 0x12u, 0x01u, 0x02u, 0x02u,
 };
 
 /* Return values: 0 malformed, 1 usable Kerberos token, 2 valid SPNEGO with
@@ -399,6 +417,7 @@ static int provider_spnego_parse_init(const uint8_t* bytes, uint32_t size,
     ProviderDerCursorV1 sequence;
     ProviderDerCursorV1 mechanism;
     ProviderDerCursorV1 list;
+    uint32_t list_tlv_start;
     uint8_t last_tag = 0xa0u;
     int has_kerberos = 0;
 
@@ -415,6 +434,7 @@ static int provider_spnego_parse_init(const uint8_t* bytes, uint32_t size,
     mechanism.bytes = mechanism_bytes;
     mechanism.size = mechanism_size;
     mechanism.offset = 0u;
+    list_tlv_start = mechanism.offset;
     if (!provider_der_read_tlv(&mechanism, 0x30u, &list_bytes, &list_size) ||
         mechanism.offset != mechanism.size)
         return 0;
@@ -436,6 +456,11 @@ static int provider_spnego_parse_init(const uint8_t* bytes, uint32_t size,
 
     memset(output, 0, sizeof(*output));
     output->is_initial = 1u;
+    if (mechanism.offset < list_tlv_start ||
+        mechanism.offset - list_tlv_start > RINOS_KERBEROS_MAX_MECH_LIST_SIZE)
+        return 0;
+    output->mech_list = mechanism.bytes + list_tlv_start;
+    output->mech_list_size = mechanism.offset - list_tlv_start;
     while (sequence.offset < sequence.size) {
         const uint8_t tag = sequence.bytes[sequence.offset];
         if (tag <= last_tag)
@@ -454,15 +479,20 @@ static int provider_spnego_parse_init(const uint8_t* bytes, uint32_t size,
             output->mechanism_token_size = token_size;
             output->has_mechanism_token = 1u;
         } else if (tag == 0xa3u) {
-            /* mechListMIC authenticates the negotiated mechanism list.  The
-             * RinOS owner ABI does not yet expose the SPNEGO MIC exchange;
-             * silently skipping this field would accept an unauthenticated
-             * mechanism selection, so report a valid-but-unsupported path
-             * before any Kerberos owner IPC. */
-            if (!provider_der_read_wrapped_octet(&sequence, 0xa3u,
-                                                 &token_bytes, &token_size))
+            /* RFC 4178 Section 5 authenticates the DER encoding of the
+             * MechTypeList value, not the surrounding [0] wrapper.  Keep the
+             * MIC until the mechanism context is established and verify it
+             * through the existing GSS VerifyMIC owner operation. */
+            if (output->has_mechanism_mic)
                 return 0;
-            return sequence.offset == sequence.size ? 2 : 0;
+            if (!provider_der_read_wrapped_octet(&sequence, 0xa3u,
+                                                 &token_bytes, &token_size) ||
+                token_size != 28u || token_bytes[0] != 0x04u ||
+                token_bytes[1] != 0x04u)
+                return 0;
+            output->mechanism_mic = token_bytes;
+            output->mechanism_mic_size = token_size;
+            output->has_mechanism_mic = 1u;
         } else {
             return 0;
         }
@@ -522,12 +552,18 @@ static int provider_spnego_parse_response(const uint8_t* bytes, uint32_t size,
             output->mechanism_token_size = token_size;
             output->has_mechanism_token = 1u;
         } else if (tag == 0xa3u) {
-            /* See the NegTokenInit path above: do not consume a MIC field
-             * without verifying it against the advertised mechanism list. */
-            if (!provider_der_read_wrapped_octet(&sequence, 0xa3u,
-                                                 &token_bytes, &token_size))
+            /* See the NegTokenInit path above: retain the field and verify it
+             * against the initial MechTypeList after context establishment. */
+            if (output->has_mechanism_mic)
                 return 0;
-            return sequence.offset == sequence.size ? 2 : 0;
+            if (!provider_der_read_wrapped_octet(&sequence, 0xa3u,
+                                                 &token_bytes, &token_size) ||
+                token_size != 28u || token_bytes[0] != 0x04u ||
+                token_bytes[1] != 0x04u)
+                return 0;
+            output->mechanism_mic = token_bytes;
+            output->mechanism_mic_size = token_size;
+            output->has_mechanism_mic = 1u;
         } else {
             return 0;
         }
@@ -535,6 +571,32 @@ static int provider_spnego_parse_response(const uint8_t* bytes, uint32_t size,
     output->rejected = have_state && state == 2u;
     if (output->rejected)
         return 3;
+    return 1;
+}
+
+static int provider_spnego_store_mech_list(
+    RinOsKerberosProviderContext* context,
+    const ProviderSpnegoInputV1* input)
+{
+    if (context == NULL || input == NULL || input->mech_list == NULL ||
+        input->mech_list_size == 0u ||
+        input->mech_list_size > RINOS_KERBEROS_MAX_MECH_LIST_SIZE)
+        return 0;
+    provider_zero(context->mech_list, sizeof(context->mech_list));
+    memcpy(context->mech_list, input->mech_list, input->mech_list_size);
+    context->mech_list_size = input->mech_list_size;
+    return 1;
+}
+
+static int provider_spnego_store_default_mech_list(
+    RinOsKerberosProviderContext* context)
+{
+    if (context == NULL)
+        return 0;
+    provider_zero(context->mech_list, sizeof(context->mech_list));
+    memcpy(context->mech_list, g_provider_kerberos_mech_list,
+           sizeof(g_provider_kerberos_mech_list));
+    context->mech_list_size = sizeof(g_provider_kerberos_mech_list);
     return 1;
 }
 
@@ -1699,6 +1761,13 @@ static uint32_t provider_init_sec_context(
         provider_context->owner = provider_operation_owner();
         provider_context->spnego = package_type == PAL_GSS_NEGOTIATE;
         spnego_mode = provider_context->spnego != 0u;
+        if (spnego_mode && !provider_spnego_store_default_mech_list(
+                               provider_context)) {
+            provider_zero(provider_context, sizeof(*provider_context));
+            free(provider_context);
+            *security_context = NULL;
+            return provider_unavailable(minor_status);
+        }
         created_context = 1;
     }
     if (spnego_mode && input_length != 0u) {
@@ -1714,6 +1783,16 @@ static uint32_t provider_init_sec_context(
             return spnego_parse_status == 0
                 ? provider_defective_token(minor_status)
                 : provider_unavailable(minor_status);
+        }
+        if (spnego_input.mech_list_size != 0u &&
+            !provider_spnego_store_mech_list(provider_context,
+                                             &spnego_input)) {
+            if (created_context) {
+                provider_zero(provider_context, sizeof(*provider_context));
+                free(provider_context);
+                *security_context = NULL;
+            }
+            return provider_defective_token(minor_status);
         }
         mechanism_input = spnego_input.mechanism_token;
         mechanism_input_length = spnego_input.mechanism_token_size;
@@ -1752,6 +1831,34 @@ static uint32_t provider_init_sec_context(
     if (operation_input != NULL) {
         provider_zero(operation_input, operation_input_size);
         free(operation_input);
+    }
+    if (spnego_mode && spnego_input.has_mechanism_mic) {
+        uint32_t mic_status;
+        if (status != RIN_AUTH_PROVIDER_OK ||
+            provider_context->mech_list_size == 0u) {
+            mic_status = provider_unavailable(minor_status);
+        } else {
+            mic_status = provider_verify_mic(
+                context, minor_status, provider_context,
+                provider_context->mech_list,
+                (int32_t)provider_context->mech_list_size,
+                (uint8_t*)spnego_input.mechanism_mic,
+                (int32_t)spnego_input.mechanism_mic_size);
+        }
+        if (mic_status != RIN_AUTH_PROVIDER_OK) {
+            if (output->data != NULL) {
+                provider_zero(output->data, (size_t)output->length);
+                free(output->data);
+                output->data = NULL;
+                output->length = 0u;
+            }
+            if (created_context) {
+                provider_zero(provider_context, sizeof(*provider_context));
+                free(provider_context);
+                *security_context = NULL;
+            }
+            return mic_status;
+        }
     }
     if (spnego_mode &&
         (status == RIN_AUTH_PROVIDER_OK ||
@@ -1854,6 +1961,13 @@ static uint32_t provider_init_sec_context_ex(
         provider_context->owner = provider_operation_owner();
         provider_context->spnego = package_type == PAL_GSS_NEGOTIATE;
         spnego_mode = provider_context->spnego != 0u;
+        if (spnego_mode && !provider_spnego_store_default_mech_list(
+                               provider_context)) {
+            provider_zero(provider_context, sizeof(*provider_context));
+            free(provider_context);
+            *security_context = NULL;
+            return provider_unavailable(minor_status);
+        }
         created_context = 1;
     }
     if (spnego_mode && input_length != 0u) {
@@ -1869,6 +1983,16 @@ static uint32_t provider_init_sec_context_ex(
             return spnego_parse_status == 0
                 ? provider_defective_token(minor_status)
                 : provider_unavailable(minor_status);
+        }
+        if (spnego_input.mech_list_size != 0u &&
+            !provider_spnego_store_mech_list(provider_context,
+                                             &spnego_input)) {
+            if (created_context) {
+                provider_zero(provider_context, sizeof(*provider_context));
+                free(provider_context);
+                *security_context = NULL;
+            }
+            return provider_defective_token(minor_status);
         }
         mechanism_input = spnego_input.mechanism_token;
         mechanism_input_length = spnego_input.mechanism_token_size;
@@ -1900,6 +2024,34 @@ static uint32_t provider_init_sec_context_ex(
                                 1u, return_flags, minor_status);
     provider_zero(operation_input, operation_input_size);
     free(operation_input);
+    if (spnego_mode && spnego_input.has_mechanism_mic) {
+        uint32_t mic_status;
+        if (status != RIN_AUTH_PROVIDER_OK ||
+            provider_context->mech_list_size == 0u) {
+            mic_status = provider_unavailable(minor_status);
+        } else {
+            mic_status = provider_verify_mic(
+                context, minor_status, provider_context,
+                provider_context->mech_list,
+                (int32_t)provider_context->mech_list_size,
+                (uint8_t*)spnego_input.mechanism_mic,
+                (int32_t)spnego_input.mechanism_mic_size);
+        }
+        if (mic_status != RIN_AUTH_PROVIDER_OK) {
+            if (output->data != NULL) {
+                provider_zero(output->data, (size_t)output->length);
+                free(output->data);
+                output->data = NULL;
+                output->length = 0u;
+            }
+            if (created_context) {
+                provider_zero(provider_context, sizeof(*provider_context));
+                free(provider_context);
+                *security_context = NULL;
+            }
+            return mic_status;
+        }
+    }
     if (spnego_mode &&
         (status == RIN_AUTH_PROVIDER_OK ||
          status == RIN_AUTH_PROVIDER_CONTINUE_NEEDED ||
@@ -2003,6 +2155,16 @@ static uint32_t provider_accept_sec_context(
         }
     }
     provider_context->spnego = spnego_mode ? 1u : 0u;
+    if (spnego_mode && spnego_input.mech_list_size != 0u &&
+        !provider_spnego_store_mech_list(provider_context,
+                                         &spnego_input)) {
+        if (created_context) {
+            provider_zero(provider_context, sizeof(*provider_context));
+            free(provider_context);
+            *security_context = NULL;
+        }
+        return provider_defective_token(minor_status);
+    }
     if (provider_context->owner == NULL ||
         !provider_build_sec_context_input(
             PAL_GSS_KERBEROS, 0u, NULL, channel_binding,
@@ -2027,6 +2189,34 @@ static uint32_t provider_accept_sec_context(
                                 1u, return_flags, minor_status);
     provider_zero(operation_input, operation_input_size);
     free(operation_input);
+    if (spnego_mode && spnego_input.has_mechanism_mic) {
+        uint32_t mic_status;
+        if (status != RIN_AUTH_PROVIDER_OK ||
+            provider_context->mech_list_size == 0u) {
+            mic_status = provider_unavailable(minor_status);
+        } else {
+            mic_status = provider_verify_mic(
+                context, minor_status, provider_context,
+                provider_context->mech_list,
+                (int32_t)provider_context->mech_list_size,
+                (uint8_t*)spnego_input.mechanism_mic,
+                (int32_t)spnego_input.mechanism_mic_size);
+        }
+        if (mic_status != RIN_AUTH_PROVIDER_OK) {
+            if (output->data != NULL) {
+                provider_zero(output->data, (size_t)output->length);
+                free(output->data);
+                output->data = NULL;
+                output->length = 0u;
+            }
+            if (created_context) {
+                provider_zero(provider_context, sizeof(*provider_context));
+                free(provider_context);
+                *security_context = NULL;
+            }
+            return mic_status;
+        }
+    }
     if (spnego_mode &&
         (status == RIN_AUTH_PROVIDER_OK ||
          status == RIN_AUTH_PROVIDER_CONTINUE_NEEDED ||

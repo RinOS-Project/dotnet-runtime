@@ -399,6 +399,12 @@ if(HAVE_SYS_SDT_H)
     add_definitions(-DHAVE_SYS_SDT_H)
 endif()
 check_include_file(unistd.h    HAVE_UNISTD_H)
+if(CLR_CMAKE_TARGET_RINOS)
+    # CMake's try_compile checks do not inherit the standalone RinOS target
+    # include directories.  The header is part of the product libc, so retain
+    # the POSIX zlib path explicitly instead of generating a host-style zconf.
+    set(HAVE_UNISTD_H 1 CACHE INTERNAL "RinOS libc provides unistd.h" FORCE)
+endif()
 
 #
 # Check for Linux includes

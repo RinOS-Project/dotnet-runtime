@@ -568,6 +568,23 @@ static int provider_name_valid(const RinOsKerberosProviderName* name)
            name->size <= RIN_KERBEROS_PROVIDER_MAX_TARGET_NAME_SIZE;
 }
 
+static int provider_operation_valid(uint16_t operation)
+{
+    switch (operation) {
+        case RIN_KERBEROS_OPERATION_INIT_SEC_CONTEXT:
+        case RIN_KERBEROS_OPERATION_ACCEPT_SEC_CONTEXT:
+        case RIN_KERBEROS_OPERATION_DELETE_SEC_CONTEXT:
+        case RIN_KERBEROS_OPERATION_WRAP:
+        case RIN_KERBEROS_OPERATION_UNWRAP:
+        case RIN_KERBEROS_OPERATION_GET_MIC:
+        case RIN_KERBEROS_OPERATION_VERIFY_MIC:
+        case RIN_KERBEROS_OPERATION_GET_PEER_PRINCIPAL:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
 static int provider_credential_valid(
     const RinOsKerberosProviderCredential* credential, uint32_t kind)
 {
@@ -894,6 +911,7 @@ static uint32_t provider_operation(
         !provider_credential_valid(credential, request->credential_kind) ||
         request->struct_size != sizeof(*request) ||
         request->version != RIN_KERBEROS_OPERATION_ABI_VERSION ||
+        !provider_operation_valid(request->operation) ||
         request->input_size != input_size ||
         request->context_token_size >
             RIN_KERBEROS_OPERATION_MAX_CONTEXT_TOKEN_SIZE ||

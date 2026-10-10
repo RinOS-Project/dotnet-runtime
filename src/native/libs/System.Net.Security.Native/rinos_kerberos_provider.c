@@ -11,7 +11,7 @@
  * credential or a successful token when the service-side RFC implementation
  * is absent. The linked service path now covers initiator AP-REQ/AP-REP and
  * bounded RFC 4121 per-message operations; it still rejects every RFC feature
- * it has not implemented.
+ * it has not implemented, including SPNEGO mechListMIC verification.
  */
 
 #include "pal_gssapi.h"
@@ -438,6 +438,13 @@ static int provider_spnego_parse_init(const uint8_t* bytes, uint32_t size,
             output->mechanism_token = token_bytes;
             output->mechanism_token_size = token_size;
             output->has_mechanism_token = 1u;
+        } else if (tag == 0xa3u) {
+            /* mechListMIC authenticates the negotiated mechanism list.  The
+             * RinOS owner ABI does not yet expose the SPNEGO MIC exchange;
+             * silently skipping this field would accept an unauthenticated
+             * mechanism selection, so report a valid-but-unsupported path
+             * before any Kerberos owner IPC. */
+            return 2;
         } else if (!provider_der_skip_value(&sequence)) {
             return 0;
         }
@@ -492,6 +499,10 @@ static int provider_spnego_parse_response(const uint8_t* bytes, uint32_t size,
             output->mechanism_token = token_bytes;
             output->mechanism_token_size = token_size;
             output->has_mechanism_token = 1u;
+        } else if (tag == 0xa3u) {
+            /* See the NegTokenInit path above: do not consume a MIC field
+             * without verifying it against the advertised mechanism list. */
+            return 2;
         } else if (!provider_der_skip_value(&sequence)) {
             return 0;
         }

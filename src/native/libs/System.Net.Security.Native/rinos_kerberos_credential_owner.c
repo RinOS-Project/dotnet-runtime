@@ -61,8 +61,15 @@ static void owner_unlock(RinOsKerberosOwnerContext* context)
 
 static int owner_valid(const RinOsKerberosOwnerContext* context)
 {
-    return context != NULL && context->magic == RINOS_KERBEROS_OWNER_MAGIC &&
-           context->initialized == RINOS_KERBEROS_OWNER_INITIALIZED &&
+    /* The initializer publishes the ABI fields with a release store.  Load
+     * the completion state with acquire before reading those fields; a
+     * volatile read here is not a C11 synchronization operation and would
+     * leave concurrent capability discovery with a data race. */
+    if (context == NULL ||
+        __atomic_load_n(&context->initialized, __ATOMIC_ACQUIRE) !=
+            RINOS_KERBEROS_OWNER_INITIALIZED)
+        return 0;
+    return context->magic == RINOS_KERBEROS_OWNER_MAGIC &&
            context->abi.struct_size == sizeof(context->abi) &&
            context->abi.version == RIN_KERBEROS_CREDENTIAL_OWNER_ABI_VERSION &&
            context->abi.context == (void*)context &&

@@ -349,7 +349,7 @@ namespace System.Net
                     isEncrypted = encrypt;
                     if (status != Interop.NetSecurityNative.Status.GSS_S_COMPLETE)
                     {
-                        return NegotiateAuthenticationStatusCode.GenericFailure;
+                        return GetErrorCode(new Interop.NetSecurityNative.GssApiException(status, minorStatus));
                     }
 
                     encryptedBuffer.Span.CopyTo(outputWriter.GetSpan(encryptedBuffer.Span.Length));
@@ -373,11 +373,7 @@ namespace System.Net
                     Interop.NetSecurityNative.Status status = Interop.NetSecurityNative.UnwrapBuffer(out minorStatus, _securityContext, out wasEncrypted, input, ref decryptedBuffer);
                     if (status != Interop.NetSecurityNative.Status.GSS_S_COMPLETE)
                     {
-                        return status switch
-                        {
-                            Interop.NetSecurityNative.Status.GSS_S_BAD_SIG => NegotiateAuthenticationStatusCode.MessageAltered,
-                            _ => NegotiateAuthenticationStatusCode.InvalidToken
-                        };
+                        return GetErrorCode(new Interop.NetSecurityNative.GssApiException(status, minorStatus));
                     }
 
                     decryptedBuffer.Span.CopyTo(outputWriter.GetSpan(decryptedBuffer.Span.Length));
@@ -403,11 +399,7 @@ namespace System.Net
                     {
                         unwrappedOffset = 0;
                         unwrappedLength = 0;
-                        return status switch
-                        {
-                            Interop.NetSecurityNative.Status.GSS_S_BAD_SIG => NegotiateAuthenticationStatusCode.MessageAltered,
-                            _ => NegotiateAuthenticationStatusCode.InvalidToken
-                        };
+                        return GetErrorCode(new Interop.NetSecurityNative.GssApiException(status, minorStatus));
                     }
 
                     decryptedBuffer.Span.CopyTo(input);

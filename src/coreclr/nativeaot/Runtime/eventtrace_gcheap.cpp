@@ -212,7 +212,7 @@ void ETW::GCLog::MovedReference(
     ptrdiff_t cbRelocDistance,
     size_t profilingContext,
     BOOL fCompacting,
-    BOOL /*fAllowProfApiNotification*/) // @TODO: unused param from newer implementation
+    BOOL fAllowProfApiNotification)
 {
     CONTRACTL
     {
@@ -233,6 +233,7 @@ void ETW::GCLog::MovedReference(
 
 #ifdef PROFILING_SUPPORTED
     // ProfAPI
+    if (fAllowProfApiNotification)
     {
         BEGIN_PROFILER_CALLBACK(CORProfilerTrackGC());
         g_profControlBlock.pProfInterface->MovedReference(pbMemBlockStart,
@@ -242,6 +243,8 @@ void ETW::GCLog::MovedReference(
             fCompacting);
         END_PROFILER_CALLBACK();
     }
+#else
+    UNREFERENCED_PARAMETER(fAllowProfApiNotification);
 #endif // PROFILING_SUPPORTED
 
     // ETW
@@ -339,7 +342,7 @@ void ETW::GCLog::BeginMovedReferences(size_t* pProfilingContext)
 
 // static
 void ETW::GCLog::EndMovedReferences(size_t profilingContext,
-    BOOL /*fAllowProfApiNotification*/) // @TODO: unused param from newer implementation
+    BOOL fAllowProfApiNotification)
 {
     CONTRACTL
     {
@@ -359,11 +362,14 @@ void ETW::GCLog::EndMovedReferences(size_t profilingContext,
 
 #ifdef PROFILING_SUPPORTED
     // ProfAPI
+    if (fAllowProfApiNotification)
     {
         BEGIN_PROFILER_CALLBACK(CORProfilerTrackGC());
         g_profControlBlock.pProfInterface->EndMovedReferences(&(pCtxForEtwAndProfapi->pctxProfAPI));
         END_PROFILER_CALLBACK();
     }
+#else
+    UNREFERENCED_PARAMETER(fAllowProfApiNotification);
 #endif //PROFILING_SUPPORTED
 
     // ETW

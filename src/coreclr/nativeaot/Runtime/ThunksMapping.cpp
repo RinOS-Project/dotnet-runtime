@@ -11,6 +11,7 @@
 #include "Pal.h"
 #include "rhassert.h"
 
+#include <limits.h>
 #include <string.h>
 
 
@@ -92,16 +93,26 @@ FCIMPL0(int, RhpGetNumThunkBlocksPerMapping)
 {
     ASSERT_MSG((THUNKS_MAP_SIZE % OS_PAGE_SIZE) == 0, "Thunks map size should be in multiples of pages");
 
-    return (int)(THUNKS_MAP_SIZE / OS_PAGE_SIZE);
+    if (OS_PAGE_SIZE == 0 || THUNKS_MAP_SIZE == 0 ||
+        THUNKS_MAP_SIZE % OS_PAGE_SIZE != 0)
+        return 0;
+
+    const size_t blockCount = THUNKS_MAP_SIZE / OS_PAGE_SIZE;
+    return blockCount > (size_t)INT_MAX ? 0 : (int)blockCount;
 }
 FCIMPLEND
 
 FCIMPL0(int, RhpGetNumThunksPerBlock)
 {
-    return (int)min(
-        OS_PAGE_SIZE / THUNK_SIZE,                              // Number of thunks that can fit in a page
-        (OS_PAGE_SIZE - POINTER_SIZE) / (POINTER_SIZE * 2)      // Number of pointer pairs, minus the jump stub cell, that can fit in a page
-    );
+    if (OS_PAGE_SIZE == 0 || POINTER_SIZE == 0 || THUNK_SIZE == 0 ||
+        OS_PAGE_SIZE < POINTER_SIZE || POINTER_SIZE > SIZE_MAX / 2)
+        return 0;
+
+    const size_t codeCapacity = OS_PAGE_SIZE / THUNK_SIZE;
+    const size_t dataCapacity =
+        (OS_PAGE_SIZE - POINTER_SIZE) / (POINTER_SIZE * 2);
+    const size_t thunkCount = min(codeCapacity, dataCapacity);
+    return thunkCount > (size_t)INT_MAX ? 0 : (int)thunkCount;
 }
 FCIMPLEND
 

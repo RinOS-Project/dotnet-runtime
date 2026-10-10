@@ -320,6 +320,7 @@ static int provider_kerberos_principal_name_valid(const uint8_t* bytes,
     const uint8_t* components_bytes;
     uint32_t field_size;
     uint32_t components_size;
+    uint32_t component_count = 0u;
     ProviderDerCursorV1 principal = {bytes, size, 0u};
     ProviderDerCursorV1 integer;
     ProviderDerCursorV1 components;
@@ -348,8 +349,13 @@ static int provider_kerberos_principal_name_valid(const uint8_t* bytes,
         if (!provider_der_read_tlv(&components, 0x1bu, &field_bytes,
                                    &field_size))
             return 0;
+        if (field_size == 0u) return 0;
+        ++component_count;
     }
-    return 1;
+    /* RFC 4120 PrincipalName carries a non-empty name-string.  An empty
+     * sequence is not a usable service/client principal and must not turn a
+     * malformed peer KRB-ERROR into a preserved protocol status. */
+    return component_count != 0u;
 }
 
 static int provider_kerberos_time_valid(const uint8_t* bytes,

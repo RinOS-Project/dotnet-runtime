@@ -1739,6 +1739,19 @@ static int append_pattern_text(char* dest, size_t capacity, size_t* length, cons
     return 1;
 }
 
+static int append_quoted_pattern_text(char* dest, size_t capacity,
+                                      size_t* length, const char* text,
+                                      size_t text_length)
+{
+    size_t index;
+    if (!append_pattern_text(dest, capacity, length, "'")) return 0;
+    for (index = 0u; index < text_length; ++index) {
+        if (!append_pattern_text(dest, capacity, length,
+                                 (char[]){text[index], '\0'})) return 0;
+    }
+    return append_pattern_text(dest, capacity, length, "'");
+}
+
 static int product_pattern(const char* source, size_t source_capacity,
                            int time_pattern, int month_day,
                            char* dest, size_t capacity)
@@ -1751,6 +1764,29 @@ static int product_pattern(const char* source, size_t source_capacity,
     while (i < source_length) {
         const char* replacement = NULL;
         size_t consumed = 1u;
+        if (source[i] == '\'') {
+            size_t literal_start = i + 1u;
+            size_t literal_end = literal_start;
+            while (literal_end < source_length) {
+                if (source[literal_end] != '\'') {
+                    ++literal_end;
+                    continue;
+                }
+                if (literal_end + 1u < source_length &&
+                    source[literal_end + 1u] == '\'') {
+                    literal_end += 2u;
+                    continue;
+                }
+                break;
+            }
+            if (literal_end >= source_length ||
+                !append_quoted_pattern_text(dest, capacity, &length,
+                                             source + literal_start,
+                                             literal_end - literal_start))
+                return 0;
+            i = literal_end + 1u;
+            continue;
+        }
         if (!time_pattern && i + 4u <= source_length && strncmp(source + i, "YYYY", 4u) == 0) {
             replacement = "yyyy";
             consumed = 4u;
@@ -1790,6 +1826,15 @@ static int product_pattern(const char* source, size_t source_capacity,
         if (replacement) {
             if (!append_pattern_text(dest, capacity, &length, replacement)) return 0;
             i += consumed;
+        } else if (!time_pattern && source[i] >= 'a' && source[i] <= 'z') {
+            size_t literal_end = i + 1u;
+            while (literal_end < source_length &&
+                   source[literal_end] >= 'a' && source[literal_end] <= 'z')
+                ++literal_end;
+            if (!append_quoted_pattern_text(dest, capacity, &length,
+                                             source + i, literal_end - i))
+                return 0;
+            i = literal_end;
         } else {
             char literal[2] = { source[i], '\0' };
             if (!append_pattern_text(dest, capacity, &length, literal)) return 0;

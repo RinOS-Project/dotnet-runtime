@@ -4,6 +4,17 @@ include(CheckCCompilerFlag)
 
 project(LibsNative C)
 
+if (CLR_CMAKE_TARGET_RINOS)
+    # System.Native and the other library shims are configured as a separate
+    # CMake project from CoreCLR.  Reapply the product target boundary here;
+    # the parent CoreCLR directory properties do not reach this standalone
+    # configure.  Without it Clang searches for the host C headers and the
+    # RinOS freestanding build fails before any shim source is compiled.
+    include_directories(SYSTEM ${RINOS_DOTNET_TARGET_INCLUDE_DIRS})
+    add_compile_definitions(${RINOS_DOTNET_TARGET_MACROS})
+    add_compile_options(${RINOS_DOTNET_C_FLAGS})
+endif()
+
 if ("${CMAKE_CURRENT_SOURCE_DIR}" STREQUAL "${CMAKE_SOURCE_DIR}")
     # This is our root CMakeList.txt, so we need to set up some global settings and include the minipal here.
     include(../../../eng/native/configurepaths.cmake)

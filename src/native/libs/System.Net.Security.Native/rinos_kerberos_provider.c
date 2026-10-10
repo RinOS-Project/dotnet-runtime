@@ -79,6 +79,7 @@ typedef struct RinOsKerberosProviderContext {
     uint32_t spnego;
     uint32_t spnego_response_seen;
     uint32_t spnego_mic_required;
+    uint32_t spnego_mic_sent;
     void* owner_credential;
     const RinKerberosOperationOwnerV1* owner;
     uint32_t mech_list_size;
@@ -1801,6 +1802,7 @@ static uint32_t provider_init_sec_context(
     uint32_t mechanism_input_length = input_length;
     int spnego_mode = 0;
     int spnego_parse_status;
+    int spnego_final_ack = 0;
     RinAuthProviderBufferV1 mic_output = {0};
     int generate_spnego_mic = 0;
     (void)context;
@@ -1862,8 +1864,7 @@ static uint32_t provider_init_sec_context(
     if (spnego_mode && input_length != 0u) {
         spnego_parse_status = provider_spnego_unwrap(
             input, input_length, &spnego_input);
-        if (spnego_parse_status != 1 ||
-            !spnego_input.has_mechanism_token) {
+        if (spnego_parse_status != 1) {
             if (created_context) {
                 provider_zero(provider_context, sizeof(*provider_context));
                 free(provider_context);
@@ -1873,30 +1874,67 @@ static uint32_t provider_init_sec_context(
                 ? provider_defective_token(minor_status)
                 : provider_unavailable(minor_status);
         }
-        if (spnego_input.has_neg_state && spnego_input.neg_state == 3u &&
-            provider_context->spnego_response_seen) {
-            if (created_context) {
-                provider_zero(provider_context, sizeof(*provider_context));
-                free(provider_context);
-                *security_context = NULL;
+        if (!spnego_input.has_mechanism_token) {
+            /* After the initiator has returned its MIC, RFC 4178 permits the
+             * target to finish with NegTokenResp.negState=accept-completed
+             * and no responseToken.  It carries no new mechanism input and
+             * must not be forwarded to the Kerberos owner as an empty GSS
+             * continuation. */
+            if (created_context || !provider_context->spnego_mic_required ||
+                !provider_context->spnego_mic_sent ||
+                spnego_input.has_mechanism_mic ||
+                (spnego_input.has_neg_state &&
+                 spnego_input.neg_state != 0u)) {
+                if (created_context) {
+                    provider_zero(provider_context, sizeof(*provider_context));
+                    free(provider_context);
+                    *security_context = NULL;
+                }
+                return provider_defective_token(minor_status);
             }
-            return provider_defective_token(minor_status);
-        }
-        provider_context->spnego_response_seen = 1u;
-        if (spnego_input.has_neg_state && spnego_input.neg_state == 3u)
-            provider_context->spnego_mic_required = 1u;
-        if (spnego_input.mech_list_size != 0u &&
-            !provider_spnego_store_mech_list(provider_context,
-                                             &spnego_input)) {
-            if (created_context) {
-                provider_zero(provider_context, sizeof(*provider_context));
-                free(provider_context);
-                *security_context = NULL;
+            provider_context->spnego_mic_required = 0u;
+            provider_context->spnego_mic_sent = 0u;
+            spnego_final_ack = 1;
+        } else {
+            if (spnego_input.has_neg_state && spnego_input.neg_state == 3u &&
+                provider_context->spnego_response_seen) {
+                if (created_context) {
+                    provider_zero(provider_context, sizeof(*provider_context));
+                    free(provider_context);
+                    *security_context = NULL;
+                }
+                return provider_defective_token(minor_status);
             }
-            return provider_defective_token(minor_status);
+            if (spnego_input.has_neg_state && spnego_input.neg_state == 3u &&
+                !spnego_input.has_mechanism_mic) {
+                if (created_context) {
+                    provider_zero(provider_context, sizeof(*provider_context));
+                    free(provider_context);
+                    *security_context = NULL;
+                }
+                return provider_defective_token(minor_status);
+            }
+            provider_context->spnego_response_seen = 1u;
+            if (spnego_input.has_neg_state && spnego_input.neg_state == 3u)
+                provider_context->spnego_mic_required = 1u;
+            if (spnego_input.mech_list_size != 0u &&
+                !provider_spnego_store_mech_list(provider_context,
+                                                 &spnego_input)) {
+                if (created_context) {
+                    provider_zero(provider_context, sizeof(*provider_context));
+                    free(provider_context);
+                    *security_context = NULL;
+                }
+                return provider_defective_token(minor_status);
+            }
+            mechanism_input = spnego_input.mechanism_token;
+            mechanism_input_length = spnego_input.mechanism_token_size;
         }
-        mechanism_input = spnego_input.mechanism_token;
-        mechanism_input_length = spnego_input.mechanism_token_size;
+        if (spnego_final_ack) {
+            *security_context = provider_context;
+            if (minor_status != NULL) *minor_status = 0u;
+            return RIN_AUTH_PROVIDER_OK;
+        }
     }
     /* PackageType.Negotiate selects the SPNEGO envelope, while the only
      * mechanism this provider can execute is the authenticated Kerberos
@@ -2010,6 +2048,8 @@ static uint32_t provider_init_sec_context(
         }
         return provider_unavailable(minor_status);
     }
+    if (generate_spnego_mic)
+        provider_context->spnego_mic_sent = 1u;
     if (mic_output.data != NULL) {
         provider_zero(mic_output.data, (size_t)mic_output.length);
         free(mic_output.data);
@@ -2054,6 +2094,7 @@ static uint32_t provider_init_sec_context_ex(
     uint32_t mechanism_input_length = input_length;
     int spnego_mode = 0;
     int spnego_parse_status;
+    int spnego_final_ack = 0;
     RinAuthProviderBufferV1 mic_output = {0};
     int generate_spnego_mic = 0;
     (void)context;
@@ -2116,8 +2157,7 @@ static uint32_t provider_init_sec_context_ex(
     if (spnego_mode && input_length != 0u) {
         spnego_parse_status = provider_spnego_unwrap(
             input, input_length, &spnego_input);
-        if (spnego_parse_status != 1 ||
-            !spnego_input.has_mechanism_token) {
+        if (spnego_parse_status != 1) {
             if (created_context) {
                 provider_zero(provider_context, sizeof(*provider_context));
                 free(provider_context);
@@ -2127,30 +2167,62 @@ static uint32_t provider_init_sec_context_ex(
                 ? provider_defective_token(minor_status)
                 : provider_unavailable(minor_status);
         }
-        if (spnego_input.has_neg_state && spnego_input.neg_state == 3u &&
-            provider_context->spnego_response_seen) {
-            if (created_context) {
-                provider_zero(provider_context, sizeof(*provider_context));
-                free(provider_context);
-                *security_context = NULL;
+        if (!spnego_input.has_mechanism_token) {
+            if (created_context || !provider_context->spnego_mic_required ||
+                !provider_context->spnego_mic_sent ||
+                spnego_input.has_mechanism_mic ||
+                (spnego_input.has_neg_state &&
+                 spnego_input.neg_state != 0u)) {
+                if (created_context) {
+                    provider_zero(provider_context, sizeof(*provider_context));
+                    free(provider_context);
+                    *security_context = NULL;
+                }
+                return provider_defective_token(minor_status);
             }
-            return provider_defective_token(minor_status);
-        }
-        provider_context->spnego_response_seen = 1u;
-        if (spnego_input.has_neg_state && spnego_input.neg_state == 3u)
-            provider_context->spnego_mic_required = 1u;
-        if (spnego_input.mech_list_size != 0u &&
-            !provider_spnego_store_mech_list(provider_context,
-                                             &spnego_input)) {
-            if (created_context) {
-                provider_zero(provider_context, sizeof(*provider_context));
-                free(provider_context);
-                *security_context = NULL;
+            provider_context->spnego_mic_required = 0u;
+            provider_context->spnego_mic_sent = 0u;
+            spnego_final_ack = 1;
+        } else {
+            if (spnego_input.has_neg_state && spnego_input.neg_state == 3u &&
+                provider_context->spnego_response_seen) {
+                if (created_context) {
+                    provider_zero(provider_context, sizeof(*provider_context));
+                    free(provider_context);
+                    *security_context = NULL;
+                }
+                return provider_defective_token(minor_status);
             }
-            return provider_defective_token(minor_status);
+            if (spnego_input.has_neg_state && spnego_input.neg_state == 3u &&
+                !spnego_input.has_mechanism_mic) {
+                if (created_context) {
+                    provider_zero(provider_context, sizeof(*provider_context));
+                    free(provider_context);
+                    *security_context = NULL;
+                }
+                return provider_defective_token(minor_status);
+            }
+            provider_context->spnego_response_seen = 1u;
+            if (spnego_input.has_neg_state && spnego_input.neg_state == 3u)
+                provider_context->spnego_mic_required = 1u;
+            if (spnego_input.mech_list_size != 0u &&
+                !provider_spnego_store_mech_list(provider_context,
+                                                 &spnego_input)) {
+                if (created_context) {
+                    provider_zero(provider_context, sizeof(*provider_context));
+                    free(provider_context);
+                    *security_context = NULL;
+                }
+                return provider_defective_token(minor_status);
+            }
+            mechanism_input = spnego_input.mechanism_token;
+            mechanism_input_length = spnego_input.mechanism_token_size;
         }
-        mechanism_input = spnego_input.mechanism_token;
-        mechanism_input_length = spnego_input.mechanism_token_size;
+        if (spnego_final_ack) {
+            *security_context = provider_context;
+            if (minor_status != NULL) *minor_status = 0u;
+            return RIN_AUTH_PROVIDER_OK;
+        }
     }
     mechanism = package_type == PAL_GSS_NEGOTIATE
                     ? PAL_GSS_KERBEROS
@@ -2256,6 +2328,8 @@ static uint32_t provider_init_sec_context_ex(
         }
         return provider_unavailable(minor_status);
     }
+    if (generate_spnego_mic)
+        provider_context->spnego_mic_sent = 1u;
     if (mic_output.data != NULL) {
         provider_zero(mic_output.data, (size_t)mic_output.length);
         free(mic_output.data);
@@ -2294,6 +2368,7 @@ static uint32_t provider_accept_sec_context(
     uint32_t mechanism_input_length = input_length;
     int spnego_mode = 0;
     int spnego_parse_status = 0;
+    int spnego_mic_only = 0;
     RinAuthProviderBufferV1 mic_output = {0};
     uint32_t spnego_neg_state = UINT32_MAX;
     int generate_spnego_mic = 0;
@@ -2336,10 +2411,29 @@ static uint32_t provider_accept_sec_context(
          (input[0] == 0x60u || input[0] == 0xa0u || input[0] == 0xa1u))) {
         spnego_parse_status = provider_spnego_unwrap(
             input, input_length, &spnego_input);
-        if (spnego_parse_status == 1 && spnego_input.has_mechanism_token) {
+        if (spnego_parse_status == 1) {
             spnego_mode = 1;
-            mechanism_input = spnego_input.mechanism_token;
-            mechanism_input_length = spnego_input.mechanism_token_size;
+            if (spnego_input.has_mechanism_token) {
+                mechanism_input = spnego_input.mechanism_token;
+                mechanism_input_length = spnego_input.mechanism_token_size;
+            } else if (!created_context &&
+                       provider_context->spnego_mic_required &&
+                       spnego_input.has_mechanism_mic) {
+                /* The initiator's final SPNEGO leg may contain only
+                 * mechListMIC.  Verify it against the retained initial
+                 * MechTypeList without passing an empty GSS continuation to
+                 * the Kerberos owner. */
+                spnego_mic_only = 1;
+                mechanism_input = NULL;
+                mechanism_input_length = 0u;
+            } else {
+                if (created_context) {
+                    provider_zero(provider_context, sizeof(*provider_context));
+                    free(provider_context);
+                    *security_context = NULL;
+                }
+                return provider_defective_token(minor_status);
+            }
         } else if (spnego_mode || input[0] == 0xa0u || input[0] == 0xa1u ||
                    !provider_gss_token_has_framing(input, input_length)) {
             if (created_context) {
@@ -2367,6 +2461,24 @@ static uint32_t provider_accept_sec_context(
         provider_context->spnego_mic_required &&
         !spnego_input.has_mechanism_mic) {
         return provider_defective_token(minor_status);
+    }
+    if (spnego_mic_only) {
+        uint32_t mic_status;
+        if (provider_context->mech_list_size == 0u) {
+            return provider_unavailable(minor_status);
+        }
+        mic_status = provider_verify_mic(
+            context, minor_status, provider_context,
+            provider_context->mech_list,
+            (int32_t)provider_context->mech_list_size,
+            (uint8_t*)spnego_input.mechanism_mic,
+            (int32_t)spnego_input.mechanism_mic_size);
+        if (mic_status != RIN_AUTH_PROVIDER_OK)
+            return mic_status;
+        provider_context->spnego_mic_required = 0u;
+        spnego_neg_state = 0u;
+        status = RIN_AUTH_PROVIDER_OK;
+        goto spnego_accept_output;
     }
     if (provider_context->owner == NULL ||
         !provider_build_sec_context_input(
@@ -2420,6 +2532,9 @@ static uint32_t provider_accept_sec_context(
             return mic_status;
         }
     }
+    if (spnego_mode && spnego_input.has_mechanism_mic &&
+        provider_context->spnego_mic_required)
+        provider_context->spnego_mic_required = 0u;
     if (spnego_mode && created_context &&
         (status == RIN_AUTH_PROVIDER_OK ||
          status == RIN_AUTH_PROVIDER_CONTINUE_NEEDED) &&
@@ -2455,6 +2570,7 @@ static uint32_t provider_accept_sec_context(
             generate_spnego_mic = 1;
         }
     }
+spnego_accept_output:
     if (spnego_mode &&
         (status == RIN_AUTH_PROVIDER_OK ||
          status == RIN_AUTH_PROVIDER_CONTINUE_NEEDED ||

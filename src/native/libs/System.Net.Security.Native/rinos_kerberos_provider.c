@@ -302,21 +302,6 @@ static int provider_der_read_wrapped_value(ProviderDerCursorV1* cursor,
            nested.offset == nested.size;
 }
 
-static int provider_der_skip_value(ProviderDerCursorV1* cursor)
-{
-    uint32_t header_size;
-    uint32_t value_size;
-
-    if (cursor == NULL || cursor->bytes == NULL ||
-        cursor->offset >= cursor->size ||
-        !provider_der_value_bounds(cursor->bytes + cursor->offset,
-                                   cursor->size - cursor->offset,
-                                   &header_size, &value_size))
-        return 0;
-    cursor->offset += header_size + value_size;
-    return 1;
-}
-
 static int provider_der_read_oid(ProviderDerCursorV1* cursor,
                                  const uint8_t* expected,
                                  uint32_t expected_size)
@@ -338,6 +323,26 @@ static int provider_der_read_wrapped_octet(
                                            value_out, value_size_out);
 }
 
+static int provider_der_read_wrapped_bit_string(
+    ProviderDerCursorV1* cursor, uint8_t wrapper_tag)
+{
+    const uint8_t* value;
+    uint32_t value_size;
+    uint8_t unused_bits;
+
+    if (!provider_der_read_wrapped_value(cursor, wrapper_tag, 0x03u,
+                                         &value, &value_size) ||
+        value_size == 0u)
+        return 0;
+    unused_bits = value[0];
+    if (unused_bits > 7u || (value_size == 1u && unused_bits != 0u))
+        return 0;
+    if (unused_bits != 0u &&
+        (value[value_size - 1u] & ((UINT8_C(1) << unused_bits) - 1u)) != 0u)
+        return 0;
+    return 1;
+}
+
 static int provider_der_read_wrapped_enumerated(
     ProviderDerCursorV1* cursor, uint8_t wrapper_tag, uint32_t* value_out)
 {
@@ -350,7 +355,9 @@ static int provider_der_read_wrapped_enumerated(
         !provider_der_read_wrapped_value(cursor, wrapper_tag, 0x0au,
                                          &value, &value_size) ||
         value_size == 0u || value_size > 4u ||
-        (value[0] & 0x80u) != 0u)
+        (value[0] & 0x80u) != 0u ||
+        (value_size > 1u && value[0] == 0u &&
+         (value[1] & 0x80u) == 0u))
         return 0;
     for (index = 0u; index < value_size; ++index)
         number = (number << 8u) | value[index];
@@ -392,6 +399,7 @@ static int provider_spnego_parse_init(const uint8_t* bytes, uint32_t size,
     ProviderDerCursorV1 sequence;
     ProviderDerCursorV1 mechanism;
     ProviderDerCursorV1 list;
+    uint8_t last_tag = 0xa0u;
     int has_kerberos = 0;
 
     if (output == NULL ||
@@ -430,7 +438,14 @@ static int provider_spnego_parse_init(const uint8_t* bytes, uint32_t size,
     output->is_initial = 1u;
     while (sequence.offset < sequence.size) {
         const uint8_t tag = sequence.bytes[sequence.offset];
-        if (tag == 0xa2u) {
+        if (tag <= last_tag)
+            return 0;
+        last_tag = tag;
+        if (tag == 0xa1u) {
+            /* reqFlags is ContextFlags, not an arbitrary context value. */
+            if (!provider_der_read_wrapped_bit_string(&sequence, 0xa1u))
+                return 0;
+        } else if (tag == 0xa2u) {
             if (output->has_mechanism_token ||
                 !provider_der_read_wrapped_octet(
                     &sequence, 0xa2u, &token_bytes, &token_size))
@@ -444,8 +459,11 @@ static int provider_spnego_parse_init(const uint8_t* bytes, uint32_t size,
              * silently skipping this field would accept an unauthenticated
              * mechanism selection, so report a valid-but-unsupported path
              * before any Kerberos owner IPC. */
+            if (!provider_der_read_wrapped_octet(&sequence, 0xa3u,
+                                                 &token_bytes, &token_size))
+                return 0;
             return 2;
-        } else if (!provider_der_skip_value(&sequence)) {
+        } else {
             return 0;
         }
     }
@@ -462,6 +480,7 @@ static int provider_spnego_parse_response(const uint8_t* bytes, uint32_t size,
     uint32_t state = 0u;
     int have_state = 0;
     int have_mechanism = 0;
+    uint8_t last_tag = 0x9fu;
     ProviderDerCursorV1 outer = {bytes, size, 0u};
     ProviderDerCursorV1 sequence;
 
@@ -475,6 +494,9 @@ static int provider_spnego_parse_response(const uint8_t* bytes, uint32_t size,
     memset(output, 0, sizeof(*output));
     while (sequence.offset < sequence.size) {
         const uint8_t tag = sequence.bytes[sequence.offset];
+        if (tag <= last_tag)
+            return 0;
+        last_tag = tag;
         if (tag == 0xa0u) {
             if (have_state ||
                 !provider_der_read_wrapped_enumerated(&sequence, 0xa0u,
@@ -502,8 +524,11 @@ static int provider_spnego_parse_response(const uint8_t* bytes, uint32_t size,
         } else if (tag == 0xa3u) {
             /* See the NegTokenInit path above: do not consume a MIC field
              * without verifying it against the advertised mechanism list. */
+            if (!provider_der_read_wrapped_octet(&sequence, 0xa3u,
+                                                 &token_bytes, &token_size))
+                return 0;
             return 2;
-        } else if (!provider_der_skip_value(&sequence)) {
+        } else {
             return 0;
         }
     }

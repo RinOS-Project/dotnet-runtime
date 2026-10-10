@@ -1174,7 +1174,11 @@ check_symbol_exists(
     sys/sysmacros.h
     HAVE_MAKEDEV_SYSMACROSH)
 
-if (NOT HAVE_MAKEDEV_FILEH AND NOT HAVE_MAKEDEV_SYSMACROSH AND NOT CLR_CMAKE_TARGET_WASI AND NOT CLR_CMAKE_TARGET_HAIKU)
+if (NOT HAVE_MAKEDEV_FILEH AND NOT HAVE_MAKEDEV_SYSMACROSH AND NOT CLR_CMAKE_TARGET_WASI AND NOT CLR_CMAKE_TARGET_HAIKU AND NOT CLR_CMAKE_TARGET_RINOS)
+  # RinOS libc exposes makedev(), major(), and minor() from sys/types.h as
+  # part of its freestanding device-number contract.  The generic probe only
+  # checks the Linux/BSD header locations and would reject the valid RinOS
+  # layout before System.Native can include sys/types.h.
   message(FATAL_ERROR "Cannot find the makedev function on this platform.")
 endif()
 

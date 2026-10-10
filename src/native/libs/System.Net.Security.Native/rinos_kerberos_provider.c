@@ -479,7 +479,7 @@ static int provider_spnego_parse_response(const uint8_t* bytes, uint32_t size,
             if (have_state ||
                 !provider_der_read_wrapped_enumerated(&sequence, 0xa0u,
                                                       &state) ||
-                state > 3u)
+                state > 2u)
                 return 0;
             have_state = 1;
         } else if (tag == 0xa1u) {

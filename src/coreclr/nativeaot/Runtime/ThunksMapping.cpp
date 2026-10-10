@@ -38,6 +38,16 @@ static_assert((THUNK_SIZE % 4) == 0, "Thunk stubs size not aligned correctly. Th
 // 32 K or OS page
 #define THUNKS_MAP_SIZE (max((size_t)0x8000, OS_PAGE_SIZE))
 
+static bool IsValidThunkPageGeometry()
+{
+    const size_t pageSize = (size_t)OS_PAGE_SIZE;
+    const size_t mappingSize = (size_t)THUNKS_MAP_SIZE;
+
+    return pageSize != 0 && (pageSize & (pageSize - 1)) == 0 &&
+        mappingSize != 0 && mappingSize % pageSize == 0 &&
+        mappingSize <= (size_t)UINTPTR_MAX;
+}
+
 /*
  * Several thunk encodings place an immediate after a one- or three-byte
  * opcode.  Do not write those fields through a typed pointer: the x64 thunk
@@ -91,11 +101,10 @@ void EncodeThumb2Mov32(uint16_t * pCode, uint32_t value, uint8_t rDestination)
 
 FCIMPL0(int, RhpGetNumThunkBlocksPerMapping)
 {
-    ASSERT_MSG((THUNKS_MAP_SIZE % OS_PAGE_SIZE) == 0, "Thunks map size should be in multiples of pages");
-
-    if (OS_PAGE_SIZE == 0 || THUNKS_MAP_SIZE == 0 ||
-        THUNKS_MAP_SIZE % OS_PAGE_SIZE != 0)
+    if (!IsValidThunkPageGeometry())
         return 0;
+
+    ASSERT_MSG((THUNKS_MAP_SIZE % OS_PAGE_SIZE) == 0, "Thunks map size should be in multiples of pages");
 
     const size_t blockCount = THUNKS_MAP_SIZE / OS_PAGE_SIZE;
     return blockCount > (size_t)INT_MAX ? 0 : (int)blockCount;
@@ -104,7 +113,7 @@ FCIMPLEND
 
 FCIMPL0(int, RhpGetNumThunksPerBlock)
 {
-    if (OS_PAGE_SIZE == 0 || POINTER_SIZE == 0 || THUNK_SIZE == 0 ||
+    if (!IsValidThunkPageGeometry() || POINTER_SIZE == 0 || THUNK_SIZE == 0 ||
         OS_PAGE_SIZE < POINTER_SIZE || POINTER_SIZE > SIZE_MAX / 2)
         return 0;
 
@@ -127,7 +136,7 @@ FCIMPLEND
 
 FCIMPL1(void*, RhpGetThunkDataBlockAddress, void* pThunkStubAddress)
 {
-    if (pThunkStubAddress == NULL)
+    if (pThunkStubAddress == NULL || !IsValidThunkPageGeometry())
     {
         return NULL;
     }
@@ -145,7 +154,7 @@ FCIMPLEND
 
 FCIMPL1(void*, RhpGetThunkStubsBlockAddress, void* pThunkDataAddress)
 {
-    if (pThunkDataAddress == NULL)
+    if (pThunkDataAddress == NULL || !IsValidThunkPageGeometry())
     {
         return NULL;
     }
@@ -165,6 +174,8 @@ FCIMPL0(int, RhpGetThunkBlockSize)
 {
     // The managed thunk pool consumes this through an int ABI.  Do not let a
     // provider page size wrap before the caller validates the geometry.
+    if (!IsValidThunkPageGeometry())
+        return 0;
     return (size_t)OS_PAGE_SIZE > (size_t)INT_MAX ? 0 : (int)OS_PAGE_SIZE;
 }
 FCIMPLEND
@@ -176,6 +187,9 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         return E_INVALIDARG;
     }
     *ppThunksSection = NULL;
+
+    if (!IsValidThunkPageGeometry())
+        return E_FAIL;
 
     size_t thunksMapSize = THUNKS_MAP_SIZE;
     if (thunksMapSize == 0 || thunksMapSize > SIZE_MAX / 2)

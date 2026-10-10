@@ -43,6 +43,13 @@
            PE/DLL ABI while supplying RinOS target headers and definitions. -->
       <_CMakeArgs Include="$(CMakeArgs)" />
       <_CoreClrBuildArg Include="@(_CMakeArgs->'-cmakeargs &quot;%(Identity)&quot;')" />
+      <!-- Keep RinOS packaging options as independent cmakeargs.  CMakeArgs is
+           a single MSBuild property and loses inner quoting when forwarded
+           through build.cmd; combining these options would make the toolchain
+           path consume the following -D values. -->
+      <_CoreClrBuildArg Condition="'$(RinOSNativePackaging)' == 'true'" Include="-cmakeargs &quot;-DRINOS_ENABLE_NATIVE_PACKAGING=ON&quot;" />
+      <_CoreClrBuildArg Condition="'$(RinOSNativePackaging)' == 'true'" Include="-cmakeargs &quot;-DRINOS_SIGN_KEY=$(RinOSSignKey)&quot;" />
+      <_CoreClrBuildArg Condition="'$(RinOSNativePackaging)' == 'true'" Include="-cmakeargs &quot;-DRINOS_PUBLIC_KEY=$(RinOSPublicKey)&quot;" />
       <_CoreClrBuildArg Condition="'$(TargetArchitecture)' != ''" Include="-$(TargetArchitecture)" />
       <_CoreClrBuildArg Include="-$(Configuration.ToLower())" />
       <_CoreClrBuildArg Include="$(CppCompilerAndLinker)" />

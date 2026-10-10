@@ -84,6 +84,7 @@
       <BuildArgs Condition="'$(CrossBuild)' == 'true'">$(BuildArgs) -cross</BuildArgs>
       <BuildArgs Condition="'$(CppCompilerAndLinker)' != ''">$(BuildArgs) $(CppCompilerAndLinker)</BuildArgs>
       <BuildArgs Condition="'$(CMakeArgs)' != ''">$(BuildArgs) -cmakeargs "$(CMakeArgs)"</BuildArgs>
+      <BuildArgs Condition="'$(RinOSNativePackaging)' == 'true'">$(BuildArgs) -cmakeargs "-DRINOS_ENABLE_NATIVE_PACKAGING=ON" -cmakeargs "-DRINOS_SIGN_KEY=$(RinOSSignKey)" -cmakeargs "-DRINOS_PUBLIC_KEY=$(RinOSPublicKey)"</BuildArgs>
       <BuildArgs Condition="'$(Ninja)' == 'true'">$(BuildArgs) -ninja</BuildArgs>
       <BuildArgs Condition="'$(Ninja)' != 'true'">$(BuildArgs) -ninja false</BuildArgs>
       <BuildArgs>$(BuildArgs) -runtimeflavor $(RuntimeFlavor)</BuildArgs>
@@ -173,6 +174,7 @@
       <BuildArgs>$(BuildArgs) runtimeconfiguration $(RuntimeConfiguration)</BuildArgs>
       <BuildArgs Condition="'$(EnableNativeSanitizers)' != ''">$(BuildArgs) -fsanitize=$(EnableNativeSanitizers)</BuildArgs>
       <BuildArgs Condition="'$(CMakeArgs)' != ''">$(BuildArgs) -cmakeargs "$(CMakeArgs)"</BuildArgs>
+      <BuildArgs Condition="'$(RinOSNativePackaging)' == 'true'">$(BuildArgs) -cmakeargs "-DRINOS_ENABLE_NATIVE_PACKAGING=ON" -cmakeargs "-DRINOS_SIGN_KEY=$(RinOSSignKey)" -cmakeargs "-DRINOS_PUBLIC_KEY=$(RinOSPublicKey)"</BuildArgs>
       <BuildArgs>$(BuildArgs) -cmakeargs "-DCLR_CMAKE_BUILD_HOST_TESTS=$(BuildNativeHostTests.ToUpper())"</BuildArgs>
       <BuildArgs>$(BuildArgs) -cmakeargs "-DCLR_CMAKE_BUILD_HOST_PRODUCT=$(BuildNativeHostProduct.ToUpper())"</BuildArgs>
     </PropertyGroup>

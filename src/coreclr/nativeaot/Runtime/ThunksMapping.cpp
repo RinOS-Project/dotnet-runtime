@@ -293,6 +293,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         {
             const size_t thunkDataOffset = (size_t)i * POINTER_SIZE * 2;
             uint8_t* pCurrentThunkAddress = pThunkBlockAddress + (size_t)THUNK_SIZE * i;
+            uint8_t* const thunkEndAddress = pCurrentThunkAddress + THUNK_SIZE;
             uint8_t* pCurrentDataAddress = pDataBlockAddress + thunkDataOffset;
 
 #ifdef TARGET_AMD64
@@ -426,6 +427,15 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
             UNREFERENCED_PARAMETER(pCurrentThunkAddress);
             PORTABILITY_ASSERT("RhAllocateThunksMapping");
 #endif
+
+            // Keep each generated entry inside its declared slot.  This is a
+            // runtime guard against an architecture encoder drifting past
+            // THUNK_SIZE and corrupting the adjacent thunk/data page.
+            if (pCurrentThunkAddress != thunkEndAddress)
+            {
+                PalVirtualFree(pNewMapping, mappingSize);
+                return E_FAIL;
+            }
         }
     }
 

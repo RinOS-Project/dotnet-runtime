@@ -72,7 +72,7 @@ typedef struct RinOsKerberosProviderContext {
     uint64_t generation;
     uint32_t token_size;
     uint32_t state;
-    uint32_t reserved;
+    uint32_t spnego;
     void* owner_credential;
     const RinKerberosOperationOwnerV1* owner;
     uint8_t token[RIN_KERBEROS_OPERATION_MAX_CONTEXT_TOKEN_SIZE];
@@ -300,6 +300,502 @@ static int provider_der_read_wrapped_value(ProviderDerCursorV1* cursor,
     return provider_der_read_tlv(&nested, inner_tag, value_out,
                                  value_size_out) &&
            nested.offset == nested.size;
+}
+
+static int provider_der_skip_value(ProviderDerCursorV1* cursor)
+{
+    uint32_t header_size;
+    uint32_t value_size;
+
+    if (cursor == NULL || cursor->bytes == NULL ||
+        cursor->offset >= cursor->size ||
+        !provider_der_value_bounds(cursor->bytes + cursor->offset,
+                                   cursor->size - cursor->offset,
+                                   &header_size, &value_size))
+        return 0;
+    cursor->offset += header_size + value_size;
+    return 1;
+}
+
+static int provider_der_read_oid(ProviderDerCursorV1* cursor,
+                                 const uint8_t* expected,
+                                 uint32_t expected_size)
+{
+    const uint8_t* value;
+    uint32_t value_size;
+
+    return expected != NULL &&
+           provider_der_read_tlv(cursor, 0x06u, &value, &value_size) &&
+           value_size == expected_size &&
+           memcmp(value, expected, expected_size) == 0;
+}
+
+static int provider_der_read_wrapped_octet(
+    ProviderDerCursorV1* cursor, uint8_t wrapper_tag,
+    const uint8_t** value_out, uint32_t* value_size_out)
+{
+    return provider_der_read_wrapped_value(cursor, wrapper_tag, 0x04u,
+                                           value_out, value_size_out);
+}
+
+static int provider_der_read_wrapped_enumerated(
+    ProviderDerCursorV1* cursor, uint8_t wrapper_tag, uint32_t* value_out)
+{
+    const uint8_t* value;
+    uint32_t value_size;
+    uint32_t number = 0u;
+    uint32_t index;
+
+    if (value_out == NULL ||
+        !provider_der_read_wrapped_value(cursor, wrapper_tag, 0x0au,
+                                         &value, &value_size) ||
+        value_size == 0u || value_size > 4u ||
+        (value[0] & 0x80u) != 0u)
+        return 0;
+    for (index = 0u; index < value_size; ++index)
+        number = (number << 8u) | value[index];
+    *value_out = number;
+    return 1;
+}
+
+typedef struct ProviderSpnegoInputV1 {
+    const uint8_t* mechanism_token;
+    uint32_t mechanism_token_size;
+    uint32_t is_initial;
+    uint32_t has_mechanism_token;
+    uint32_t rejected;
+} ProviderSpnegoInputV1;
+
+static const uint8_t g_provider_spnego_oid[] = {
+    0x2bu, 0x06u, 0x01u, 0x05u, 0x05u, 0x02u,
+};
+
+static const uint8_t g_provider_kerberos_oid[] = {
+    0x2au, 0x86u, 0x48u, 0x86u, 0xf7u,
+    0x12u, 0x01u, 0x02u, 0x02u,
+};
+
+/* Return values: 0 malformed, 1 usable Kerberos token, 2 valid SPNEGO with
+ * no supported Kerberos mechanism, 3 valid peer reject. */
+static int provider_spnego_parse_init(const uint8_t* bytes, uint32_t size,
+                                      ProviderSpnegoInputV1* output)
+{
+    const uint8_t* sequence_bytes;
+    const uint8_t* mechanism_bytes;
+    const uint8_t* list_bytes;
+    const uint8_t* token_bytes;
+    uint32_t sequence_size;
+    uint32_t mechanism_size;
+    uint32_t list_size;
+    uint32_t token_size;
+    ProviderDerCursorV1 outer = {bytes, size, 0u};
+    ProviderDerCursorV1 sequence;
+    ProviderDerCursorV1 mechanism;
+    ProviderDerCursorV1 list;
+    int has_kerberos = 0;
+
+    if (output == NULL ||
+        !provider_der_read_tlv(&outer, 0x30u, &sequence_bytes,
+                               &sequence_size) || outer.offset != outer.size)
+        return 0;
+    sequence.bytes = sequence_bytes;
+    sequence.size = sequence_size;
+    sequence.offset = 0u;
+    if (!provider_der_read_tlv(&sequence, 0xa0u, &mechanism_bytes,
+                               &mechanism_size) || sequence.offset > sequence.size)
+        return 0;
+    mechanism.bytes = mechanism_bytes;
+    mechanism.size = mechanism_size;
+    mechanism.offset = 0u;
+    if (!provider_der_read_tlv(&mechanism, 0x30u, &list_bytes, &list_size) ||
+        mechanism.offset != mechanism.size)
+        return 0;
+    list.bytes = list_bytes;
+    list.size = list_size;
+    list.offset = 0u;
+    while (list.offset < list.size) {
+        const uint8_t* oid;
+        uint32_t oid_size;
+        if (!provider_der_read_tlv(&list, 0x06u, &oid, &oid_size))
+            return 0;
+        if (oid_size == sizeof(g_provider_kerberos_oid) &&
+            memcmp(oid, g_provider_kerberos_oid,
+                   sizeof(g_provider_kerberos_oid)) == 0)
+            has_kerberos = 1;
+    }
+    if (!has_kerberos)
+        return 2;
+
+    memset(output, 0, sizeof(*output));
+    output->is_initial = 1u;
+    while (sequence.offset < sequence.size) {
+        const uint8_t tag = sequence.bytes[sequence.offset];
+        if (tag == 0xa2u) {
+            if (output->has_mechanism_token ||
+                !provider_der_read_wrapped_octet(
+                    &sequence, 0xa2u, &token_bytes, &token_size))
+                return 0;
+            output->mechanism_token = token_bytes;
+            output->mechanism_token_size = token_size;
+            output->has_mechanism_token = 1u;
+        } else if (!provider_der_skip_value(&sequence)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int provider_spnego_parse_response(const uint8_t* bytes, uint32_t size,
+                                          ProviderSpnegoInputV1* output)
+{
+    const uint8_t* sequence_bytes;
+    const uint8_t* token_bytes;
+    uint32_t sequence_size;
+    uint32_t token_size;
+    uint32_t state = 0u;
+    int have_state = 0;
+    int have_mechanism = 0;
+    ProviderDerCursorV1 outer = {bytes, size, 0u};
+    ProviderDerCursorV1 sequence;
+
+    if (output == NULL ||
+        !provider_der_read_tlv(&outer, 0x30u, &sequence_bytes,
+                               &sequence_size) || outer.offset != outer.size)
+        return 0;
+    sequence.bytes = sequence_bytes;
+    sequence.size = sequence_size;
+    sequence.offset = 0u;
+    memset(output, 0, sizeof(*output));
+    while (sequence.offset < sequence.size) {
+        const uint8_t tag = sequence.bytes[sequence.offset];
+        if (tag == 0xa0u) {
+            if (have_state ||
+                !provider_der_read_wrapped_enumerated(&sequence, 0xa0u,
+                                                      &state) ||
+                state > 3u)
+                return 0;
+            have_state = 1;
+        } else if (tag == 0xa1u) {
+            if (have_mechanism || !provider_der_read_wrapped_value(
+                    &sequence, 0xa1u, 0x06u, &token_bytes, &token_size))
+                return 0;
+            if (token_size != sizeof(g_provider_kerberos_oid) ||
+                memcmp(token_bytes, g_provider_kerberos_oid,
+                       sizeof(g_provider_kerberos_oid)) != 0)
+                return 2;
+            have_mechanism = 1;
+        } else if (tag == 0xa2u) {
+            if (output->has_mechanism_token ||
+                !provider_der_read_wrapped_octet(
+                    &sequence, 0xa2u, &token_bytes, &token_size))
+                return 0;
+            output->mechanism_token = token_bytes;
+            output->mechanism_token_size = token_size;
+            output->has_mechanism_token = 1u;
+        } else if (!provider_der_skip_value(&sequence)) {
+            return 0;
+        }
+    }
+    output->rejected = have_state && state == 2u;
+    if (output->rejected)
+        return 3;
+    return 1;
+}
+
+static int provider_spnego_unwrap(const uint8_t* input, uint32_t input_size,
+                                  ProviderSpnegoInputV1* output)
+{
+    const uint8_t* application_bytes;
+    const uint8_t* negotiation_bytes;
+    uint32_t application_size;
+    uint32_t negotiation_size;
+    ProviderDerCursorV1 outer = {input, input_size, 0u};
+    ProviderDerCursorV1 application;
+
+    if (output == NULL || input == NULL || input_size == 0u)
+        return 0;
+    memset(output, 0, sizeof(*output));
+    if (input[0] == 0x60u) {
+        if (!provider_der_read_tlv(&outer, 0x60u, &application_bytes,
+                                   &application_size) || outer.offset != outer.size)
+            return 0;
+        application.bytes = application_bytes;
+        application.size = application_size;
+        application.offset = 0u;
+        if (!provider_der_read_oid(&application, g_provider_spnego_oid,
+                                   sizeof(g_provider_spnego_oid)) ||
+            !provider_der_read_tlv(&application, 0xa0u, &negotiation_bytes,
+                                   &negotiation_size) ||
+            application.offset != application.size)
+            return 0;
+        return provider_spnego_parse_init(negotiation_bytes,
+                                          negotiation_size, output);
+    }
+    if (input[0] == 0xa0u) {
+        if (!provider_der_read_tlv(&outer, 0xa0u, &negotiation_bytes,
+                                   &negotiation_size) || outer.offset != outer.size)
+            return 0;
+        return provider_spnego_parse_init(negotiation_bytes,
+                                          negotiation_size, output);
+    }
+    if (input[0] == 0xa1u) {
+        if (!provider_der_read_tlv(&outer, 0xa1u, &negotiation_bytes,
+                                   &negotiation_size) || outer.offset != outer.size)
+            return 0;
+        return provider_spnego_parse_response(negotiation_bytes,
+                                              negotiation_size, output);
+    }
+    return 0;
+}
+
+static uint32_t provider_der_length_size(uint32_t value)
+{
+    if (value < 0x80u) return 1u;
+    if (value <= 0xffu) return 2u;
+    if (value <= 0xffffu) return 3u;
+    if (value <= 0xffffffu) return 4u;
+    return 5u;
+}
+
+static uint64_t provider_der_tlv_size(uint32_t value_size)
+{
+    return UINT64_C(1) + provider_der_length_size(value_size) + value_size;
+}
+
+static int provider_der_write_header(uint8_t* output, uint32_t capacity,
+                                     uint32_t* offset, uint8_t tag,
+                                     uint32_t value_size)
+{
+    uint32_t length_size;
+    uint32_t index;
+    uint32_t value = value_size;
+    if (output == NULL || offset == NULL || *offset > capacity)
+        return 0;
+    length_size = provider_der_length_size(value_size);
+    if (capacity - *offset < 1u + length_size) return 0;
+    output[(*offset)++] = tag;
+    if (length_size == 1u) {
+        output[(*offset)++] = (uint8_t)value_size;
+        return 1;
+    }
+    output[(*offset)++] = (uint8_t)(0x80u | (length_size - 1u));
+    for (index = length_size - 1u; index != 0u; --index)
+        output[(*offset)++] = (uint8_t)(value >> ((index - 1u) * 8u));
+    return 1;
+}
+
+static int provider_spnego_wrap_init(const uint8_t* token, uint32_t token_size,
+                                     uint8_t** output, uint32_t* output_size)
+{
+    const uint32_t oid_tlv_size =
+        (uint32_t)provider_der_tlv_size(sizeof(g_provider_kerberos_oid));
+    const uint32_t spnego_oid_tlv_size =
+        (uint32_t)provider_der_tlv_size(sizeof(g_provider_spnego_oid));
+    const uint32_t mechanism_list_content = oid_tlv_size;
+    const uint32_t mechanism_list_tlv =
+        (uint32_t)provider_der_tlv_size(mechanism_list_content);
+    const uint32_t mechanism_field =
+        (uint32_t)provider_der_tlv_size(mechanism_list_tlv);
+    const uint32_t token_tlv = token_size != 0u
+        ? (uint32_t)provider_der_tlv_size(token_size) : 0u;
+    const uint32_t token_field = token_tlv != 0u
+        ? (uint32_t)provider_der_tlv_size(token_tlv) : 0u;
+    const uint64_t init_sequence_content64 =
+        (uint64_t)mechanism_field + token_field;
+    const uint64_t init_sequence_tlv64 =
+        provider_der_tlv_size((uint32_t)init_sequence_content64);
+    const uint64_t negotiation_field64 =
+        provider_der_tlv_size((uint32_t)init_sequence_tlv64);
+    const uint64_t application_content64 =
+        spnego_oid_tlv_size + negotiation_field64;
+    const uint64_t total64 =
+        provider_der_tlv_size((uint32_t)application_content64);
+    uint8_t* bytes;
+    uint32_t total;
+    uint32_t offset = 0u;
+
+    (void)token;
+    if (output == NULL || output_size == NULL ||
+        token_size > RIN_AUTH_PROVIDER_MAX_TOKEN_SIZE ||
+        init_sequence_content64 > UINT32_MAX || init_sequence_tlv64 > UINT32_MAX ||
+        negotiation_field64 > UINT32_MAX || application_content64 > UINT32_MAX ||
+        total64 > RIN_AUTH_PROVIDER_MAX_TOKEN_SIZE)
+        return 0;
+    total = (uint32_t)total64;
+    bytes = (uint8_t*)calloc(1u, total);
+    if (bytes == NULL) return 0;
+    if (!provider_der_write_header(bytes, total, &offset, 0x60u,
+                                   (uint32_t)application_content64) ||
+        !provider_der_write_header(bytes, total, &offset, 0x06u,
+                                   sizeof(g_provider_spnego_oid))) {
+        free(bytes);
+        return 0;
+    }
+    memcpy(bytes + offset, g_provider_spnego_oid,
+           sizeof(g_provider_spnego_oid));
+    offset += sizeof(g_provider_spnego_oid);
+    if (!provider_der_write_header(bytes, total, &offset, 0xa0u,
+                                   (uint32_t)init_sequence_tlv64) ||
+        !provider_der_write_header(bytes, total, &offset, 0x30u,
+                                   (uint32_t)init_sequence_content64) ||
+        !provider_der_write_header(bytes, total, &offset, 0xa0u,
+                                   mechanism_list_tlv) ||
+        !provider_der_write_header(bytes, total, &offset, 0x30u,
+                                   mechanism_list_content) ||
+        !provider_der_write_header(bytes, total, &offset, 0x06u,
+                                   sizeof(g_provider_kerberos_oid))) {
+        provider_zero(bytes, total);
+        free(bytes);
+        return 0;
+    }
+    memcpy(bytes + offset, g_provider_kerberos_oid,
+           sizeof(g_provider_kerberos_oid));
+    offset += sizeof(g_provider_kerberos_oid);
+    if (token_tlv != 0u) {
+        if (!provider_der_write_header(bytes, total, &offset, 0xa2u,
+                                       token_tlv) ||
+            !provider_der_write_header(bytes, total, &offset, 0x04u,
+                                       token_size)) {
+            provider_zero(bytes, total);
+            free(bytes);
+            return 0;
+        }
+        memcpy(bytes + offset, token, token_size);
+        offset += token_size;
+    }
+    if (offset != total) {
+        provider_zero(bytes, total);
+        free(bytes);
+        return 0;
+    }
+    *output = bytes;
+    *output_size = total;
+    return 1;
+}
+
+static int provider_spnego_wrap_response(
+    const uint8_t* token, uint32_t token_size, uint32_t status,
+    uint32_t initiator, uint32_t include_mechanism,
+    uint8_t** output, uint32_t* output_size)
+{
+    const uint32_t token_tlv = token_size != 0u
+        ? (uint32_t)provider_der_tlv_size(token_size) : 0u;
+    const uint32_t token_field = token_tlv != 0u
+        ? (uint32_t)provider_der_tlv_size(token_tlv) : 0u;
+    const uint32_t mechanism_tlv =
+        (uint32_t)provider_der_tlv_size(sizeof(g_provider_kerberos_oid));
+    const uint32_t mechanism_field = include_mechanism
+        ? (uint32_t)provider_der_tlv_size(mechanism_tlv) : 0u;
+    const uint32_t state_field = initiator ? 0u :
+        (uint32_t)provider_der_tlv_size(3u);
+    const uint64_t sequence_content64 =
+        (uint64_t)state_field + mechanism_field + token_field;
+    const uint64_t sequence_tlv64 =
+        provider_der_tlv_size((uint32_t)sequence_content64);
+    const uint64_t total64 = provider_der_tlv_size((uint32_t)sequence_tlv64);
+    uint8_t* bytes;
+    uint32_t total;
+    uint32_t offset = 0u;
+    uint32_t state = status == RIN_AUTH_PROVIDER_OK ? 0u : 1u;
+
+    if (output == NULL || output_size == NULL || token_size > RIN_AUTH_PROVIDER_MAX_TOKEN_SIZE ||
+        sequence_content64 > UINT32_MAX || sequence_tlv64 > UINT32_MAX ||
+        total64 > RIN_AUTH_PROVIDER_MAX_TOKEN_SIZE)
+        return 0;
+    total = (uint32_t)total64;
+    bytes = (uint8_t*)calloc(1u, total);
+    if (bytes == NULL) return 0;
+    if (!provider_der_write_header(bytes, total, &offset, 0xa1u,
+                                   (uint32_t)sequence_tlv64) ||
+        !provider_der_write_header(bytes, total, &offset, 0x30u,
+                                   (uint32_t)sequence_content64)) {
+        free(bytes);
+        return 0;
+    }
+    if (!initiator &&
+        (!provider_der_write_header(bytes, total, &offset, 0xa0u, 3u) ||
+         !provider_der_write_header(bytes, total, &offset, 0x0au, 1u))) {
+        provider_zero(bytes, total);
+        free(bytes);
+        return 0;
+    }
+    if (!initiator) bytes[offset++] = (uint8_t)state;
+    if (include_mechanism &&
+        (!provider_der_write_header(bytes, total, &offset, 0xa1u,
+                                    mechanism_tlv) ||
+         !provider_der_write_header(bytes, total, &offset, 0x06u,
+                                    sizeof(g_provider_kerberos_oid)))) {
+        provider_zero(bytes, total);
+        free(bytes);
+        return 0;
+    }
+    if (include_mechanism) {
+        memcpy(bytes + offset, g_provider_kerberos_oid,
+               sizeof(g_provider_kerberos_oid));
+        offset += sizeof(g_provider_kerberos_oid);
+    }
+    if (token_tlv != 0u &&
+        (!provider_der_write_header(bytes, total, &offset, 0xa2u,
+                                    token_tlv) ||
+         !provider_der_write_header(bytes, total, &offset, 0x04u,
+                                    token_size))) {
+        provider_zero(bytes, total);
+        free(bytes);
+        return 0;
+    }
+    if (token_tlv != 0u) {
+        memcpy(bytes + offset, token, token_size);
+        offset += token_size;
+    }
+    if (offset != total) {
+        provider_zero(bytes, total);
+        free(bytes);
+        return 0;
+    }
+    *output = bytes;
+    *output_size = total;
+    return 1;
+}
+
+static int provider_spnego_replace_output(RinAuthProviderBufferV1* output,
+                                           uint32_t status,
+                                           uint32_t initial_message,
+                                           uint32_t initiator,
+                                           uint32_t include_mechanism)
+{
+    uint8_t* old_bytes;
+    uint64_t old_size;
+    uint8_t* wrapped = NULL;
+    uint32_t wrapped_size = 0u;
+    int ok;
+
+    if (output == NULL || output->length > RIN_AUTH_PROVIDER_MAX_TOKEN_SIZE ||
+        (output->length != 0u && output->data == NULL))
+        return 0;
+    old_bytes = output->data;
+    old_size = output->length;
+    ok = initial_message
+        ? provider_spnego_wrap_init(old_bytes, (uint32_t)old_size,
+                                    &wrapped, &wrapped_size)
+        : provider_spnego_wrap_response(
+            old_bytes, (uint32_t)old_size, status, initiator,
+            include_mechanism, &wrapped, &wrapped_size);
+    if (!ok) {
+        if (old_bytes != NULL) {
+            provider_zero(old_bytes, (size_t)old_size);
+            free(old_bytes);
+        }
+        output->data = NULL;
+        output->length = 0u;
+        return 0;
+    }
+    if (old_bytes != NULL) {
+        provider_zero(old_bytes, (size_t)old_size);
+        free(old_bytes);
+    }
+    output->data = wrapped;
+    output->length = wrapped_size;
+    return 1;
 }
 
 static int provider_der_integer32_valid(const uint8_t* bytes, uint32_t size)
@@ -1115,6 +1611,11 @@ static uint32_t provider_init_sec_context(
     int created_context = 0;
     uint32_t received_error_code = 0u;
     int received_error;
+    ProviderSpnegoInputV1 spnego_input = {0};
+    const uint8_t* mechanism_input = input;
+    uint32_t mechanism_input_length = input_length;
+    int spnego_mode = 0;
+    int spnego_parse_status;
     (void)context;
     if (output != NULL) {
         output->data = NULL;
@@ -1129,7 +1630,7 @@ static uint32_t provider_init_sec_context(
         !provider_credential_valid(credential,
                                    RIN_KERBEROS_OPERATION_CREDENTIAL_INITIATOR))
         return provider_unavailable(minor_status);
-    if (input_length != 0u) {
+    if (input_length != 0u && package_type != PAL_GSS_NEGOTIATE) {
         received_error = provider_gss_krb_error(
             input, input_length, &received_error_code);
         if (received_error < 0) return provider_defective_token(minor_status);
@@ -1148,6 +1649,7 @@ static uint32_t provider_init_sec_context(
             existing_context->owner_credential != credential->owner_credential)
             return provider_unavailable(minor_status);
         provider_context = existing_context;
+        spnego_mode = provider_context->spnego != 0u;
     } else {
         *security_context = NULL;
         provider_context = (RinOsKerberosProviderContext*)calloc(
@@ -1159,20 +1661,38 @@ static uint32_t provider_init_sec_context(
         provider_context->state = RINOS_KERBEROS_CONTEXT_NEGOTIATING;
         provider_context->owner_credential = credential->owner_credential;
         provider_context->owner = provider_operation_owner();
+        provider_context->spnego = package_type == PAL_GSS_NEGOTIATE;
+        spnego_mode = provider_context->spnego != 0u;
         created_context = 1;
     }
-    /* RinOS currently has a Kerberos-only provider.  The managed Unix PAL
-     * enters credential acquisition through InitiateCredSpNego and may retain
-     * PackageType.Negotiate for the first context call; normalize that
-     * selector to the Kerberos GSS mechanism instead of advertising an
-     * unimplemented SPNEGO exchange. */
+    if (spnego_mode && input_length != 0u) {
+        spnego_parse_status = provider_spnego_unwrap(
+            input, input_length, &spnego_input);
+        if (spnego_parse_status != 1 ||
+            !spnego_input.has_mechanism_token) {
+            if (created_context) {
+                provider_zero(provider_context, sizeof(*provider_context));
+                free(provider_context);
+                *security_context = NULL;
+            }
+            return spnego_parse_status == 0
+                ? provider_defective_token(minor_status)
+                : provider_unavailable(minor_status);
+        }
+        mechanism_input = spnego_input.mechanism_token;
+        mechanism_input_length = spnego_input.mechanism_token_size;
+    }
+    /* PackageType.Negotiate selects the SPNEGO envelope, while the only
+     * mechanism this provider can execute is the authenticated Kerberos
+     * operation owner.  Do not claim NTLM or silently treat SPNEGO bytes as
+     * Kerberos bytes. */
     mechanism = package_type == PAL_GSS_NEGOTIATE
                     ? PAL_GSS_KERBEROS
                     : package_type;
     if (provider_context->owner == NULL ||
         !provider_build_sec_context_input(
-            mechanism, requested_flags, name, NULL, 0u, input,
-            input_length, &operation_input, &operation_input_size)) {
+            mechanism, requested_flags, name, NULL, 0u, mechanism_input,
+            mechanism_input_length, &operation_input, &operation_input_size)) {
         if (operation_input != NULL) {
             provider_zero(operation_input, operation_input_size);
             free(operation_input);
@@ -1196,6 +1716,19 @@ static uint32_t provider_init_sec_context(
     if (operation_input != NULL) {
         provider_zero(operation_input, operation_input_size);
         free(operation_input);
+    }
+    if (spnego_mode &&
+        (status == RIN_AUTH_PROVIDER_OK ||
+         status == RIN_AUTH_PROVIDER_CONTINUE_NEEDED ||
+         status == RIN_AUTH_PROVIDER_KRB_ERROR) &&
+        !provider_spnego_replace_output(
+            output, status, created_context ? 1u : 0u, 1u, 0u)) {
+        if (created_context) {
+            provider_zero(provider_context, sizeof(*provider_context));
+            free(provider_context);
+            *security_context = NULL;
+        }
+        return provider_unavailable(minor_status);
     }
     if (status != RIN_AUTH_PROVIDER_OK &&
         status != RIN_AUTH_PROVIDER_CONTINUE_NEEDED) {
@@ -1232,6 +1765,11 @@ static uint32_t provider_init_sec_context_ex(
     int created_context = 0;
     uint32_t received_error_code = 0u;
     int received_error;
+    ProviderSpnegoInputV1 spnego_input = {0};
+    const uint8_t* mechanism_input = input;
+    uint32_t mechanism_input_length = input_length;
+    int spnego_mode = 0;
+    int spnego_parse_status;
     (void)context;
     if (output != NULL) {
         output->data = NULL;
@@ -1247,7 +1785,7 @@ static uint32_t provider_init_sec_context_ex(
         !provider_credential_valid(credential,
                                    RIN_KERBEROS_OPERATION_CREDENTIAL_INITIATOR))
         return provider_unavailable(minor_status);
-    if (input_length != 0u) {
+    if (input_length != 0u && package_type != PAL_GSS_NEGOTIATE) {
         received_error = provider_gss_krb_error(
             input, input_length, &received_error_code);
         if (received_error < 0) return provider_defective_token(minor_status);
@@ -1266,6 +1804,7 @@ static uint32_t provider_init_sec_context_ex(
             existing_context->owner_credential != credential->owner_credential)
             return provider_unavailable(minor_status);
         provider_context = existing_context;
+        spnego_mode = provider_context->spnego != 0u;
     } else {
         *security_context = NULL;
         provider_context = (RinOsKerberosProviderContext*)calloc(
@@ -1277,7 +1816,26 @@ static uint32_t provider_init_sec_context_ex(
         provider_context->state = RINOS_KERBEROS_CONTEXT_NEGOTIATING;
         provider_context->owner_credential = credential->owner_credential;
         provider_context->owner = provider_operation_owner();
+        provider_context->spnego = package_type == PAL_GSS_NEGOTIATE;
+        spnego_mode = provider_context->spnego != 0u;
         created_context = 1;
+    }
+    if (spnego_mode && input_length != 0u) {
+        spnego_parse_status = provider_spnego_unwrap(
+            input, input_length, &spnego_input);
+        if (spnego_parse_status != 1 ||
+            !spnego_input.has_mechanism_token) {
+            if (created_context) {
+                provider_zero(provider_context, sizeof(*provider_context));
+                free(provider_context);
+                *security_context = NULL;
+            }
+            return spnego_parse_status == 0
+                ? provider_defective_token(minor_status)
+                : provider_unavailable(minor_status);
+        }
+        mechanism_input = spnego_input.mechanism_token;
+        mechanism_input_length = spnego_input.mechanism_token_size;
     }
     mechanism = package_type == PAL_GSS_NEGOTIATE
                     ? PAL_GSS_KERBEROS
@@ -1285,7 +1843,8 @@ static uint32_t provider_init_sec_context_ex(
     if (provider_context->owner == NULL ||
         !provider_build_sec_context_input(
             mechanism, requested_flags, name, channel_binding,
-            (uint32_t)channel_binding_size, input, input_length,
+            (uint32_t)channel_binding_size, mechanism_input,
+            mechanism_input_length,
             &operation_input, &operation_input_size)) {
         if (created_context) {
             provider_zero(provider_context, sizeof(*provider_context));
@@ -1305,6 +1864,19 @@ static uint32_t provider_init_sec_context_ex(
                                 1u, return_flags, minor_status);
     provider_zero(operation_input, operation_input_size);
     free(operation_input);
+    if (spnego_mode &&
+        (status == RIN_AUTH_PROVIDER_OK ||
+         status == RIN_AUTH_PROVIDER_CONTINUE_NEEDED ||
+         status == RIN_AUTH_PROVIDER_KRB_ERROR) &&
+        !provider_spnego_replace_output(
+            output, status, created_context ? 1u : 0u, 1u, 0u)) {
+        if (created_context) {
+            provider_zero(provider_context, sizeof(*provider_context));
+            free(provider_context);
+            *security_context = NULL;
+        }
+        return provider_unavailable(minor_status);
+    }
     if (status != RIN_AUTH_PROVIDER_OK &&
         status != RIN_AUTH_PROVIDER_CONTINUE_NEEDED) {
         if (created_context) {
@@ -1334,6 +1906,11 @@ static uint32_t provider_accept_sec_context(
     RinKerberosOperationRequestV1 request = {0};
     uint32_t status;
     int created_context = 0;
+    ProviderSpnegoInputV1 spnego_input = {0};
+    const uint8_t* mechanism_input = input;
+    uint32_t mechanism_input_length = input_length;
+    int spnego_mode = 0;
+    int spnego_parse_status = 0;
     (void)context;
     if (output != NULL) {
         output->data = NULL;
@@ -1354,6 +1931,7 @@ static uint32_t provider_accept_sec_context(
             existing_context->owner_credential != credential->owner_credential)
             return provider_unavailable(minor_status);
         provider_context = existing_context;
+        spnego_mode = provider_context->spnego != 0u;
     } else {
         *security_context = NULL;
         provider_context = (RinOsKerberosProviderContext*)calloc(
@@ -1367,10 +1945,33 @@ static uint32_t provider_accept_sec_context(
         provider_context->owner = provider_operation_owner();
         created_context = 1;
     }
+    if (spnego_mode ||
+        (input_length != 0u &&
+         (input[0] == 0x60u || input[0] == 0xa0u || input[0] == 0xa1u))) {
+        spnego_parse_status = provider_spnego_unwrap(
+            input, input_length, &spnego_input);
+        if (spnego_parse_status == 1 && spnego_input.has_mechanism_token) {
+            spnego_mode = 1;
+            mechanism_input = spnego_input.mechanism_token;
+            mechanism_input_length = spnego_input.mechanism_token_size;
+        } else if (spnego_mode || input[0] == 0xa0u || input[0] == 0xa1u ||
+                   !provider_gss_token_has_framing(input, input_length)) {
+            if (created_context) {
+                provider_zero(provider_context, sizeof(*provider_context));
+                free(provider_context);
+                *security_context = NULL;
+            }
+            return spnego_parse_status == 2 || spnego_parse_status == 3
+                ? provider_unavailable(minor_status)
+                : provider_defective_token(minor_status);
+        }
+    }
+    provider_context->spnego = spnego_mode ? 1u : 0u;
     if (provider_context->owner == NULL ||
         !provider_build_sec_context_input(
             PAL_GSS_KERBEROS, 0u, NULL, channel_binding,
-            (uint32_t)channel_binding_size, input, input_length,
+            (uint32_t)channel_binding_size, mechanism_input,
+            mechanism_input_length,
             &operation_input, &operation_input_size)) {
         if (created_context) {
             provider_zero(provider_context, sizeof(*provider_context));
@@ -1390,6 +1991,20 @@ static uint32_t provider_accept_sec_context(
                                 1u, return_flags, minor_status);
     provider_zero(operation_input, operation_input_size);
     free(operation_input);
+    if (spnego_mode &&
+        (status == RIN_AUTH_PROVIDER_OK ||
+         status == RIN_AUTH_PROVIDER_CONTINUE_NEEDED ||
+         status == RIN_AUTH_PROVIDER_KRB_ERROR) &&
+        !provider_spnego_replace_output(
+            output, status, created_context ? 0u : 0u, 0u,
+            created_context ? 1u : 0u)) {
+        if (created_context) {
+            provider_zero(provider_context, sizeof(*provider_context));
+            free(provider_context);
+            *security_context = NULL;
+        }
+        return provider_unavailable(minor_status);
+    }
     if (status != RIN_AUTH_PROVIDER_OK &&
         status != RIN_AUTH_PROVIDER_CONTINUE_NEEDED) {
         if (created_context) {

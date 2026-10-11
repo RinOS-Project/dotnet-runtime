@@ -63,8 +63,9 @@ done
 cmake_extra_defines=
 if [[ "$CROSSCOMPILE" == "1" ]]; then
     platform="$(uname -s | tr '[:upper:]' '[:lower:]')"
-    # OSX doesn't use rootfs
-    if ! [[ -n "$ROOTFS_DIR" || "$platform" == "darwin" ]]; then
+    # RinOS supplies its own self-contained CMake toolchain and has no Linux
+    # sysroot. Other cross targets require a rootfs except on Darwin.
+    if ! [[ -n "${ROOTFS_DIR:-}" || "$platform" == "darwin" || "$target_os" == "rinos" ]]; then
         echo "ROOTFS_DIR not set for crosscompile"
         exit 1
     fi
@@ -74,7 +75,11 @@ if [[ "$CROSSCOMPILE" == "1" ]]; then
 
     cmake_extra_defines="$cmake_extra_defines -C $scriptroot/tryrun.cmake"
 
-    if [[ "$platform" == "darwin" ]]; then
+    if [[ "$target_os" == "rinos" ]]; then
+        # Keep the product toolchain supplied through CMake arguments. The
+        # generic cross toolchain assumes a Linux sysroot and would override it.
+        :
+    elif [[ "$platform" == "darwin" ]]; then
         cmake_extra_defines="$cmake_extra_defines -DCMAKE_SYSTEM_NAME=Darwin"
     else
         cmake_extra_defines="$cmake_extra_defines -DCMAKE_TOOLCHAIN_FILE=$scriptroot/../common/cross/toolchain.cmake"

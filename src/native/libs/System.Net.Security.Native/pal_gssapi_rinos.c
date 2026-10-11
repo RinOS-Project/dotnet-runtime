@@ -568,11 +568,14 @@ static uint32_t rinos_gss_release_provider_handle(
 
     status = release(provider->context, minorStatus, input);
 
-    /* Provider callbacks receive the address so they can release their
-     * opaque object. The PAL owns the ABI-visible pointer lifetime: clear it
-     * even when the provider reports an error or forgets to consume it, so a
-     * failed cleanup can never be retried through a stale handle. */
-    *input = NULL;
+    /* A provider may retain its opaque object after a transient cleanup
+     * failure. The owner contract makes that state retryable; dropping the
+     * PAL handle here would leak both the wrapper and the authenticated
+     * session capability. Preserve a live handle only on failure. A
+     * successful callback, or a failure that consumed the object, always
+     * clears the ABI-visible slot. */
+    if (status == RIN_AUTH_PROVIDER_OK || *input == NULL)
+        *input = NULL;
     return rinos_gss_map_provider_status(status);
 }
 

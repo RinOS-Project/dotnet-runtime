@@ -12,6 +12,8 @@
 
 #include "NativeContext.h"
 
+#include <string.h>
+
 #ifdef __APPLE__
 
 #ifdef HOST_ARM64
@@ -696,6 +698,15 @@
 // Convert Unix native context to PAL_LIMITED_CONTEXT
 void NativeContextToPalContext(const void* context, PAL_LIMITED_CONTEXT* palContext)
 {
+#if defined(HOST_WASM)
+    // WASM has no native register snapshot.  Do not leave the PAL context
+    // indeterminate when a caller probes this unsupported boundary; a zeroed
+    // context keeps downstream exception/unwind code on its fail-closed path.
+    (void)context;
+    if (palContext != nullptr)
+        memset(palContext, 0, sizeof(*palContext));
+    return;
+#endif
     ucontext_t *nativeContext = (ucontext_t*)context;
 #define ASSIGN_REG(regNative, regPal) palContext->regPal = MCREG_##regNative(MCONTEXT_FROM_NATIVE(nativeContext));
     ASSIGN_CONTROL_REGS

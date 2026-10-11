@@ -320,6 +320,16 @@ if ($vs) {
     if ($rinosRoslynToolPath) {
       $env:CscToolPath=$rinosRoslynToolPath
       $env:CscToolExe='csc.exe'
+
+      # Environment variables are not guaranteed to become MSBuild properties
+      # when the outer invocation supplies a global property set.  Forward the
+      # initialized SDK compiler through the same remaining-arguments path as
+      # the other build properties so every Csc task uses csc.exe directly and
+      # cannot fall back to the host's dotnet.exe/csc.dll compiler-server path.
+      $properties = @($properties) + @(
+        "/p:CscToolPath=$rinosRoslynToolPath",
+        "/p:CscToolExe=csc.exe"
+      )
     }
   }
 

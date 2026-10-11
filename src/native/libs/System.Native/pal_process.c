@@ -200,7 +200,7 @@ static int SetGroups(uint32_t* userGroups, int32_t userGroupsLength, uint32_t* p
                      (errno == EINVAL && userGroupsLength > NGROUPS_MAX)))
     {
 #if defined(TARGET_RINOS)
-        int processGroupsLength = getgroups(platformGroupsLength, (gid_t*)processGroups);
+        int processGroupsLength = getgroups(userGroupsLength, (gid_t*)processGroups);
 #else
         int processGroupsLength = getgroups(userGroupsLength, processGroups);
 #endif

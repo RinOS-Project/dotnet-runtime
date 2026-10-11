@@ -13,6 +13,12 @@
 #include <sys/types.h>
 #include <grp.h>
 #include <pwd.h>
+#if defined(TARGET_RINOS)
+#include <limits.h>
+
+c_static_assert(sizeof(uid_t) == sizeof(uint32_t));
+c_static_assert(sizeof(gid_t) == sizeof(uint32_t));
+#endif
 
 // Linux c-libraries (glibc, musl) provide a thread-safe getgrouplist.
 // OSX man page mentions explicitly the implementation is not thread safe,
@@ -44,10 +50,17 @@ static int32_t ConvertNativePasswdToPalPasswd(int error, struct passwd* nativePw
 
     // 0 returned with non-null result (guaranteed to be set to pwd arg) -> success
     assert(result == nativePwd);
+#if defined(TARGET_RINOS)
+    if (nativePwd->pw_uid < 0 || nativePwd->pw_gid < 0)
+    {
+        memset(pwd, 0, sizeof(Passwd));
+        return EINVAL;
+    }
+#endif
     pwd->Name = nativePwd->pw_name;
     pwd->Password = nativePwd->pw_passwd;
-    pwd->UserId = nativePwd->pw_uid;
-    pwd->GroupId = nativePwd->pw_gid;
+    pwd->UserId = (uint32_t)nativePwd->pw_uid;
+    pwd->GroupId = (uint32_t)nativePwd->pw_gid;
     pwd->UserInfo = nativePwd->pw_gecos;
     pwd->HomeDirectory = nativePwd->pw_dir;
     pwd->Shell = nativePwd->pw_shell;
@@ -62,11 +75,19 @@ int32_t SystemNative_GetPwUidR(uint32_t uid, Passwd* pwd, char* buf, int32_t buf
 
     if (buflen < 0)
         return EINVAL;
+#if defined(TARGET_RINOS)
+    if (uid > (uint32_t)INT_MAX)
+        return EINVAL;
+#endif
 
     struct passwd nativePwd;
     struct passwd* result;
     int error;
+#if defined(TARGET_RINOS)
+    while ((error = getpwuid_r((uid_t)uid, &nativePwd, buf, Int32ToSizeT(buflen), &result)) == EINTR);
+#else
     while ((error = getpwuid_r(uid, &nativePwd, buf, Int32ToSizeT(buflen), &result)) == EINTR);
+#endif
 
     return ConvertNativePasswdToPalPasswd(error, &nativePwd, result, pwd);
 }
@@ -90,19 +111,35 @@ int32_t SystemNative_GetPwNamR(const char* name, Passwd* pwd, char* buf, int32_t
 
 uint32_t SystemNative_GetEUid(void)
 {
+#if defined(TARGET_RINOS)
+    uid_t euid = geteuid();
+    assert(euid >= 0);
+    return (uint32_t)euid;
+#else
     return geteuid();
+#endif
 }
 
 uint32_t SystemNative_GetEGid(void)
 {
+#if defined(TARGET_RINOS)
+    gid_t egid = getegid();
+    assert(egid >= 0);
+    return (uint32_t)egid;
+#else
     return getegid();
+#endif
 }
 
 int32_t SystemNative_SetEUid(uint32_t euid)
 {
 #if defined(TARGET_RINOS)
-    // RinOS maps the PAL operation to its versioned effective-credential ABI.
-    return seteuid(euid);
+    if (euid > (uint32_t)INT_MAX)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+    return seteuid((uid_t)euid);
 #else
     return seteuid(euid);
 #endif
@@ -186,6 +223,14 @@ int32_t SystemNative_GetGroupList(const char* name, uint32_t group, uint32_t* gr
     assert(groups != NULL);
     assert(ngroups != NULL);
     assert(*ngroups >= 0);
+#if defined(TARGET_RINOS)
+    if (group > (uint32_t)INT_MAX)
+    {
+        errno = EINVAL;
+        *ngroups = -1;
+        return -1;
+    }
+#endif
 
     // The man page of getgrouplist doesn't explicitly mention the use of errno on error.
     // glibc and musl implementation look like they return -1 for functions that fail with errno set.
@@ -211,9 +256,17 @@ int32_t SystemNative_GetGroupList(const char* name, uint32_t group, uint32_t* gr
         // On OSX groups are passed as a signed int.
         rv = getgrouplist(name, (int)group, (int*)groups, &groupsAvailable);
 #elif HAVE_GETGROUPLIST
+#if defined(TARGET_RINOS)
+        rv = getgrouplist(name, (gid_t)group, (gid_t*)groups, &groupsAvailable);
+#else
         rv = getgrouplist(name, group, groups, &groupsAvailable);
+#endif
+#else
+#if defined(TARGET_RINOS)
+        rv = pal_getgrouplist(name, (gid_t)group, (gid_t*)groups, &groupsAvailable);
 #else
         rv = pal_getgrouplist(name, group, groups, &groupsAvailable);
+#endif
 #endif
 
 #ifdef USE_GROUPLIST_LOCK
@@ -244,7 +297,11 @@ int32_t SystemNative_GetGroups(int32_t ngroups, uint32_t* groups)
     assert(ngroups >= 0);
     assert(groups != NULL);
 
+#if defined(TARGET_RINOS)
+    return getgroups(ngroups, (gid_t*)groups);
+#else
     return getgroups(ngroups, groups);
+#endif
 }
 
 #if !HAVE_GETGRGID_R
@@ -254,6 +311,13 @@ static pthread_mutex_t s_getgrgid_lock = PTHREAD_MUTEX_INITIALIZER;
 
 char* SystemNative_GetGroupName(uint32_t gid)
 {
+#if defined(TARGET_RINOS)
+    if (gid > (uint32_t)INT_MAX)
+    {
+        errno = EINVAL;
+        return NULL;
+    }
+#endif
 #if HAVE_GETGRGID_R
     size_t bufferLength = 512;
     while (1)
@@ -266,7 +330,11 @@ char* SystemNative_GetGroupName(uint32_t gid)
 
         struct group* result;
         struct group gr;
+#if defined(TARGET_RINOS)
+        if (getgrgid_r((gid_t)gid, &gr, buffer, bufferLength, &result) == 0)
+#else
         if (getgrgid_r(gid, &gr, buffer, bufferLength, &result) == 0)
+#endif
         {
             if (result == NULL)
             {
@@ -299,7 +367,11 @@ char* SystemNative_GetGroupName(uint32_t gid)
         return NULL;
     }
 
+#if defined(TARGET_RINOS)
+    struct group* result = getgrgid((gid_t)gid);
+#else
     struct group* result = getgrgid(gid);
+#endif
     if (result == NULL)
     {
         pthread_mutex_unlock(&s_getgrgid_lock);

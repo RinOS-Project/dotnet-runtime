@@ -147,7 +147,7 @@ initDistroRid()
 
     # Only pass ROOTFS_DIR if __DoCrossArchBuild is specified and the current platform is not an Apple platform (that doesn't use rootfs)
     if [[ $isCrossBuild == 1 && "$targetOs" != "osx" && "$targetOs" != "android" && "$targetOs" != "ios" && "$targetOs" != "iossimulator" && "$targetOs" != "tvos" && "$targetOs" != "tvossimulator" && "$targetOs" != "maccatalyst" ]]; then
-        passedRootfsDir=${ROOTFS_DIR}
+        passedRootfsDir=${ROOTFS_DIR:-}
     fi
     initDistroRidGlobal "${targetOs}" "${targetArch}" "${passedRootfsDir}"
 }

@@ -708,6 +708,8 @@ int32_t SystemNative_GetDomainName(uint8_t* name, int32_t nameLength)
     return 0;
 #else
     // GetDomainName is not supported on this platform.
+    (void)name;
+    (void)nameLength;
     errno = ENOTSUP;
     return -1;
 #endif
@@ -991,7 +993,7 @@ static void ConvertMessageHeaderToMsghdr(struct msghdr* header, const MessageHea
     // We avoid this for stream sockets by truncating msg_iovlen to IOV_MAX. This is ok since sendmsg is
     // not required to send all data and recvmsg can be called again to receive more.
     int iovlen = (int)messageHeader->IOVectorCount;
-    if (iovlen > IOV_MAX && IsStreamSocket(socket))
+    if (iovlen > (int)IOV_MAX && IsStreamSocket(socket))
     {
         iovlen = (int)IOV_MAX;
     }
@@ -1307,6 +1309,10 @@ int32_t SystemNative_SetIPv6MulticastOption(intptr_t socket, int32_t multicastOp
     {
         return Error_EFAULT;
     }
+    if (option->InterfaceIndex < 0)
+    {
+        return Error_EINVAL;
+    }
 
     int fd = ToFileDescriptor(socket);
 
@@ -1320,7 +1326,7 @@ int32_t SystemNative_SetIPv6MulticastOption(intptr_t socket, int32_t multicastOp
     memset(&opt, 0, sizeof(struct ipv6_mreq));
 
     opt.ipv6mr_interface =
-#if IPV6MR_INTERFACE_UNSIGNED
+#if IPV6MR_INTERFACE_UNSIGNED || defined(TARGET_RINOS)
         (unsigned int)option->InterfaceIndex;
 #else
         option->InterfaceIndex;
@@ -3010,6 +3016,8 @@ int32_t SystemNative_GetAtOutOfBandMark(intptr_t socket, int32_t* atMark)
     *atMark = (int32_t)result;
     return Error_SUCCESS;
 #else // SIOCATMARK
+    (void)socket;
+    (void)atMark;
     return Error_ENOTSUP;
 #endif // SIOCATMARK
 }

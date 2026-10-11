@@ -162,12 +162,36 @@ static int compare_groups(const void * a, const void * b)
 
 static int SetGroups(uint32_t* userGroups, int32_t userGroupsLength, uint32_t* processGroups)
 {
-#if defined(__linux__) || defined(TARGET_WASM)
+#if defined(TARGET_RINOS)
+    if (userGroupsLength < 0)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+    size_t platformGroupsLength = Int32ToSizeT(userGroupsLength);
+#elif defined(__linux__) || defined(TARGET_WASM)
     size_t platformGroupsLength = Int32ToSizeT(userGroupsLength);
 #else // BSD
     int platformGroupsLength = userGroupsLength;
 #endif
+#if defined(TARGET_RINOS)
+    c_static_assert(sizeof(gid_t) == sizeof(uint32_t));
+    // RinOS's uid_t/gid_t are signed 32-bit API types. Do not let an
+    // out-of-range PAL ID become a negative account ID at the syscall edge.
+    for (int32_t i = 0; i < userGroupsLength; ++i)
+    {
+        if (userGroups[i] > (uint32_t)INT_MAX)
+        {
+            errno = EINVAL;
+            return -1;
+        }
+    }
+#endif
+#if defined(TARGET_RINOS)
+    int rv = setgroups(platformGroupsLength, (const gid_t*)userGroups);
+#else
     int rv = setgroups(platformGroupsLength, userGroups);
+#endif
 
     // We fall back to using the current process' groups, if they are a subset of the user groups.
     // We do this to support a user setting UserName to himself but not having setgroups permissions.
@@ -175,7 +199,11 @@ static int SetGroups(uint32_t* userGroups, int32_t userGroupsLength, uint32_t* p
     if (rv == -1 && ((errno == EPERM) ||
                      (errno == EINVAL && userGroupsLength > NGROUPS_MAX)))
     {
+#if defined(TARGET_RINOS)
+        int processGroupsLength = getgroups(platformGroupsLength, (gid_t*)processGroups);
+#else
         int processGroupsLength = getgroups(userGroupsLength, processGroups);
+#endif
         if (processGroupsLength >= 0)
         {
             if (userGroupsLength == 0)
@@ -205,7 +233,11 @@ static int SetGroups(uint32_t* userGroups, int32_t userGroupsLength, uint32_t* p
     if (rv == -1 && (errno == EINVAL && userGroupsLength > NGROUPS_MAX))
     {
         platformGroupsLength = NGROUPS_MAX;
+#if defined(TARGET_RINOS)
+        rv = setgroups(platformGroupsLength, (const gid_t*)userGroups);
+#else
         rv = setgroups(platformGroupsLength, userGroups);
+#endif
     }
 
     return rv;
@@ -888,9 +920,15 @@ static int32_t ForkAndExecProcessInternal(
 
         if (setCredentials)
         {
+#if defined(TARGET_RINOS)
+            if (userId > (uint32_t)INT_MAX || groupId > (uint32_t)INT_MAX)
+            {
+                ExitChild(waitForChildToExecPipe[WRITE_END_OF_PIPE], EINVAL);
+            }
+#endif
             if (SetGroups(groups, groupsLength, getGroupsBuffer) == -1 ||
-                setgid(groupId) == -1 ||
-                setuid(userId) == -1)
+                setgid((gid_t)groupId) == -1 ||
+                setuid((uid_t)userId) == -1)
             {
                 ExitChild(waitForChildToExecPipe[WRITE_END_OF_PIPE], errno);
             }

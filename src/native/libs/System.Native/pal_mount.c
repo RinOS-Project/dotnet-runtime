@@ -25,7 +25,9 @@
 #include <mntent.h>
 #endif
 #include <sys/statvfs.h>
+#if HAVE_SYS_MNTENT_H || HAVE_MNTENT_H || defined(__HAIKU__)
 #define STRING_BUFFER_SIZE 8192
+#endif
 
 #ifdef __HAIKU__
 #include <dirent.h>

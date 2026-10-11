@@ -683,9 +683,9 @@
     MCREG_A1(nativeContext->uc_mcontext) = arg1Reg;
 
 #elif defined(HOST_WASM)
-    // RinOS has no executable WASM native-context or unwind ABI yet. Keep
-    // this source boundary explicit: a future WASM port must define the
-    // context layout and exception/unwind contract before enabling redirects.
+    // HOST_WASM does not expose a native register/unwind context to NativeAOT.
+    // Keep these assignments as an explicit no-op boundary until a provider
+    // defines the context layout and exception/unwind contract.
 #define ASSIGN_CONTROL_REGS
 #define ASSIGN_INTEGER_REGS
 #define ASSIGN_TWO_ARGUMENT_REGS

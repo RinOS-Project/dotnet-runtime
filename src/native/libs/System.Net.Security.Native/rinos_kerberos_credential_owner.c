@@ -298,6 +298,15 @@ static uint32_t owner_operation(
     if (generation != NULL) *generation = 0u;
     if (provider_result != NULL) *provider_result = 0u;
     if (return_flags != NULL) *return_flags = 0u;
+    /* These capacities originate at the runtime/provider boundary.  Do not
+     * use an advertised size as a wipe length until it is bounded by the
+     * versioned operation ABI; an invalid caller must not turn failure
+     * cleanup into an arbitrary write. */
+    if (output_capacity > RIN_KERBEROS_OPERATION_MAX_OUTPUT_SIZE ||
+        next_context_capacity > RIN_KERBEROS_OPERATION_MAX_CONTEXT_TOKEN_SIZE ||
+        (output_capacity != 0u && output == NULL) ||
+        (next_context_capacity != 0u && next_context_token == NULL))
+        return RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
     if (output != NULL && output_capacity != 0u)
         owner_zero(output, output_capacity);
     if (next_context_token != NULL && next_context_capacity != 0u)

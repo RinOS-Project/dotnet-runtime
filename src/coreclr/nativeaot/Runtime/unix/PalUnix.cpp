@@ -738,7 +738,10 @@ UInt32_BOOL PalAllocateThunksFromTemplate(HANDLE hTemplateModule, uint32_t templ
 
     if (!PalVirtualProtect(mapping, mappingSize, PAGE_READWRITE))
     {
-        (void)munmap(mapping, mappingSize);
+        // Release through the same PAL boundary used by every other thunk
+        // mapping failure.  A direct munmap here would bypass target-specific
+        // user-VA validation and the RinOS W^X/accounting contract.
+        PalVirtualFree(mapping, mappingSize);
         return UInt32_FALSE;
     }
 #endif

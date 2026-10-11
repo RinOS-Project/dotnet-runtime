@@ -609,9 +609,14 @@ function InitializeBuildTool() {
     # product path so the existing /nr:false and /m:1 policy remains the only
     # process coordination boundary.  Keep normal builds on the upstream
     # dotnet entrypoint.
-    $directMsbuildPath = Join-Path (Split-Path -Parent $dotnetPath) (GetExecutableFileName 'MSBuild')
+    # MSBuild.exe is hosted by the SDK version directory, not beside dotnet.exe.
+    # Resolve it from the selected SDK so this fallback is valid for both the
+    # checked-in product SDK and a locally installed SDK with the same global.json.
+    $sdkDirectory = Join-Path $dotnetRoot 'sdk'
+    $directMsbuildPath = Get-ChildItem -LiteralPath $sdkDirectory -Filter (GetExecutableFileName 'MSBuild') -File -Recurse -ErrorAction SilentlyContinue |
+      Select-Object -First 1 -ExpandProperty FullName
     if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1' -and
-        (Test-Path -LiteralPath $directMsbuildPath)) {
+        $directMsbuildPath -and (Test-Path -LiteralPath $directMsbuildPath)) {
       $buildTool = @{ Path = $directMsbuildPath; Command = '' }
     } else {
       $buildTool = @{ Path = $dotnetPath; Command = 'msbuild' }

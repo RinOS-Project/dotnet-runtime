@@ -3182,7 +3182,9 @@ static uint32_t provider_get_user(
             NULL, minor_status);
         if (status != RIN_AUTH_PROVIDER_OK || output->data == NULL ||
             output->length == 0u ||
-            output->length > RINOS_KERBEROS_MAX_PRINCIPAL_SIZE) {
+            output->length > RINOS_KERBEROS_MAX_PRINCIPAL_SIZE ||
+            !provider_escaped_principal_valid(
+                output->data, (uint32_t)output->length)) {
             if (output->data != NULL) {
                 provider_release_buffer(context, output->data, output->length);
                 output->data = NULL;

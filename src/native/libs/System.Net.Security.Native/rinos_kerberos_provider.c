@@ -38,18 +38,17 @@
  * provider diagnostics while preserving every non-negative Int32 code. */
 #define RINOS_KERBEROS_MINOR_PROTOCOL_ERROR UINT32_C(0x80000000)
 
-#if defined(__GNUC__) || defined(__clang__)
-#define RINOS_KERBEROS_WEAK __attribute__((weak))
-#else
-#define RINOS_KERBEROS_WEAK
-#endif
-
 #if defined(RINOS_KERBEROS_OWNER_LINKED)
 extern const RinKerberosCredentialOwnerV1*
 rin_kerberos_credential_owner_get_v1(void);
 extern const RinKerberosOperationOwnerV1*
 rin_kerberos_operation_owner_get_v1(void);
 #else
+#if defined(__GNUC__) || defined(__clang__)
+#define RINOS_KERBEROS_WEAK __attribute__((weak))
+#else
+#define RINOS_KERBEROS_WEAK
+#endif
 extern const RinKerberosCredentialOwnerV1*
 rin_kerberos_credential_owner_get_v1(void) RINOS_KERBEROS_WEAK;
 extern const RinKerberosOperationOwnerV1*
@@ -90,6 +89,10 @@ typedef struct RinOsKerberosProviderContext {
 static uint32_t provider_verify_mic(
     void* context, uint32_t* minor_status, void* security_context,
     uint8_t* input, int32_t input_length, uint8_t* token, int32_t token_length);
+static uint32_t provider_verify_mic_bytes(
+    void* context, uint32_t* minor_status, void* security_context,
+    const uint8_t* input, int32_t input_length, const uint8_t* token,
+    int32_t token_length);
 static uint32_t provider_get_mic(
     void* context, uint32_t* minor_status, void* security_context,
     uint8_t* input, int32_t input_length, RinAuthProviderBufferV1* output);
@@ -1977,11 +1980,11 @@ static uint32_t provider_init_sec_context(
             provider_context->mech_list_size == 0u) {
             mic_status = provider_unavailable(minor_status);
         } else {
-            mic_status = provider_verify_mic(
+            mic_status = provider_verify_mic_bytes(
                 context, minor_status, provider_context,
                 provider_context->mech_list,
                 (int32_t)provider_context->mech_list_size,
-                (uint8_t*)spnego_input.mechanism_mic,
+                spnego_input.mechanism_mic,
                 (int32_t)spnego_input.mechanism_mic_size);
         }
         if (mic_status != RIN_AUTH_PROVIDER_OK) {
@@ -2257,11 +2260,11 @@ static uint32_t provider_init_sec_context_ex(
             provider_context->mech_list_size == 0u) {
             mic_status = provider_unavailable(minor_status);
         } else {
-            mic_status = provider_verify_mic(
+            mic_status = provider_verify_mic_bytes(
                 context, minor_status, provider_context,
                 provider_context->mech_list,
                 (int32_t)provider_context->mech_list_size,
-                (uint8_t*)spnego_input.mechanism_mic,
+                spnego_input.mechanism_mic,
                 (int32_t)spnego_input.mechanism_mic_size);
         }
         if (mic_status != RIN_AUTH_PROVIDER_OK) {
@@ -2467,11 +2470,11 @@ static uint32_t provider_accept_sec_context(
         if (provider_context->mech_list_size == 0u) {
             return provider_unavailable(minor_status);
         }
-        mic_status = provider_verify_mic(
+        mic_status = provider_verify_mic_bytes(
             context, minor_status, provider_context,
             provider_context->mech_list,
             (int32_t)provider_context->mech_list_size,
-            (uint8_t*)spnego_input.mechanism_mic,
+            spnego_input.mechanism_mic,
             (int32_t)spnego_input.mechanism_mic_size);
         if (mic_status != RIN_AUTH_PROVIDER_OK)
             return mic_status;
@@ -2510,11 +2513,11 @@ static uint32_t provider_accept_sec_context(
             provider_context->mech_list_size == 0u) {
             mic_status = provider_unavailable(minor_status);
         } else {
-            mic_status = provider_verify_mic(
+            mic_status = provider_verify_mic_bytes(
                 context, minor_status, provider_context,
                 provider_context->mech_list,
                 (int32_t)provider_context->mech_list_size,
-                (uint8_t*)spnego_input.mechanism_mic,
+                spnego_input.mechanism_mic,
                 (int32_t)spnego_input.mechanism_mic_size);
         }
         if (mic_status != RIN_AUTH_PROVIDER_OK) {
@@ -2764,9 +2767,10 @@ static uint32_t provider_get_mic(
     return status;
 }
 
-static uint32_t provider_verify_mic(
+static uint32_t provider_verify_mic_bytes(
     void* context, uint32_t* minor_status, void* security_context,
-    uint8_t* input, int32_t input_length, uint8_t* token, int32_t token_length)
+    const uint8_t* input, int32_t input_length, const uint8_t* token,
+    int32_t token_length)
 {
     RinOsKerberosProviderContext* provider_context =
         (RinOsKerberosProviderContext*)security_context;
@@ -2776,6 +2780,8 @@ static uint32_t provider_verify_mic(
     uint8_t* envelope;
     uint32_t total;
     uint32_t status;
+    size_t input_size;
+    size_t token_size;
     (void)context;
     if (!provider_context_valid(provider_context) ||
         provider_context->state != RINOS_KERBEROS_CONTEXT_ESTABLISHED ||
@@ -2790,6 +2796,8 @@ static uint32_t provider_verify_mic(
         (uint32_t)token_length > RIN_KERBEROS_OPERATION_MAX_INPUT_SIZE -
             sizeof(header) - (uint32_t)input_length)
         return provider_unavailable(minor_status);
+    input_size = (size_t)(uint32_t)input_length;
+    token_size = (size_t)(uint32_t)token_length;
     total = (uint32_t)sizeof(header) + (uint32_t)input_length +
             (uint32_t)token_length;
     envelope = (uint8_t*)calloc(1u, total);
@@ -2801,9 +2809,10 @@ static uint32_t provider_verify_mic(
     header.second_size = (uint32_t)token_length;
     header.flags = 0u;
     memcpy(envelope, &header, sizeof(header));
-    if (input_length != 0) memcpy(envelope + sizeof(header), input, input_length);
+    if (input_size != 0u)
+        memcpy(envelope + sizeof(header), input, input_size);
     if (token_length != 0)
-        memcpy(envelope + sizeof(header) + input_length, token, token_length);
+        memcpy(envelope + sizeof(header) + input_size, token, token_size);
     credential.magic = RINOS_KERBEROS_CREDENTIAL_MAGIC;
     credential.kind = provider_context->kind;
     credential.owner_credential = provider_context->owner_credential;
@@ -2826,6 +2835,14 @@ static uint32_t provider_verify_mic(
     if (status == RIN_AUTH_PROVIDER_OK && minor_status != NULL)
         *minor_status = 0u;
     return status;
+}
+
+static uint32_t provider_verify_mic(
+    void* context, uint32_t* minor_status, void* security_context,
+    uint8_t* input, int32_t input_length, uint8_t* token, int32_t token_length)
+{
+    return provider_verify_mic_bytes(context, minor_status, security_context,
+                                     input, input_length, token, token_length);
 }
 
 static void provider_release_buffer(void* context, void* buffer,

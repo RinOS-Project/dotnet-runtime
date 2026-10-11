@@ -72,12 +72,12 @@ static int owner_valid(const RinOsKerberosOwnerContext* context)
     return context->magic == RINOS_KERBEROS_OWNER_MAGIC &&
            context->abi.struct_size == sizeof(context->abi) &&
            context->abi.version == RIN_KERBEROS_CREDENTIAL_OWNER_ABI_VERSION &&
-           context->abi.context == (void*)context &&
+           context->abi.context == (const void*)context &&
            context->operation_abi.struct_size ==
                sizeof(context->operation_abi) &&
            context->operation_abi.version ==
                RIN_KERBEROS_OPERATION_OWNER_ABI_VERSION &&
-           context->operation_abi.context == (void*)context;
+           context->operation_abi.context == (const void*)context;
 }
 
 static void owner_minor(uint32_t* minor_status, uint32_t value)

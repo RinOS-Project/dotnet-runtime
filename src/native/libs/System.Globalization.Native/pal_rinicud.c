@@ -2036,7 +2036,7 @@ static rin_icu_handle_t collator_handle_for_options(SortHandle* handle, int32_t 
     return service_handle;
 }
 
-int32_t GlobalizationNative_GetSortHandle(const char* locale, SortHandle** out_handle)
+ResultCode GlobalizationNative_GetSortHandle(const char* locale, SortHandle** out_handle)
 {
     return create_sort_handle(locale, out_handle) ? Success : UnknownError;
 }
@@ -2735,11 +2735,13 @@ int32_t GlobalizationNative_GetICUVersion(void)
     return 0;
 }
 
+#if defined(STATIC_ICU)
 int32_t GlobalizationNative_LoadICUData(const char* path)
 {
     (void)path;
     return GlobalizationNative_LoadICU();
 }
+#endif
 
 static int copy_ascii_id(const UChar* source, int32_t source_length, UChar* dest, int32_t dest_length)
 {

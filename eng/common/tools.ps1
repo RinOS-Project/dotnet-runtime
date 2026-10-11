@@ -832,9 +832,14 @@ function MSBuild() {
   # communicate over LOCAL\dotnet_* pipes.  Keep that product-owned path
   # single-node so it does not require the inaccessible child-node ACL.
   $maxNodeCount = if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1') { '/m:1' } else { '/m' }
+  # The restricted RinOS path may invoke MSBuild.dll directly instead of the
+  # `dotnet msbuild` verb.  Both forms must receive the switch: otherwise the
+  # direct DLL path silently re-enables the SDK's named-pipe build servers and
+  # fails before Crossgen2Tasks is evaluated under a restricted token.
+  $directMsbuildCommand = $buildTool.Command -match '(?i)(^|[\\/])MSBuild\.dll"?$'
   $disableDotnetBuildServers = $env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1' -and
     $buildTool.Path -match '(?i)(^|[\\/])dotnet(?:\.exe)?$' -and
-    $buildTool.Command -eq 'msbuild'
+    ($buildTool.Command -eq 'msbuild' -or $directMsbuildCommand)
   # `--disable-build-servers` is accepted by the dotnet msbuild verb.  Keep it
   # immediately after that verb so the CLI consumes it before the remaining
   # MSBuild arguments; placing it before the verb makes dotnet interpret the

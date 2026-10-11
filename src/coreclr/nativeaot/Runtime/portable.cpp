@@ -70,6 +70,46 @@ static const RinNativeAotThunkProviderV1* GetRinNativeAotThunkProvider()
     return provider;
 }
 
+/* PortableRuntime receives its thunk geometry from the product provider.
+ * Keep the same page/block relationship that the managed ThunkPool validates
+ * at a native boundary too: a malformed provider must not reach an allocator
+ * callback with a geometry that can make its code/data halves overlap. */
+static bool IsValidRinNativeAotThunkGeometry(
+    const RinNativeAotThunkProviderV1* provider)
+{
+    const int32_t blocksPerMapping =
+        provider->get_num_thunk_blocks_per_mapping(provider->context);
+    const int32_t thunksPerBlock =
+        provider->get_num_thunks_per_block(provider->context);
+    const int32_t thunkSize =
+        provider->get_thunk_size(provider->context);
+    const int32_t blockSize =
+        provider->get_thunk_block_size(provider->context);
+    const uint64_t codeBytes =
+        (uint64_t)(uint32_t)thunkSize * (uint64_t)(uint32_t)thunksPerBlock;
+    const uint64_t dataBytes =
+        (uint64_t)(sizeof(void*) * 2u) * (uint64_t)(uint32_t)thunksPerBlock +
+        (uint64_t)sizeof(void*);
+    const uint64_t requiredBytes = codeBytes > dataBytes
+        ? codeBytes : dataBytes;
+    uint64_t pageSize = 1u;
+
+    if (blocksPerMapping <= 0 || thunksPerBlock <= 0 || thunkSize <= 0 ||
+        blockSize <= 0 || requiredBytes == 0u ||
+        requiredBytes > (uint64_t)INT32_MAX)
+        return false;
+
+    while (pageSize < requiredBytes) {
+        if (pageSize > UINT64_MAX / 2u) return false;
+        pageSize <<= 1u;
+    }
+    if (pageSize != (uint64_t)(uint32_t)blockSize ||
+        pageSize > (uint64_t)SIZE_MAX / (uint64_t)(uint32_t)blocksPerMapping)
+        return false;
+
+    return true;
+}
+
 #if defined(FEATURE_PORTABLE_HELPERS)
 EXTERN_C void* RhpGcAlloc(MethodTable *pEEType, uint32_t uFlags, intptr_t numElements, void * pTransitionFrame);
 EXTERN_C void RhExceptionHandling_FailedAllocation(MethodTable *pEEType, bool fIsOverflow);
@@ -418,6 +458,9 @@ FCIMPL1(HRESULT, RhAllocateThunksMapping, void ** ppThunksSection)
         GetRinNativeAotThunkProvider();
     if (provider != nullptr)
     {
+        if (!IsValidRinNativeAotThunkGeometry(provider))
+            return E_FAIL;
+
         HRESULT result = (HRESULT)provider->allocate_thunks_mapping(
             provider->context, ppThunksSection);
         if (result != S_OK || *ppThunksSection == nullptr)

@@ -3071,6 +3071,75 @@ static uint32_t provider_display_major_status(
                                          output);
 }
 
+static int provider_escaped_principal_hex_digit(uint8_t byte)
+{
+    return (byte >= (uint8_t)'0' && byte <= (uint8_t)'9') ||
+           (byte >= (uint8_t)'a' && byte <= (uint8_t)'f') ||
+           (byte >= (uint8_t)'A' && byte <= (uint8_t)'F');
+}
+
+/* The session owner returns the bounded escaped form used by MIT's
+ * krb5_unparse_name(), not an arbitrary display label.  Keep this check
+ * local to the provider boundary: the owner remains responsible for
+ * obtaining the authenticated principal, while the runtime refuses to
+ * project malformed bytes as DefaultCredentials/RemoteIdentity. */
+static int provider_escaped_principal_valid(const uint8_t* bytes,
+                                             uint32_t size)
+{
+    uint32_t index;
+    int escaped = 0;
+    int seen_realm = 0;
+    int component_has_value = 0;
+    int realm_has_value = 0;
+
+    if (bytes == NULL || size == 0u) return 0;
+    for (index = 0u; index < size; ++index) {
+        const uint8_t byte = bytes[index];
+        if (byte == 0u) return 0;
+        if (escaped) {
+            if (byte == (uint8_t)'x') {
+                if (size - index < 3u ||
+                    !provider_escaped_principal_hex_digit(bytes[index + 1u]) ||
+                    !provider_escaped_principal_hex_digit(bytes[index + 2u]))
+                    return 0;
+                index += 2u;
+            } else if (byte != (uint8_t)'\\' && byte != (uint8_t)'/' &&
+                       byte != (uint8_t)'@' && byte != (uint8_t)'0' &&
+                       byte != (uint8_t)'t' && byte != (uint8_t)'n' &&
+                       byte != (uint8_t)'b') {
+                return 0;
+            }
+            if (seen_realm)
+                realm_has_value = 1;
+            else
+                component_has_value = 1;
+            escaped = 0;
+            continue;
+        }
+        if (byte == (uint8_t)'\\') {
+            escaped = 1;
+            continue;
+        }
+        if (seen_realm) {
+            if (byte == (uint8_t)'/' || byte == (uint8_t)'@') return 0;
+            realm_has_value = 1;
+            continue;
+        }
+        if (byte == (uint8_t)'/') {
+            if (!component_has_value) return 0;
+            component_has_value = 0;
+            continue;
+        }
+        if (byte == (uint8_t)'@') {
+            if (!component_has_value) return 0;
+            seen_realm = 1;
+            continue;
+        }
+        component_has_value = 1;
+    }
+    return !escaped && seen_realm && component_has_value && realm_has_value;
+}
+
 static uint32_t provider_get_user(
     void* context, uint32_t* minor_status, void* security_context,
     RinAuthProviderBufferV1* output)
@@ -3147,7 +3216,8 @@ static uint32_t provider_get_user(
      * DefaultCredentials/RemoteIdentity result. */
     if (principal_size == 0u ||
         principal_size > RINOS_KERBEROS_MAX_PRINCIPAL_SIZE ||
-        generation != provider_context->generation) {
+        generation != provider_context->generation ||
+        !provider_escaped_principal_valid(principal, principal_size)) {
         provider_zero(principal, RINOS_KERBEROS_MAX_PRINCIPAL_SIZE);
         free(principal);
         return provider_unavailable(minor_status);

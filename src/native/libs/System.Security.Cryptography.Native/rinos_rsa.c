@@ -13,7 +13,7 @@
 #include <stdint.h>
 
 #include "../Common/pal_compiler.h"
-#include "platform/rin_platform.h"
+#include "rinos_crypto_adapter.h"
 #include "rsa_webcrypto.h"
 
 #define RINOS_RSA_MAGIC UINT32_C(0x52534152)

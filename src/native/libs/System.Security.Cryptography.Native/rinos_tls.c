@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#include "rinos_crypto_adapter.h"
 #include "rintls.h"
 #include "crypto/sha256.h"
 #include "rin_certificate_revocation_cache.h"
@@ -31,13 +32,14 @@ static int g_rinos_revocation_cache_initialized;
 
 static void rinos_revocation_cache_lock(void)
 {
-    while (__sync_lock_test_and_set(&g_rinos_revocation_cache_lock, 1u) != 0u) {
+    while (__atomic_exchange_n(&g_rinos_revocation_cache_lock, 1u,
+                               __ATOMIC_ACQUIRE) != 0u) {
     }
 }
 
 static void rinos_revocation_cache_unlock(void)
 {
-    __sync_lock_release(&g_rinos_revocation_cache_lock);
+    __atomic_store_n(&g_rinos_revocation_cache_lock, 0u, __ATOMIC_RELEASE);
 }
 
 static int rinos_revocation_cache_ensure_locked(void)

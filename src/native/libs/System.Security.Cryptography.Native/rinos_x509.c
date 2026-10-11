@@ -12,6 +12,7 @@
 
 #include <stdint.h>
 
+#include "rinos_crypto_adapter.h"
 #include "../Common/pal_compiler.h"
 #include "rintls_config.h"
 #include "x509/cert.h"

@@ -807,11 +807,13 @@ UInt32_BOOL PalMarkThunksAsValidCallTargets(
         return UInt32_FALSE;
     }
 
-    int ret = mprotect(
-        (void*)(baseAddress + mappingHalfSize),
-        mappingHalfSize,
-        PROT_READ | PROT_WRITE);
-    return ret == 0 ? UInt32_TRUE : UInt32_FALSE;
+    /* Route publication through the PAL permission boundary instead of
+     * calling mprotect directly.  On RinOS this also enforces the product
+     * user-VA limit and the W^X transition contract; a raw mprotect here
+     * would let malformed thunk metadata bypass those checks. */
+    return PalVirtualProtect(
+        (void*)(baseAddress + mappingHalfSize), mappingHalfSize,
+        PAGE_READWRITE);
 }
 
 void PalSleep(uint32_t milliseconds)

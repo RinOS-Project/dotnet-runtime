@@ -22,7 +22,7 @@ typedef struct
 extern "C" {
 #endif
 
-inline const void* minipal_resolve_dllimport(const Entry* resolutionTable, size_t tableLength, const char* name)
+static inline const void* minipal_resolve_dllimport(const Entry* resolutionTable, size_t tableLength, const char* name)
 {
     for (size_t i = 0; i < tableLength; i++)
     {

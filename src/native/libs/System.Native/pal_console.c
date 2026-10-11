@@ -258,7 +258,7 @@ void SystemNative_ConfigureTerminalForChildProcess(int32_t childUsesTerminal)
         // Avoid configuring the terminal: only change terminal settings when our process has changed them.
         if (g_terminalConfigured)
         {
-            ConfigureTerminal(g_signalForBreak, /* forChild */ childUsesTerminal, /* minChars */ 1, /* decisecondsTimeout */ 0, /* blockIfBackground */ false);
+            ConfigureTerminal(g_signalForBreak, /* forChild */ childUsesTerminal != 0, /* minChars */ 1, /* decisecondsTimeout */ 0, /* blockIfBackground */ false);
         }
 
         // Redo "Application mode" when there are no more children using the terminal.
@@ -404,9 +404,9 @@ int32_t SystemNative_SetSignalForBreak(int32_t signalForBreak)
 
     if (pthread_mutex_lock(&g_lock) == 0)
     {
-        if (ConfigureTerminal(signalForBreak, /* forChild */ false, /* minChars */ 1, /* decisecondsTimeout */ 0, /* blockIfBackground */ true))
+        if (ConfigureTerminal(signalForBreak != 0, /* forChild */ false, /* minChars */ 1, /* decisecondsTimeout */ 0, /* blockIfBackground */ true))
         {
-            g_signalForBreak = signalForBreak;
+            g_signalForBreak = signalForBreak != 0;
             rv = 1;
         }
 

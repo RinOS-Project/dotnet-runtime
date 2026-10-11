@@ -19,116 +19,25 @@
 
 typedef uint16_t UChar;
 
-typedef enum
-{
-    Success = 0,
-    UnknownError = 1,
-    InsufficientBuffer = 2,
-    OutOfMemory = 3,
-    InvalidCodePoint = 4
-} ResultCode;
+#include "pal_calendarData.h"
+#include "pal_casing.h"
+#include "pal_collation.h"
+#include "pal_locale.h"
+#include "pal_localeNumberData.h"
+#include "pal_localeStringData.h"
+#include "pal_icushim.h"
+#include "pal_idna.h"
+#include "pal_normalization.h"
+#include "pal_timeZoneInfo.h"
 
-typedef uint16_t CalendarId;
-typedef void (*EnumCalendarInfoCallback)(const UChar*, const void*);
-
-typedef enum
-{
-    CalendarData_Uninitialized = 0,
-    CalendarData_NativeName = 1,
-    CalendarData_MonthDay = 2,
-    CalendarData_ShortDates = 3,
-    CalendarData_LongDates = 4,
-    CalendarData_YearMonths = 5,
-    CalendarData_DayNames = 6,
-    CalendarData_AbbrevDayNames = 7,
-    CalendarData_MonthNames = 8,
-    CalendarData_AbbrevMonthNames = 9,
-    CalendarData_SuperShortDayNames = 10,
-    CalendarData_MonthGenitiveNames = 11,
-    CalendarData_AbbrevMonthGenitiveNames = 12,
-    CalendarData_EraNames = 13,
-    CalendarData_AbbrevEraNames = 14
-} CalendarDataType;
-
-typedef enum
-{
-    LocaleString_LocalizedDisplayName = 0x02,
-    LocaleString_EnglishDisplayName = 0x00000072,
-    LocaleString_NativeDisplayName = 0x00000073,
-    LocaleString_LocalizedLanguageName = 0x0000006f,
-    LocaleString_EnglishLanguageName = 0x00001001,
-    LocaleString_NativeLanguageName = 0x04,
-    LocaleString_EnglishCountryName = 0x00001002,
-    LocaleString_NativeCountryName = 0x08,
-    LocaleString_DecimalSeparator = 0x0E,
-    LocaleString_ThousandSeparator = 0x0F,
-    LocaleString_Digits = 0x00000013,
-    LocaleString_MonetarySymbol = 0x00000014,
-    LocaleString_CurrencyEnglishName = 0x00001007,
-    LocaleString_CurrencyNativeName = 0x00001008,
-    LocaleString_Iso4217MonetarySymbol = 0x00000015,
-    LocaleString_MonetaryDecimalSeparator = 0x00000016,
-    LocaleString_MonetaryThousandSeparator = 0x00000017,
-    LocaleString_AMDesignator = 0x00000028,
-    LocaleString_PMDesignator = 0x00000029,
-    LocaleString_PositiveSign = 0x00000050,
-    LocaleString_NegativeSign = 0x00000051,
-    LocaleString_Iso639LanguageTwoLetterName = 0x00000059,
-    LocaleString_Iso639LanguageThreeLetterName = 0x00000067,
-    LocaleString_Iso3166CountryName = 0x0000005A,
-    LocaleString_Iso3166CountryName2 = 0x00000068,
-    LocaleString_NaNSymbol = 0x00000069,
-    LocaleString_PositiveInfinitySymbol = 0x0000006a,
-    LocaleString_NegativeInfinitySymbol = 0x0000006b,
-    LocaleString_ParentName = 0x0000006d,
-    LocaleString_PercentSymbol = 0x00000076,
-    LocaleString_PerMilleSymbol = 0x00000077
-} LocaleStringData;
-
-typedef enum
-{
-    LocaleNumber_LanguageId = 0x01,
-    LocaleNumber_MeasurementSystem = 0x0D,
-    LocaleNumber_FractionalDigitsCount = 0x00000011,
-    LocaleNumber_NegativeNumberFormat = 0x00001010,
-    LocaleNumber_MonetaryFractionalDigitsCount = 0x00000019,
-    LocaleNumber_PositiveMonetaryNumberFormat = 0x0000001B,
-    LocaleNumber_NegativeMonetaryNumberFormat = 0x0000001C,
-    LocaleNumber_FirstDayofWeek = 0x0000100C,
-    LocaleNumber_FirstWeekOfYear = 0x0000100D,
-    LocaleNumber_ReadingLayout = 0x00000070,
-    LocaleNumber_NegativePercentFormat = 0x00000074,
-    LocaleNumber_PositivePercentFormat = 0x00000075,
-    LocaleNumber_Digit = 0x00000010,
-    LocaleNumber_Monetary = 0x00000018
-} LocaleNumberData;
-
-typedef enum
-{
-    FormC = 0x1,
-    FormD = 0x2,
-    FormKC = 0x5,
-    FormKD = 0x6
-} NormalizationForm;
-
-typedef enum
-{
-    TimeZoneDisplayName_Generic = 0,
-    TimeZoneDisplayName_Standard = 1,
-    TimeZoneDisplayName_DaylightSavings = 2,
-    TimeZoneDisplayName_GenericLocation = 3,
-    TimeZoneDisplayName_ExemplarCity = 4,
-    TimeZoneDisplayName_TimeZoneName = 5
-} TimeZoneDisplayNameType;
-
-typedef struct SortHandle
+struct SortHandle
 {
     rin_icu_client_t* client;
     rin_icu_handle_t handle;
     char locale[128];
     rin_icu_handle_t option_handles[64];
     uint8_t option_initialized[64];
-} SortHandle;
+};
 
 enum
 {
@@ -1021,7 +930,7 @@ static size_t calendar_symbol_count(CalendarId calendar, CalendarDataType kind)
     return kind == CalendarData_NativeName ? 1u : 0u;
 }
 
-static rin_icu_client_t g_client = {};
+static rin_icu_client_t g_client = { 0 };
 
 static rin_icu_client_t* product_client(void)
 {
@@ -3513,7 +3422,7 @@ int32_t GlobalizationNative_ToAscii(uint32_t flags, const UChar* source, int32_t
     char output[RIN_IDNA_MAX_NAME];
     size_t input_length;
     size_t output_length = 0u;
-    if ((flags & ~RIN_IDNA_FLAGS_MASK) != 0u) return 0;
+    if ((flags & ~(uint32_t)RIN_IDNA_FLAGS_MASK) != 0u) return 0;
     input = utf16_to_utf8(source, source_length, &input_length);
     if (!input || !idna_to_ascii_utf8(input, input_length, flags, output, sizeof(output), &output_length)) {
         free(input);
@@ -3529,7 +3438,7 @@ int32_t GlobalizationNative_ToUnicode(uint32_t flags, const UChar* source, int32
     char output[RIN_IDNA_MAX_NAME];
     size_t input_length;
     size_t output_length = 0u;
-    if ((flags & ~RIN_IDNA_FLAGS_MASK) != 0u) return 0;
+    if ((flags & ~(uint32_t)RIN_IDNA_FLAGS_MASK) != 0u) return 0;
     input = utf16_to_utf8(source, source_length, &input_length);
     if (!input || !idna_to_unicode_utf8(input, input_length, flags, output, sizeof(output), &output_length)) {
         free(input);

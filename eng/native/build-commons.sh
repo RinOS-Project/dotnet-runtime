@@ -6,9 +6,11 @@ initTargetDistroRid()
 
     local passedRootfsDir=""
 
-    # Only pass ROOTFS_DIR if cross is specified and the target platform is not Darwin that doesn't use rootfs
-    if [[ "$__CrossBuild" == 1 && "$platform" != "darwin" ]]; then
-        passedRootfsDir="$ROOTFS_DIR"
+    # RinOS cross builds use their own toolchain and do not have a Linux
+    # rootfs. Host-native CoreCLR tools inherit the target RID, so do not pass
+    # a generic cross-build rootfs into their distro detection either.
+    if [[ "$__CrossBuild" == 1 && "$platform" != "darwin" && "${__PortableTargetOS:-}" != "rinos" ]]; then
+        passedRootfsDir="${ROOTFS_DIR:-}"
     fi
 
     initDistroRidGlobal "$__TargetOS" "$__TargetArch" "$passedRootfsDir"
@@ -604,8 +606,12 @@ fi
 if [[ "$__CrossBuild" == 1 ]]; then
     CROSSCOMPILE=1
     export CROSSCOMPILE
-    # Darwin that doesn't use rootfs
-    if [[ -z "$ROOTFS_DIR" && "$platform" != "darwin" ]]; then
+    # RinOS supplies a self-contained target toolchain and intentionally has
+    # no Linux sysroot. Do not fabricate a .tools/rootfs entry for its build.
+    if [[ "${__PortableTargetOS:-}" == "rinos" ]]; then
+        unset ROOTFS_DIR
+    # Darwin does not use a rootfs; other cross targets use the standard one.
+    elif [[ -z "${ROOTFS_DIR:-}" && "$platform" != "darwin" ]]; then
         ROOTFS_DIR="$__RepoRootDir/.tools/rootfs/$__TargetArch"
         export ROOTFS_DIR
     fi

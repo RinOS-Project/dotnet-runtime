@@ -309,6 +309,18 @@ if ($vs) {
   if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1') {
     $env:DOTNET_HOST_PATH=Join-Path $env:DOTNET_ROOT (GetExecutableFileName 'dotnet')
     $env:UseSharedCompilation='false'
+
+    # Roslyn's MSBuild task otherwise resolves a bare dotnet.exe through the
+    # machine PATH, which can select a different installed SDK and re-enter a
+    # named-pipe compiler host.  Bind the compiler tool to the SDK that the
+    # restricted runtime build just initialized.  csc.exe is an apphost and
+    # inherits DOTNET_ROOT, so it does not need the dotnet CLI server switch.
+    $rinosRoslynToolPath = Get-ChildItem -LiteralPath (Join-Path $env:DOTNET_ROOT 'sdk') -Filter 'csc.exe' -File -Recurse -ErrorAction SilentlyContinue |
+      Select-Object -First 1 -ExpandProperty DirectoryName
+    if ($rinosRoslynToolPath) {
+      $env:CscToolPath=$rinosRoslynToolPath
+      $env:CscToolExe='csc.exe'
+    }
   }
 
   # Disable .NET runtime signature validation errors which errors for local builds

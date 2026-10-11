@@ -613,6 +613,8 @@ template <typename GcInfoEncoding> void TGcInfoEncoder<GcInfoEncoding>::WriteSlo
 
 template <typename GcInfoEncoding> void TGcInfoEncoder<GcInfoEncoding>::DefineInterruptibleRange( UINT32 startInstructionOffset, UINT32 length )
 {
+    _ASSERTE(GcInfoEncoding::HAS_INTERRUPTIBLE_RANGES);
+
     UINT32 stopInstructionOffset = startInstructionOffset + length;
 
     UINT32 normStartOffset = GcInfoEncoding::NORMALIZE_CODE_OFFSET(startInstructionOffset);
@@ -952,7 +954,7 @@ template <typename GcInfoEncoding> void TGcInfoEncoder<GcInfoEncoding>::Build()
 
     // All new code is generated for the latest GCINFO_VERSION.
     // So, always encode ReversePInvokeFrameSlot where applicable.
-    if (slimHeader)
+    if (slimHeader || !GcInfoEncoding::HAS_INTERRUPTIBLE_RANGES)
     {
         // Slim encoding means nothing special, partially interruptible, maybe a default frame register
         GCINFO_WRITE(m_Info1, 0, 1, FlagsSize); // Slim encoding

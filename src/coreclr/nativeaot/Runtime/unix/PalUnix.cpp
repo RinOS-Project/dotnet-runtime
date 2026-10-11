@@ -716,6 +716,17 @@ UInt32_BOOL PalAllocateThunksFromTemplate(HANDLE hTemplateModule, uint32_t templ
     // the template. Copy the code into a private mapping, then make only its
     // half executable so the mapping never has a writable executable alias.
     size_t mappingSize = templateSize * 2;
+#if defined(TARGET_RINOS)
+    // RinOS does not require an executable permission at map time. Start with
+    // one RW mapping, copy the template, and publish only the code half as RX.
+    // This is the same W^X sequence as the FEATURE_RX_THUNKS path and avoids
+    // an unnecessary RX-to-RW transition for template thunks.
+    void* mapping = PalVirtualAlloc(mappingSize, PAGE_READWRITE);
+    if (mapping == nullptr)
+    {
+        return UInt32_FALSE;
+    }
+#else
     // Start with an executable mapping because some hardened UNIX kernels only
     // allow execute permission on mappings that were created executable. Drop
     // execute permission before writing any template bytes.
@@ -730,6 +741,7 @@ UInt32_BOOL PalAllocateThunksFromTemplate(HANDLE hTemplateModule, uint32_t templ
         (void)munmap(mapping, mappingSize);
         return UInt32_FALSE;
     }
+#endif
 
     memcpy(mapping, (const void*)templateAddress, templateSize);
     if (!PalVirtualProtect(mapping, templateSize, PAGE_EXECUTE_READ))

@@ -594,6 +594,20 @@ function InitializeBuildTool() {
     $dotnetRoot = InitializeDotNetCli -install:$restore
   }
 
+  # A restricted RinOS cross-build must keep compiler child processes on the
+  # selected SDK host and out of Roslyn's shared compiler server.  Environment
+  # variables alone are not sufficient: MSBuild can resolve CscToolPath and
+  # CscToolExe from global properties supplied by the outer build graph.
+  if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1' -and $dotnetRoot) {
+    $env:DOTNET_HOST_PATH = Join-Path $dotnetRoot (GetExecutableFileName 'dotnet')
+    $env:UseSharedCompilation = 'false'
+    $rinosRoslynToolPath = Get-ChildItem -LiteralPath (Join-Path $dotnetRoot 'sdk') -Filter 'csc.exe' -File -Recurse -ErrorAction SilentlyContinue |
+      Select-Object -First 1 -ExpandProperty DirectoryName
+    if ($rinosRoslynToolPath) {
+      $env:RINOS_DOTNET_CSC_TOOL_PATH = $rinosRoslynToolPath
+    }
+  }
+
   if ($msbuildEngine -eq 'dotnet') {
     if (!$dotnetRoot) {
       Write-PipelineTelemetryError -Category 'InitializeToolset' -Message "/global.json must specify 'tools.dotnet'."
@@ -813,6 +827,16 @@ function MSBuild() {
   }
 
   $buildTool = InitializeBuildTool
+
+  # Forward the compiler selection through MSBuild's actual command line.  A
+  # Csc task otherwise falls back to `dotnet.exe exec csc.dll`; that path can
+  # create a LOCAL\dotnet_* compiler-server pipe even with shared compilation
+  # disabled, which is inaccessible under the restricted RinOS desktop token.
+  if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1' -and
+      $env:RINOS_DOTNET_CSC_TOOL_PATH) {
+    $args += "/p:CscToolPath=$($env:RINOS_DOTNET_CSC_TOOL_PATH)"
+    $args += '/p:CscToolExe=csc.exe'
+  }
 
   if ($pipelinesLog) {
     $toolsetBuildProject = InitializeToolset

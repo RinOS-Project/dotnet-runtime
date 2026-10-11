@@ -303,36 +303,6 @@ if ($vs) {
   # Put our local dotnet.exe on PATH first so Visual Studio knows which one to use
   $env:PATH=($env:DOTNET_ROOT + ";" + $env:PATH);
 
-  # A restricted RinOS cross-build must keep compiler child processes on the
-  # selected SDK host and out of Roslyn's shared compiler server.  The global
-  # MSBuild property alone does not control the host path used by ToolTask.
-  if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1') {
-    $env:DOTNET_HOST_PATH=Join-Path $env:DOTNET_ROOT (GetExecutableFileName 'dotnet')
-    $env:UseSharedCompilation='false'
-
-    # Roslyn's MSBuild task otherwise resolves a bare dotnet.exe through the
-    # machine PATH, which can select a different installed SDK and re-enter a
-    # named-pipe compiler host.  Bind the compiler tool to the SDK that the
-    # restricted runtime build just initialized.  csc.exe is an apphost and
-    # inherits DOTNET_ROOT, so it does not need the dotnet CLI server switch.
-    $rinosRoslynToolPath = Get-ChildItem -LiteralPath (Join-Path $env:DOTNET_ROOT 'sdk') -Filter 'csc.exe' -File -Recurse -ErrorAction SilentlyContinue |
-      Select-Object -First 1 -ExpandProperty DirectoryName
-    if ($rinosRoslynToolPath) {
-      $env:CscToolPath=$rinosRoslynToolPath
-      $env:CscToolExe='csc.exe'
-
-      # Environment variables are not guaranteed to become MSBuild properties
-      # when the outer invocation supplies a global property set.  Forward the
-      # initialized SDK compiler through the same remaining-arguments path as
-      # the other build properties so every Csc task uses csc.exe directly and
-      # cannot fall back to the host's dotnet.exe/csc.dll compiler-server path.
-      $properties = @($properties) + @(
-        "/p:CscToolPath=$rinosRoslynToolPath",
-        "/p:CscToolExe=csc.exe"
-      )
-    }
-  }
-
   # Disable .NET runtime signature validation errors which errors for local builds
   $env:VSDebugger_ValidateDotnetDebugLibSignatures=0;
 

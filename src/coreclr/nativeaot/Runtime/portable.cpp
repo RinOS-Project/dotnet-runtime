@@ -41,6 +41,9 @@
 extern "C" const RinNativeAotThunkProviderV1*
 rin_nativeaot_thunk_provider_get_v1(void) RINOS_NATIVEAOT_THUNK_WEAK;
 
+static bool IsValidRinNativeAotThunkGeometry(
+    const RinNativeAotThunkProviderV1* provider);
+
 static const RinNativeAotThunkProviderV1* GetRinNativeAotThunkProvider()
 {
     if (rin_nativeaot_thunk_provider_get_v1 == nullptr)
@@ -65,6 +68,13 @@ static const RinNativeAotThunkProviderV1* GetRinNativeAotThunkProvider()
         provider->get_thunk_block_size == nullptr ||
         provider->get_common_stub_address == nullptr ||
         provider->get_current_thunk_context == nullptr)
+        return nullptr;
+
+    /* All geometry callbacks describe one immutable provider layout.  Do the
+     * same validation at discovery time as at allocation time so the
+     * individual RuntimeImports below cannot expose malformed values after a
+     * valid schema/capability table has been advertised. */
+    if (!IsValidRinNativeAotThunkGeometry(provider))
         return nullptr;
 
     return provider;

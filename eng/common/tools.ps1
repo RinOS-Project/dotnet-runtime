@@ -605,19 +605,16 @@ function InitializeBuildTool() {
     # the CLI forwarding logger.  That host path creates a LOCAL\dotnet_* pipe
     # even for /m:1 and can fail before the project compiler starts when the
     # desktop token cannot open the pipe.  The SDK ships the same MSBuild
-    # engine beside dotnet; invoke that executable directly for this opt-in
-    # product path so the existing /nr:false and /m:1 policy remains the only
-    # process coordination boundary.  Keep normal builds on the upstream
+    # assembly in its version directory; host that assembly directly with the
+    # selected dotnet so the existing /nr:false and /m:1 policy remains the
+    # only process coordination boundary.  Keep normal builds on the upstream
     # dotnet entrypoint.
-    # MSBuild.exe is hosted by the SDK version directory, not beside dotnet.exe.
-    # Resolve it from the selected SDK so this fallback is valid for both the
-    # checked-in product SDK and a locally installed SDK with the same global.json.
     $sdkDirectory = Join-Path $dotnetRoot 'sdk'
-    $directMsbuildPath = Get-ChildItem -LiteralPath $sdkDirectory -Filter (GetExecutableFileName 'MSBuild') -File -Recurse -ErrorAction SilentlyContinue |
+    $directMsbuildDll = Get-ChildItem -LiteralPath $sdkDirectory -Filter 'MSBuild.dll' -File -Recurse -ErrorAction SilentlyContinue |
       Select-Object -First 1 -ExpandProperty FullName
     if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1' -and
-        $directMsbuildPath -and (Test-Path -LiteralPath $directMsbuildPath)) {
-      $buildTool = @{ Path = $directMsbuildPath; Command = '' }
+        $directMsbuildDll -and (Test-Path -LiteralPath $directMsbuildDll)) {
+      $buildTool = @{ Path = $dotnetPath; Command = "`"$directMsbuildDll`"" }
     } else {
       $buildTool = @{ Path = $dotnetPath; Command = 'msbuild' }
     }
@@ -836,7 +833,8 @@ function MSBuild() {
   # single-node so it does not require the inaccessible child-node ACL.
   $maxNodeCount = if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1') { '/m:1' } else { '/m' }
   $disableDotnetBuildServers = $env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1' -and
-    $buildTool.Path -match '(?i)(^|[\\/])dotnet(?:\.exe)?$'
+    $buildTool.Path -match '(?i)(^|[\\/])dotnet(?:\.exe)?$' -and
+    $buildTool.Command -eq 'msbuild'
   # `--disable-build-servers` is accepted by the dotnet msbuild verb.  Keep it
   # immediately after that verb so the CLI consumes it before the remaining
   # MSBuild arguments; placing it before the verb makes dotnet interpret the

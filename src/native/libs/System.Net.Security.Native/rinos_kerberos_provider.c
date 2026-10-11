@@ -3137,12 +3137,20 @@ static uint32_t provider_get_user(
         owner->context, minor_status, provider_context->owner_credential,
         principal, RINOS_KERBEROS_MAX_PRINCIPAL_SIZE, &principal_size,
         &generation);
-    if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK || principal_size == 0u ||
+    if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK) {
+        provider_zero(principal, RINOS_KERBEROS_MAX_PRINCIPAL_SIZE);
+        free(principal);
+        return provider_status_from_owner(status, minor_status);
+    }
+    /* An owner OK result is not sufficient to establish an identity.  Do not
+     * turn an empty principal or a stale generation into a successful
+     * DefaultCredentials/RemoteIdentity result. */
+    if (principal_size == 0u ||
         principal_size > RINOS_KERBEROS_MAX_PRINCIPAL_SIZE ||
         generation != provider_context->generation) {
         provider_zero(principal, RINOS_KERBEROS_MAX_PRINCIPAL_SIZE);
         free(principal);
-        return provider_status_from_owner(status, minor_status);
+        return provider_unavailable(minor_status);
     }
     output->data = principal;
     output->length = principal_size;

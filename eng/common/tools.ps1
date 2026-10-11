@@ -601,7 +601,21 @@ function InitializeBuildTool() {
     }
     $dotnetPath = Join-Path $dotnetRoot (GetExecutableFileName 'dotnet')
 
-    $buildTool = @{ Path = $dotnetPath; Command = 'msbuild' }
+    # A restricted RinOS cross-build must not enter `dotnet msbuild` through
+    # the CLI forwarding logger.  That host path creates a LOCAL\dotnet_* pipe
+    # even for /m:1 and can fail before the project compiler starts when the
+    # desktop token cannot open the pipe.  The SDK ships the same MSBuild
+    # engine beside dotnet; invoke that executable directly for this opt-in
+    # product path so the existing /nr:false and /m:1 policy remains the only
+    # process coordination boundary.  Keep normal builds on the upstream
+    # dotnet entrypoint.
+    $directMsbuildPath = Join-Path (Split-Path -Parent $dotnetPath) (GetExecutableFileName 'MSBuild')
+    if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1' -and
+        (Test-Path -LiteralPath $directMsbuildPath)) {
+      $buildTool = @{ Path = $directMsbuildPath; Command = '' }
+    } else {
+      $buildTool = @{ Path = $dotnetPath; Command = 'msbuild' }
+    }
   } elseif ($msbuildEngine -eq "vs") {
     try {
       $msbuildPath = InitializeVisualStudioMSBuild

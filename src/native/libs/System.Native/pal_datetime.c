@@ -67,9 +67,9 @@ extern uint32_t rin_system_timezone_generation(void)
 
 char* SystemNative_GetDefaultTimeZone(void)
 {
-    char timezone[128] = {};
-    if (rin_system_timezone_get && rin_system_timezone_get(timezone, sizeof(timezone)))
-        return strdup(timezone);
+    char timezone_name[128] = { 0 };
+    if (rin_system_timezone_get && rin_system_timezone_get(timezone_name, sizeof(timezone_name)))
+        return strdup(timezone_name);
     return NULL;
 }
 

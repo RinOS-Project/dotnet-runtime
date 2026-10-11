@@ -220,8 +220,10 @@ static void ConvertFileStatus(const struct stat_* src, FileStatus* dst)
     dst->Ino = (int64_t)src->st_ino;
     dst->Flags = FILESTATUS_FLAGS_NONE;
     dst->Mode = (int32_t)src->st_mode;
-    dst->Uid = src->st_uid;
-    dst->Gid = src->st_gid;
+    // RinOS stat64 exposes these ABI fields as signed 32-bit integers, while
+    // FileStatus uses the unsigned POSIX ID representation.
+    dst->Uid = (uint32_t)src->st_uid;
+    dst->Gid = (uint32_t)src->st_gid;
     dst->Size = src->st_size;
 
     dst->ATime = src->st_atime;
@@ -384,6 +386,8 @@ intptr_t SystemNative_Dup(intptr_t oldfd)
     while ((result = fcntl(ToFileDescriptor(oldfd), F_DUPFD, 0)) < 0 && errno == EINTR);
     // do CLOEXEC here too
     fcntl(result, F_SETFD, FD_CLOEXEC);
+#elif defined(TARGET_RINOS)
+    while ((result = dup(ToFileDescriptor(oldfd))) < 0 && errno == EINTR);
 #else
     // The main use cases for dup are setting up the classic Unix dance of setting up file descriptors in advance of performing a fork. Since WASI has no fork, these don't apply.
     // https://github.com/bytecodealliance/wasmtime/blob/b2fefe77148582a9b8013e34fe5808ada82b6efc/docs/WASI-rationale.md#why-no-dup
@@ -1843,6 +1847,7 @@ uint32_t SystemNative_FileSystemSupportsLocking(intptr_t fd, int32_t lockOperati
     // RinOS exposes only the product RinFS VFS contract. It is local and
     // does not have the network filesystems for which the generic Unix path
     // disables shared locks, so the kernel fcntl owner can accept locking.
+    (void)fd;
     return 1;
 #else
     #error "Platform doesn't support fstatfs or fstatvfs"

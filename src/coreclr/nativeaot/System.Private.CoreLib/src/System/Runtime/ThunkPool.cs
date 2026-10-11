@@ -71,13 +71,52 @@ namespace System.Runtime
             return pageSize;
         }
 
+        private static nuint ComputeSpan(int elementSize, int elementCount, int extra)
+        {
+            ulong span = (ulong)elementSize * (ulong)elementCount + (ulong)extra;
+            if (span == 0 || span > (ulong)nuint.MaxValue)
+            {
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
+
+            return (nuint)span;
+        }
+
+        private static uint ValidatePageAndBlockSize(uint pageSize)
+        {
+            // The native address helpers use the same page boundary for the
+            // code/data halves and the managed pool uses ThunkBlockSize to
+            // walk blocks in a mapping.  A provider that reports different
+            // values would make those two address calculations disagree.
+            if (pageSize == 0 || (uint)ThunkBlockSize != pageSize)
+            {
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
+
+            return pageSize;
+        }
+
+        internal static IntPtr AddOffsetChecked(IntPtr address, nuint offset)
+        {
+            nuint value = (nuint)(nint)address;
+            if (value > nuint.MaxValue - offset)
+            {
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
+
+            return (IntPtr)(nint)(value + offset);
+        }
+
         public static readonly int ThunkDataSize = 2 * IntPtr.Size;
         public static readonly int ThunkCodeSize = RequirePositive(RuntimeImports.RhpGetThunkSize());
         public static readonly int NumThunksPerBlock = RequirePositive(RuntimeImports.RhpGetNumThunksPerBlock());
         public static readonly int NumThunkBlocksPerMapping = RequirePositive(RuntimeImports.RhpGetNumThunkBlocksPerMapping());
         public static readonly int ThunkBlockSize = RequirePositive(RuntimeImports.RhpGetThunkBlockSize());
-        public static readonly uint PageSize = ComputePageSize();
+        public static readonly uint PageSize = ValidatePageAndBlockSize(ComputePageSize());
         public static readonly nuint PageSizeMask = PageSize - 1;
+        public static readonly nuint ThunkCodeSpan = ComputeSpan(ThunkCodeSize, NumThunksPerBlock, 0);
+        public static readonly nuint ThunkDataSpan = ComputeSpan(ThunkDataSize, NumThunksPerBlock, 0);
+        public static readonly nuint MappingSpan = ComputeSpan(ThunkBlockSize, NumThunkBlocksPerMapping, 0);
     }
 
     internal class ThunksHeap
@@ -140,7 +179,10 @@ namespace System.Runtime
 
             // Set the head and end of the linked list
             _nextAvailableThunkPtr = thunkDataBlock;
-            _lastThunkPtr = _nextAvailableThunkPtr + Constants.ThunkDataSize * (Constants.NumThunksPerBlock - 1);
+            _lastThunkPtr = Constants.AddOffsetChecked(
+                _nextAvailableThunkPtr,
+                (nuint)(Constants.NumThunksPerBlock - 1) *
+                    (nuint)Constants.ThunkDataSize);
 
             _allocatedBlocks._blockBaseAddress = thunkStubsBlock;
         }
@@ -181,7 +223,10 @@ namespace System.Runtime
             *((IntPtr*)_lastThunkPtr) = thunkDataBlock;
 
             // Update the pointer to the last entry in the list
-            _lastThunkPtr = *((IntPtr*)_lastThunkPtr) + Constants.ThunkDataSize * (Constants.NumThunksPerBlock - 1);
+            _lastThunkPtr = Constants.AddOffsetChecked(
+                *((IntPtr*)_lastThunkPtr),
+                (nuint)(Constants.NumThunksPerBlock - 1) *
+                    (nuint)Constants.ThunkDataSize);
 
             newBlockInfo._blockBaseAddress = thunkStubsBlock;
             newBlockInfo._nextBlock = _allocatedBlocks;
@@ -243,7 +288,9 @@ namespace System.Runtime
                 throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
             }
 
-            IntPtr thunkAddress = thunkStubsBlock + thunkIndex * Constants.ThunkCodeSize;
+            IntPtr thunkAddress = Constants.AddOffsetChecked(
+                thunkStubsBlock,
+                (nuint)thunkIndex * (nuint)Constants.ThunkCodeSize);
 
             if (thunkAddress == IntPtr.Zero)
             {
@@ -289,8 +336,10 @@ namespace System.Runtime
 
             while (currentBlock != null)
             {
-                if (thunkAddressValue >= (nuint)(nint)currentBlock._blockBaseAddress &&
-                    thunkAddressValue < (nuint)(nint)currentBlock._blockBaseAddress + (nuint)(Constants.NumThunksPerBlock * Constants.ThunkCodeSize))
+                nuint blockBaseAddress = (nuint)(nint)currentBlock._blockBaseAddress;
+                if (blockBaseAddress <= nuint.MaxValue - Constants.ThunkCodeSpan &&
+                    thunkAddressValue >= blockBaseAddress &&
+                    thunkAddressValue < blockBaseAddress + Constants.ThunkCodeSpan)
                 {
                     return true;
                 }
@@ -414,7 +463,8 @@ namespace System.Runtime
                 for (int i = 0; i < Constants.NumThunkBlocksPerMapping; i++)
                 {
                     s_currentlyMappedThunkBlocks[i] = currentThunksBlock;
-                    currentThunksBlock += Constants.ThunkBlockSize;
+                    currentThunksBlock = Constants.AddOffsetChecked(
+                        currentThunksBlock, (nuint)Constants.ThunkBlockSize);
                 }
                 s_currentlyMappedThunkBlocksIndex = 1;
             }

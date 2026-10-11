@@ -795,7 +795,7 @@ namespace System.Net
                             case 0x8000000Fu: // KDC_ERR_SUMTYPE_NOSUPP
                             case 0x80000010u: // KDC_ERR_PADATA_TYPE_NOSUPP
                             case 0x80000011u: // KDC_ERR_TRTYPE_NOSUPP
-                            case 0x80000041u: // KDC_ERR_KEY_TOO_WEAK (PKINIT)
+                            case 0x80000041u: // KDC_ERR_DH_KEY_PARAMETERS_NOT_ACCEPTED
                             case 0x80000027u: // KRB_AP_ERR_BADVERSION
                             case 0x80000030u: // KRB_AP_ERR_METHOD
                             case 0x80000045u: // KRB_AP_ERR_USER_TO_USER_REQUIRED

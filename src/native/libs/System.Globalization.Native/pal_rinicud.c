@@ -2575,10 +2575,9 @@ int32_t GlobalizationNative_GetLocaleInfoInt(const UChar* locale, LocaleNumberDa
             if (*value < 0) return 0;
             break;
         case LocaleNumber_FractionalDigitsCount:
-            /* The product catalog uses the .NET/CLDR default of two decimal
-             * digits for ordinary numbers.  Currency precision is carried
-             * separately in currency_digits below. */
-            *value = 2;
+            /* Keep the managed locale query on the same official CLDR
+             * projection used by rinicud's fixed-point formatter. */
+            *value = (int32_t)rin_icu_data_decimal_digits(record.flags);
             break;
         case LocaleNumber_MonetaryFractionalDigitsCount:
             *value = (int32_t)record.currency_digits;

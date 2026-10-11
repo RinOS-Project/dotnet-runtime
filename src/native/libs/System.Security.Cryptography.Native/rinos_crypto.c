@@ -14,10 +14,10 @@
 #include <stddef.h>
 
 #include "../Common/pal_compiler.h"
+#include "rinos_crypto_adapter.h"
 #include "sha256.h"
 #include "sha3.h"
 #include "hmac.h"
-#include "platform/rin_platform.h"
 
 #define RINOS_CRYPTO_MAGIC UINT32_C(0x52494E43)
 

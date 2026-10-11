@@ -13,8 +13,8 @@
 #include <stdint.h>
 
 #include "../Common/pal_compiler.h"
+#include "rinos_crypto_adapter.h"
 #include "aes.h"
-#include "platform/rin_platform.h"
 
 #define RINOS_AES_GCM_MAGIC UINT32_C(0x52474145)
 #define RINOS_AES_CIPHER_MAGIC UINT32_C(0x52434950)
@@ -287,8 +287,9 @@ PALEXPORT int32_t CryptoNative_RinOSAesTransform(
         return input_length;
     }
 
-    int32_t offset;
-    for (offset = 0; offset < input_length; offset += AES_BLOCK_SIZE)
+    uint32_t input_length_u32 = (uint32_t)input_length;
+    uint32_t offset;
+    for (offset = 0u; offset < input_length_u32; offset += AES_BLOCK_SIZE)
     {
         uint8_t block[AES_BLOCK_SIZE];
         uint8_t ciphertext[AES_BLOCK_SIZE];

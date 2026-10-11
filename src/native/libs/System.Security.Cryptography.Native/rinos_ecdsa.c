@@ -13,11 +13,10 @@
 #include <stdint.h>
 
 #include "../Common/pal_compiler.h"
+#include "rinos_crypto_adapter.h"
 #include "ecdh.h"
-#include "platform/rin_platform.h"
 
 #define RINOS_ECDSA_MAGIC UINT32_C(0x52454344)
-#define RINOS_ECDSA_CURVE_P256 23
 #define RINOS_ECDSA_PRIVATE_KEY_SIZE 32
 #define RINOS_ECDSA_PUBLIC_KEY_SIZE 65
 #define RINOS_ECDSA_SIGNATURE_SIZE 64
@@ -223,7 +222,8 @@ PALEXPORT int32_t CryptoNative_RinOSEcdsaVerifyHash(
         hash_length != RINOS_ECDSA_HASH_SHA256_SIZE || hash == NULL ||
         signature_length != RINOS_ECDSA_SIGNATURE_SIZE || signature == NULL)
         return 0;
-    return ecdsa_p256_verify(signature, signature_length, hash, hash_length,
+    return ecdsa_p256_verify(signature, (rin_size_t)signature_length,
+                              hash, (rin_size_t)hash_length,
                              context->public_key,
                              RINOS_ECDSA_PUBLIC_KEY_SIZE) == ECDH_OK;
 }

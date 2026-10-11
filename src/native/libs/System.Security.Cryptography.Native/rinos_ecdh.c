@@ -12,8 +12,8 @@
 #include <stdint.h>
 
 #include "../Common/pal_compiler.h"
+#include "rinos_crypto_adapter.h"
 #include "ecdh.h"
-#include "platform/rin_platform.h"
 
 #define RINOS_ECDH_MAGIC UINT32_C(0x52454448)
 #define RINOS_ECDH_PRIVATE_KEY_SIZE 32

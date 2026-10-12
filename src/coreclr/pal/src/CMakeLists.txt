@@ -237,6 +237,16 @@ add_library(coreclrpal_objects
   ${PLATFORM_SOURCES}
 )
 
+# PAL sources include POSIX-shaped headers such as unistd.h and ucontext.h.
+# Keep those declarations tied to the RinOS target ABI even when CoreCLR is
+# configured as part of a cross-component build; otherwise Clang can resolve
+# the host libc headers and compile against an incompatible ucontext layout.
+if(CLR_CMAKE_TARGET_RINOS AND NOT RINOS_CROSS_COMPONENTS_HOST)
+  target_include_directories(coreclrpal_objects SYSTEM BEFORE PRIVATE
+    ${RINOS_DOTNET_TARGET_INCLUDE_DIRS}
+  )
+endif()
+
 add_library(coreclrpal STATIC
   $<TARGET_OBJECTS:coreclrpal_objects>
   ${LIBUNWIND_OBJECTS}

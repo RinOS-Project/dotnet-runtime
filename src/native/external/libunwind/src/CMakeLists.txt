@@ -92,6 +92,7 @@ SET(libunwind_la_SOURCES_os_solaris_local
 
 if(CLR_CMAKE_TARGET_RINOS)
     SET(libunwind_la_SOURCES_x86_64_os          x86_64/Gos-rinos.c)
+    SET(libunwind_la_SOURCES_x86_64_os_local    x86_64/Los-rinos.c)
 elseif(UNW_CMAKE_TARGET_LINUX)
     SET(libunwind_la_SOURCES_os                 ${libunwind_la_SOURCES_os_linux})
     SET(libunwind_la_SOURCES_os_local           ${libunwind_la_SOURCES_os_linux_local})

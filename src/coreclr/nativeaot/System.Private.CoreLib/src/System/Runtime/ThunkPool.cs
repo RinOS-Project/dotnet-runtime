@@ -370,7 +370,7 @@ namespace System.Runtime
             return false;
         }
 
-        private bool IsThunkInHeap(IntPtr thunkAddress)
+        private AllocatedBlock GetAllocatedBlockForThunkAddress(IntPtr thunkAddress)
         {
             nuint thunkAddressValue = (nuint)(nint)ClearThumbBit(thunkAddress);
 
@@ -383,13 +383,18 @@ namespace System.Runtime
                     thunkAddressValue >= blockBaseAddress &&
                     thunkAddressValue < blockBaseAddress + Constants.ThunkCodeSpan)
                 {
-                    return true;
+                    return currentBlock;
                 }
 
                 currentBlock = currentBlock._nextBlock;
             }
 
-            return false;
+            return null;
+        }
+
+        private bool IsThunkInHeap(IntPtr thunkAddress)
+        {
+            return GetAllocatedBlockForThunkAddress(thunkAddress) != null;
         }
 
         private AllocatedBlock GetAllocatedBlockForThunkDataAddress(IntPtr dataAddress)
@@ -464,6 +469,11 @@ namespace System.Runtime
             // Compute the base address of the thunk's mapping
             nuint currentThunksBlockAddress = thunkAddressValue & ~Constants.PageSizeMask;
 
+            AllocatedBlock block = GetAllocatedBlockForThunkAddress(
+                (IntPtr)(nint)thunkAddressValue);
+            if (block == null)
+                return IntPtr.Zero;
+
             // Make sure the thunk address is valid by checking alignment
             if ((thunkAddressValue - currentThunksBlockAddress) % (nuint)Constants.ThunkCodeSize != 0)
                 return IntPtr.Zero;
@@ -482,6 +492,9 @@ namespace System.Runtime
                 return IntPtr.Zero;
 
             nuint dataBlockValue = (nuint)(nint)thunkDataBlockAddress;
+            if (dataBlockValue != (nuint)(nint)block._dataBlockAddress)
+                return IntPtr.Zero;
+
             nuint dataOffset = (nuint)thunkIndex * (nuint)Constants.ThunkDataSize;
             if (dataBlockValue > nuint.MaxValue - dataOffset)
                 return IntPtr.Zero;

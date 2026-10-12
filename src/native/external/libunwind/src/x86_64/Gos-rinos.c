@@ -70,6 +70,7 @@ tdep_reuse_frame(struct dwarf_cursor *dw, int frame)
 }
 #endif
 
+#ifndef UNW_REMOTE_ONLY
 void
 tdep_get_exe_image_path(char *path)
 {
@@ -85,6 +86,7 @@ tdep_get_exe_image_path(char *path)
     path[0] = '\0';
 #endif
 }
+#endif /* !UNW_REMOTE_ONLY */
 
 static int
 rinos_amd64_canonical(unw_word_t value)

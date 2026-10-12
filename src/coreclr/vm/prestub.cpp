@@ -2196,9 +2196,6 @@ void ExecuteInterpretedMethodWithArgs_PortableEntryPoint_Complex(PCODE portableE
             if (targetIp == NULL)
             {
                 _ASSERTE(!PortableEntryPoint::PrefersInterpreterEntryPoint(portableEntrypoint));
-                // Keep the transition and argument roots, but do not report an additional
-                // managed activation that would be absent on subsequent calls.
-                pPFrame->MarkPrestubComplete();
                 Object* continuationRet = nullptr;
                 Object** pContinuationRet = nullptr;
 #ifdef TARGET_WASM

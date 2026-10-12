@@ -779,9 +779,17 @@ UInt32_BOOL PalFreeThunksFromTemplate(void *pBaseAddress, size_t templateSize)
 
     return ret == KERN_SUCCESS ? UInt32_TRUE : UInt32_FALSE;
 #else
+#if defined(TARGET_RINOS)
+    // Keep template-thunk release on the RinOS PAL boundary as well as
+    // allocation/publication.  A direct munmap would bypass the target's
+    // user-VA validation and the runtime memory-accounting contract.
+    PalVirtualFree(pBaseAddress, templateSize * 2);
+    return UInt32_TRUE;
+#else
     return munmap(pBaseAddress, templateSize * 2) == 0
                ? UInt32_TRUE
                : UInt32_FALSE;
+#endif
 #endif
 }
 #endif // !FEATURE_PORTABLE_HELPERS && !FEATURE_RX_THUNKS

@@ -154,6 +154,19 @@ namespace System.Runtime
             return value;
         }
 
+        private static IntPtr GetValidatedThunkDataBlockAddress(IntPtr thunkStubsBlock)
+        {
+            IntPtr thunkDataBlock = RuntimeImports.RhpGetThunkDataBlockAddress(thunkStubsBlock);
+            if (thunkDataBlock == IntPtr.Zero ||
+                ((nuint)(nint)thunkDataBlock & Constants.PageSizeMask) != 0 ||
+                RuntimeImports.RhpGetThunkStubsBlockAddress(thunkDataBlock) != thunkStubsBlock)
+            {
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
+
+            return thunkDataBlock;
+        }
+
         private unsafe ThunksHeap(IntPtr commonStubAddress)
         {
             if (commonStubAddress == IntPtr.Zero)
@@ -166,12 +179,7 @@ namespace System.Runtime
             _allocatedBlocks = new AllocatedBlock();
 
             IntPtr thunkStubsBlock = ThunkBlocks.GetNewThunksBlock();
-            IntPtr thunkDataBlock = RuntimeImports.RhpGetThunkDataBlockAddress(thunkStubsBlock);
-
-            if (thunkDataBlock == IntPtr.Zero)
-            {
-                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
-            }
+            IntPtr thunkDataBlock = GetValidatedThunkDataBlockAddress(thunkStubsBlock);
 
             // Address of the first thunk data cell should be at the beginning of the thunks data block (page-aligned)
             Debug.Assert(((nuint)(nint)thunkDataBlock % Constants.PageSize) == 0);
@@ -224,12 +232,7 @@ namespace System.Runtime
             AllocatedBlock newBlockInfo = new AllocatedBlock();
 
             IntPtr thunkStubsBlock = ThunkBlocks.GetNewThunksBlock();
-            IntPtr thunkDataBlock = RuntimeImports.RhpGetThunkDataBlockAddress(thunkStubsBlock);
-
-            if (thunkDataBlock == IntPtr.Zero)
-            {
-                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
-            }
+            IntPtr thunkDataBlock = GetValidatedThunkDataBlockAddress(thunkStubsBlock);
 
             // Address of the first thunk data cell should be at the beginning of the thunks data block (page-aligned)
             Debug.Assert(((nuint)(nint)thunkDataBlock % Constants.PageSize) == 0);

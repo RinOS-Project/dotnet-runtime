@@ -47,6 +47,9 @@ rinos_signal_trampoline(struct cursor *c)
     return 0;
 
   accessors = unw_get_accessors_int(c->dwarf.as);
+  if (accessors == NULL || accessors->access_mem == NULL)
+    return 0;
+
   ret = (*accessors->access_mem)(c->dwarf.as, c->dwarf.ip, &first, 0,
                                  c->dwarf.as_arg);
   if (ret < 0 || first != RINOS_RT_SIGRETURN_MOV)

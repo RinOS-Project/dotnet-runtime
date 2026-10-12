@@ -69,12 +69,8 @@ inline HRESULT HRESULT_FROM_WIN32(unsigned long x)
 #define NOERROR                 0x0
 #define ERROR_TIMEOUT           1460
 
-#ifndef TRUE
 #define TRUE true
-#endif
-#ifndef FALSE
 #define FALSE false
-#endif
 
 #define CALLBACK __stdcall
 
@@ -117,9 +113,6 @@ typedef DWORD (WINAPI *PTHREAD_START_ROUTINE)(void* lpThreadParameter);
   #pragma intrinsic(__dmb)
   #define MemoryBarrier() { __dmb(_ARM64_BARRIER_SY); }
 
- #elif defined(HOST_BROWSER)
-  #define YieldProcessor()
-  #define MemoryBarrier __sync_synchronize
 #elif defined(HOST_AMD64)
 
   extern "C" void
@@ -194,6 +187,11 @@ typedef DWORD (WINAPI *PTHREAD_START_ROUTINE)(void* lpThreadParameter);
  #define YieldProcessor() asm volatile( ".word 0x0100000f");
  #define MemoryBarrier __sync_synchronize
 #endif // __riscv
+
+#ifdef HOST_WASM
+  #define YieldProcessor()
+  #define MemoryBarrier __sync_synchronize
+#endif // HOST_WASM
 
 #endif // _MSC_VER
 

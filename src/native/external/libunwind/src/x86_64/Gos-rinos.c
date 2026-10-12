@@ -27,8 +27,10 @@
 
 /* The x86-64 libunwind headers select these hooks when the host compiler
  * defines __linux__. Crossgen builds a Linux host JIT from this RinOS source
- * too, so provide the cursor-cache hooks used by Gparser.c while retaining
- * RinOS's signal-frame layout handling below. */
+ * too, so provide the cursor-cache hooks used by Gparser.c in that build.
+ * RinOS target builds intentionally compile the no-op macro variants from
+ * libunwind_i.h because they do not define __linux__. */
+#ifdef __linux__
 HIDDEN void
 tdep_fetch_frame(struct dwarf_cursor *dw, unw_word_t ip UNUSED,
                  int need_unwind_info UNUSED)
@@ -63,6 +65,7 @@ tdep_reuse_frame(struct dwarf_cursor *dw, int frame)
     c->sigcontext_addr = dw->cfa;
   }
 }
+#endif
 
 static int
 rinos_amd64_canonical(unw_word_t value)

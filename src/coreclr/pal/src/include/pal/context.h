@@ -441,7 +441,9 @@ struct sve_context {
 
 #endif // HOST_64BIT
 
-#elif HAVE_GREGSET_T
+/* Cross-components are host tools, but this generated config.h contains the
+ * RinOS target's feature probes.  Select the host AMD64 glibc gregset layout. */
+#elif HAVE_GREGSET_T || (defined(RINOS_CROSS_COMPONENTS_HOST) && defined(HOST_AMD64))
 
 #ifdef HOST_64BIT
 

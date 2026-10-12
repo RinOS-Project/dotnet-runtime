@@ -238,25 +238,14 @@ add_library(coreclrpal_objects
 )
 
 # PAL sources include POSIX-shaped headers such as unistd.h and ucontext.h.
-# Bind this target explicitly to the RinOS ABI: directory-level target include
-# paths are not present in every CoreCLR cross-component CMake pass, and host
-# libc's ucontext layout is incompatible with RinOS's FXSAVE representation.
-if(CLR_CMAKE_TARGET_RINOS AND DEFINED RINOS_DOTNET_TARGET_INCLUDE_DIRS)
+# Bind the RinOS target build explicitly to the target ABI: directory-level
+# target include paths are not present in every CoreCLR configure pass. The
+# cross-component host graph still needs the host libc and C++ headers even
+# though RinOS target definitions are visible there.
+if(CLR_CMAKE_TARGET_RINOS AND NOT RINOS_CROSS_COMPONENTS_HOST AND DEFINED RINOS_DOTNET_TARGET_INCLUDE_DIRS)
   target_include_directories(coreclrpal_objects SYSTEM BEFORE PRIVATE
     ${RINOS_DOTNET_TARGET_INCLUDE_DIRS}
   )
-endif()
-
-# PAL object files are also compiled in the cross-component graph, where the
-# directory-level RinOS C++ options from CoreCLR's top-level CMakeLists are not
-# installed. Keep them on this target so it uses libc++ rather than the host's
-# libstdc++ headers when targeting RinOS.
-if(CLR_CMAKE_TARGET_RINOS AND DEFINED RINOS_DOTNET_CXX_FLAGS)
-  foreach(_RINOS_CXX_FLAG IN LISTS RINOS_DOTNET_CXX_FLAGS)
-    target_compile_options(coreclrpal_objects PRIVATE
-      "$<$<COMPILE_LANGUAGE:CXX>:${_RINOS_CXX_FLAG}>"
-    )
-  endforeach()
 endif()
 
 add_library(coreclrpal STATIC

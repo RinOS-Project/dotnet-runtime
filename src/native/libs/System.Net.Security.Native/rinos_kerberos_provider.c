@@ -67,6 +67,7 @@ typedef struct RinOsKerberosProviderCredential {
     uint32_t kind;
     void* owner_credential;
     const RinKerberosCredentialOwnerV1* owner;
+    uint32_t active_contexts;
 } RinOsKerberosProviderCredential;
 
 typedef struct RinOsKerberosProviderContext {
@@ -81,6 +82,8 @@ typedef struct RinOsKerberosProviderContext {
     uint32_t spnego_mic_sent;
     void* owner_credential;
     const RinKerberosOperationOwnerV1* owner;
+    struct RinOsKerberosProviderCredential* credential;
+    uint32_t credential_ref_held;
     uint32_t mech_list_size;
     uint8_t mech_list[RINOS_KERBEROS_MAX_MECH_LIST_SIZE];
     uint8_t token[RIN_KERBEROS_OPERATION_MAX_CONTEXT_TOKEN_SIZE];
@@ -1293,10 +1296,44 @@ static int provider_context_valid(
            (context->kind == RIN_KERBEROS_OPERATION_CREDENTIAL_INITIATOR ||
             context->kind == RIN_KERBEROS_OPERATION_CREDENTIAL_ACCEPTOR) &&
            context->owner != NULL && context->owner_credential != NULL &&
+           context->credential != NULL &&
+           context->credential->magic == RINOS_KERBEROS_CREDENTIAL_MAGIC &&
+           context->credential->kind == context->kind &&
+           context->credential->owner_credential == context->owner_credential &&
+           context->credential_ref_held <= 1u &&
+           (context->credential_ref_held == 0u ||
+            context->credential->active_contexts != 0u) &&
            context->owner->operation != NULL &&
            (context->state == RINOS_KERBEROS_CONTEXT_NEGOTIATING ||
             context->state == RINOS_KERBEROS_CONTEXT_ESTABLISHED) &&
            context->token_size <= RIN_KERBEROS_OPERATION_MAX_CONTEXT_TOKEN_SIZE;
+}
+
+/* Keep the opaque owner credential alive while a provider context can still
+ * call into it.  The initial context is not published until its first owner
+ * operation succeeds, so failed setup paths do not consume a reference. */
+static int provider_context_retain(
+    RinOsKerberosProviderCredential* credential,
+    RinOsKerberosProviderContext* context)
+{
+    if (credential == NULL || context == NULL ||
+        context->credential != credential || context->credential_ref_held != 0u ||
+        credential->active_contexts == UINT32_MAX)
+        return 0;
+    ++credential->active_contexts;
+    context->credential_ref_held = 1u;
+    return 1;
+}
+
+static void provider_context_release(
+    RinOsKerberosProviderContext* context)
+{
+    if (context == NULL || context->credential_ref_held == 0u)
+        return;
+    if (context->credential != NULL &&
+        context->credential->active_contexts != 0u)
+        --context->credential->active_contexts;
+    context->credential_ref_held = 0u;
 }
 
 static const RinKerberosCredentialOwnerV1* provider_credential_owner(void)
@@ -1379,6 +1416,7 @@ static void provider_initialize_credential(
     credential->kind = kind;
     credential->owner_credential = owner_credential;
     credential->owner = owner;
+    credential->active_contexts = 0u;
 }
 
 static uint32_t provider_acquire_acceptor_cred(
@@ -1483,6 +1521,11 @@ static uint32_t provider_release_cred(void* context, uint32_t* minor_status,
         *input = NULL;
         return provider_unavailable(minor_status);
     }
+    /* A live context retains the opaque owner handle.  Releasing it here
+     * would leave the context's later operation/delete path with a dangling
+     * handle, so fail closed and leave the caller's credential retryable. */
+    if (credential->active_contexts != 0u)
+        return provider_unavailable(minor_status);
     status = credential->owner->release_credential(
         credential->owner->context, minor_status, &credential->owner_credential);
     if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK) {
@@ -1931,6 +1974,7 @@ static uint32_t provider_init_sec_context(
         provider_context->state = RINOS_KERBEROS_CONTEXT_NEGOTIATING;
         provider_context->owner_credential = credential->owner_credential;
         provider_context->owner = provider_operation_owner();
+        provider_context->credential = credential;
         provider_context->spnego = package_type == PAL_GSS_NEGOTIATE;
         spnego_mode = provider_context->spnego != 0u;
         if (spnego_mode && !provider_spnego_store_default_mech_list(
@@ -2012,6 +2056,13 @@ static uint32_t provider_init_sec_context(
             mechanism_input_length = spnego_input.mechanism_token_size;
         }
         if (spnego_final_ack) {
+            if (created_context &&
+                !provider_context_retain(credential, provider_context)) {
+                provider_zero(provider_context, sizeof(*provider_context));
+                free(provider_context);
+                *security_context = NULL;
+                return provider_unavailable(minor_status);
+            }
             *security_context = provider_context;
             if (minor_status != NULL) *minor_status = 0u;
             return RIN_AUTH_PROVIDER_OK;
@@ -2170,6 +2221,13 @@ static uint32_t provider_init_sec_context(
         }
         return status;
     }
+    if (created_context &&
+        !provider_context_retain(credential, provider_context)) {
+        provider_zero(provider_context, sizeof(*provider_context));
+        free(provider_context);
+        *security_context = NULL;
+        return provider_unavailable(minor_status);
+    }
     *security_context = provider_context;
     if (minor_status != NULL) *minor_status = 0u;
     return status;
@@ -2250,6 +2308,7 @@ static uint32_t provider_init_sec_context_ex(
         provider_context->state = RINOS_KERBEROS_CONTEXT_NEGOTIATING;
         provider_context->owner_credential = credential->owner_credential;
         provider_context->owner = provider_operation_owner();
+        provider_context->credential = credential;
         provider_context->spnego = package_type == PAL_GSS_NEGOTIATE;
         spnego_mode = provider_context->spnego != 0u;
         if (spnego_mode && !provider_spnego_store_default_mech_list(
@@ -2326,6 +2385,13 @@ static uint32_t provider_init_sec_context_ex(
             mechanism_input_length = spnego_input.mechanism_token_size;
         }
         if (spnego_final_ack) {
+            if (created_context &&
+                !provider_context_retain(credential, provider_context)) {
+                provider_zero(provider_context, sizeof(*provider_context));
+                free(provider_context);
+                *security_context = NULL;
+                return provider_unavailable(minor_status);
+            }
             *security_context = provider_context;
             if (minor_status != NULL) *minor_status = 0u;
             return RIN_AUTH_PROVIDER_OK;
@@ -2450,6 +2516,13 @@ static uint32_t provider_init_sec_context_ex(
         }
         return status;
     }
+    if (created_context &&
+        !provider_context_retain(credential, provider_context)) {
+        provider_zero(provider_context, sizeof(*provider_context));
+        free(provider_context);
+        *security_context = NULL;
+        return provider_unavailable(minor_status);
+    }
     *security_context = provider_context;
     if (minor_status != NULL) *minor_status = 0u;
     return status;
@@ -2511,6 +2584,7 @@ static uint32_t provider_accept_sec_context(
         provider_context->state = RINOS_KERBEROS_CONTEXT_NEGOTIATING;
         provider_context->owner_credential = credential->owner_credential;
         provider_context->owner = provider_operation_owner();
+        provider_context->credential = credential;
         created_context = 1;
     }
     if (spnego_mode ||
@@ -2711,6 +2785,13 @@ spnego_accept_output:
         }
         return status;
     }
+    if (created_context &&
+        !provider_context_retain(credential, provider_context)) {
+        provider_zero(provider_context, sizeof(*provider_context));
+        free(provider_context);
+        *security_context = NULL;
+        return provider_unavailable(minor_status);
+    }
     *security_context = provider_context;
     if (minor_status != NULL) *minor_status = 0u;
     return status;
@@ -2720,7 +2801,7 @@ static uint32_t provider_delete_sec_context(
     void* context, uint32_t* minor_status, void** security_context)
 {
     RinOsKerberosProviderContext* provider_context;
-    RinOsKerberosProviderCredential credential = {0};
+    RinOsKerberosProviderCredential* credential;
     RinKerberosOperationRequestV1 request = {0};
     uint32_t status;
     (void)context;
@@ -2731,17 +2812,14 @@ static uint32_t provider_delete_sec_context(
         *security_context = NULL;
         return provider_unavailable(minor_status);
     }
-    credential.magic = RINOS_KERBEROS_CREDENTIAL_MAGIC;
-    credential.kind = provider_context->kind;
-    credential.owner_credential = provider_context->owner_credential;
-    credential.owner = provider_credential_owner();
+    credential = provider_context->credential;
     request.struct_size = sizeof(request);
     request.version = RIN_KERBEROS_OPERATION_ABI_VERSION;
     request.operation = RIN_KERBEROS_OPERATION_DELETE_SEC_CONTEXT;
     request.credential_kind = provider_context->kind;
     request.context_token_size = provider_context->token_size;
     request.output_capacity = 0u;
-    status = provider_operation(&credential, provider_context, &request, NULL,
+    status = provider_operation(credential, provider_context, &request, NULL,
                                 0u, NULL, 0u, NULL, minor_status);
     if (status != RIN_AUTH_PROVIDER_OK) {
         /* The owner still owns the remote context when cleanup fails.  Keep
@@ -2750,6 +2828,7 @@ static uint32_t provider_delete_sec_context(
         if (minor_status != NULL) *minor_status = 0u;
         return status;
     }
+    provider_context_release(provider_context);
     provider_zero(provider_context, sizeof(*provider_context));
     free(provider_context);
     *security_context = NULL;

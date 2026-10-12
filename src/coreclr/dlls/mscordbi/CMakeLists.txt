@@ -111,7 +111,7 @@ elseif(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
     # flipped to `--no-undefined-version` in lld 16, so we will explicitly set it to
     # `--undefined-version` for our use-case.
     include(CheckLinkerFlag OPTIONAL)
-    if(COMMAND check_linker_flag AND NOT CLR_CMAKE_TARGET_RINOS)
+    if(COMMAND check_linker_flag)
         check_linker_flag(CXX -Wl,--undefined-version LINKER_SUPPORTS_UNDEFINED_VERSION)
         if (LINKER_SUPPORTS_UNDEFINED_VERSION)
             add_linker_flag(-Wl,--undefined-version)

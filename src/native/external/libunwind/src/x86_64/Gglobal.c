@@ -31,7 +31,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include <stdatomic.h>
 
 HIDDEN define_lock (x86_64_lock);
-HIDDEN atomic_bool tdep_init_done = 0;
+HIDDEN atomic_int tdep_init_done = 0;
 
 /* See comments for svr4_dbx_register_map[] in gcc/config/i386/i386.c.  */
 

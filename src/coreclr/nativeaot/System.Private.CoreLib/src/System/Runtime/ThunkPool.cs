@@ -130,6 +130,9 @@ namespace System.Runtime
         private IntPtr _commonStubAddress;
         private IntPtr _nextAvailableThunkPtr;
         private IntPtr _lastThunkPtr;
+        // Every free thunk stores its list link in the first data cell. Keep
+        // a bounded count so stale-list validation cannot loop forever.
+        private nuint _freeThunkCount;
 
         private AllocatedBlock _allocatedBlocks;
 
@@ -183,6 +186,7 @@ namespace System.Runtime
                 _nextAvailableThunkPtr,
                 (nuint)(Constants.NumThunksPerBlock - 1) *
                     (nuint)Constants.ThunkDataSize);
+            _freeThunkCount = (nuint)Constants.NumThunksPerBlock;
 
             _allocatedBlocks._blockBaseAddress = thunkStubsBlock;
         }
@@ -202,6 +206,12 @@ namespace System.Runtime
         //
         private unsafe void ExpandHeap()
         {
+            nuint addedFreeThunks = (nuint)Constants.NumThunksPerBlock;
+            if (_freeThunkCount > nuint.MaxValue - addedFreeThunks)
+            {
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
+
             AllocatedBlock newBlockInfo = new AllocatedBlock();
 
             IntPtr thunkStubsBlock = ThunkBlocks.GetNewThunksBlock();
@@ -232,6 +242,7 @@ namespace System.Runtime
             newBlockInfo._nextBlock = _allocatedBlocks;
 
             _allocatedBlocks = newBlockInfo;
+            _freeThunkCount += addedFreeThunks;
         }
 
         public unsafe IntPtr AllocateThunk()
@@ -244,6 +255,12 @@ namespace System.Runtime
             IntPtr nextAvailableThunkPtr;
             lock (this)
             {
+                if (_nextAvailableThunkPtr == IntPtr.Zero ||
+                    _freeThunkCount == 0)
+                {
+                    throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+                }
+
                 nextAvailableThunkPtr = _nextAvailableThunkPtr;
                 IntPtr nextNextAvailableThunkPtr = *((IntPtr*)(nextAvailableThunkPtr));
 
@@ -257,6 +274,7 @@ namespace System.Runtime
                 }
 
                 _nextAvailableThunkPtr = nextNextAvailableThunkPtr;
+                --_freeThunkCount;
             }
             Debug.Assert(nextAvailableThunkPtr != IntPtr.Zero);
 
@@ -314,18 +332,48 @@ namespace System.Runtime
                 return;
             }
 
-#if DEBUG
-            Debug.Assert(IsThunkInHeap(thunkAddress));
-
-            // Debug flag indicating the thunk is no longer used
-            *((IntPtr*)(dataAddress + IntPtr.Size)) = new IntPtr(-1);
-#endif
-
             lock (this)
             {
+                // Cleanup paths can call FreeThunk more than once. Do not
+                // put an already-free cell back at the head: that would make
+                // the free list self-loop and return one executable thunk
+                // repeatedly from later allocations.
+                if (IsFreeThunkDataAddress(dataAddress))
+                    return;
+                if (_freeThunkCount == nuint.MaxValue)
+                    return;
+
+#if DEBUG
+                Debug.Assert(IsThunkInHeap(thunkAddress));
+
+                // Debug flag indicating the thunk is no longer used
+                *((IntPtr*)(dataAddress + IntPtr.Size)) = new IntPtr(-1);
+#endif
+
                 *((IntPtr*)(dataAddress)) = _nextAvailableThunkPtr;
                 _nextAvailableThunkPtr = dataAddress;
+                ++_freeThunkCount;
             }
+        }
+
+        // Must be called while holding this heap's lock. The traversal is
+        // bounded by _freeThunkCount, so a malformed link cannot turn stale
+        // input into an unbounded loop.
+        private unsafe bool IsFreeThunkDataAddress(IntPtr dataAddress)
+        {
+            IntPtr current = _nextAvailableThunkPtr;
+            nuint remaining = _freeThunkCount;
+            while (remaining != 0)
+            {
+                if (current == IntPtr.Zero)
+                    return false;
+                if (current == dataAddress)
+                    return true;
+                current = *((IntPtr*)current);
+                --remaining;
+            }
+
+            return false;
         }
 
         private bool IsThunkInHeap(IntPtr thunkAddress)
@@ -384,9 +432,7 @@ namespace System.Runtime
 
         /// <summary>
         /// This method retrieves the two data fields for a thunk.
-        /// Caution: No checks are made to verify that the thunk address is that of a
-        /// valid thunk in use. The caller of this API is responsible for providing a valid
-        /// address of a thunk that was not previously freed.
+        /// Invalid, foreign, and previously freed thunk addresses return false.
         /// </summary>
         /// <returns>True if the thunk's data was successfully retrieved.</returns>
         public unsafe bool TryGetThunkData(IntPtr thunkAddress, out IntPtr context, out IntPtr target)
@@ -398,31 +444,44 @@ namespace System.Runtime
             if (dataAddress == IntPtr.Zero)
                 return false;
 
-            if (!IsThunkInHeap(thunkAddress))
-                return false;
+            lock (this)
+            {
+                if (!IsThunkInHeap(thunkAddress) ||
+                    IsFreeThunkDataAddress(dataAddress))
+                    return false;
 
-            // Update the data that will be used by the thunk that was allocated
-            context = *((IntPtr*)(dataAddress));
-            target = *((IntPtr*)(dataAddress + IntPtr.Size));
+                // Do not interpret the first cell as context after the thunk
+                // has been returned to the free list. The lock also keeps a
+                // concurrent FreeThunk from changing that cell while reading.
+                context = *((IntPtr*)(dataAddress));
+                target = *((IntPtr*)(dataAddress + IntPtr.Size));
+            }
 
             return true;
         }
 
         /// <summary>
         /// This method sets the two data fields for a thunk.
-        /// Caution: No checks are made to verify that the thunk address is that of a
-        /// valid thunk in use. The caller of this API is responsible for providing a valid
-        /// address of a thunk that was not previously freed.
+        /// Invalid, foreign, and previously freed thunk addresses fail closed
+        /// with PlatformNotSupportedException.
         /// </summary>
         public unsafe void SetThunkData(IntPtr thunkAddress, IntPtr context, IntPtr target)
         {
             IntPtr dataAddress = TryGetThunkDataAddress(thunkAddress);
-            Debug.Assert(dataAddress != IntPtr.Zero);
-            Debug.Assert(IsThunkInHeap(thunkAddress));
+            if (dataAddress == IntPtr.Zero)
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
 
-            // Update the data that will be used by the thunk that was allocated
-            *((IntPtr*)(dataAddress)) = context;
-            *((IntPtr*)(dataAddress + IntPtr.Size)) = target;
+            lock (this)
+            {
+                if (!IsThunkInHeap(thunkAddress) ||
+                    IsFreeThunkDataAddress(dataAddress))
+                    throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+
+                // Update the data that will be used by the thunk that was
+                // allocated.
+                *((IntPtr*)(dataAddress)) = context;
+                *((IntPtr*)(dataAddress + IntPtr.Size)) = target;
+            }
         }
     }
 

@@ -41,6 +41,7 @@ namespace System.Runtime.InteropServices
         #region Delegate marshalling
 
         private static object s_thunkPoolHeap;
+        private static object s_thunkPoolInitializationLock = new object();
 
         /// <summary>
         /// Return the stub to the pinvoke marshalling stub
@@ -177,12 +178,19 @@ namespace System.Runtime.InteropServices
         {
             if (s_thunkPoolHeap == null)
             {
-                // TODO: Free s_thunkPoolHeap if the thread lose the race
-                Interlocked.CompareExchange(
-                    ref s_thunkPoolHeap,
-                    RuntimeAugments.CreateThunksHeap(RuntimeImports.GetInteropCommonStubAddress()),
-                    null
-                );
+                // CreateThunksHeap allocates a mapping.  Do not construct
+                // competing heaps and then lose one to CompareExchange: the
+                // thunk pool has no safe destruction operation while another
+                // delegate may already be publishing thunks from the winner.
+                // Serialize only this one-time initialization instead.
+                lock (s_thunkPoolInitializationLock)
+                {
+                    if (s_thunkPoolHeap == null)
+                    {
+                        s_thunkPoolHeap = RuntimeAugments.CreateThunksHeap(
+                            RuntimeImports.GetInteropCommonStubAddress());
+                    }
+                }
                 Debug.Assert(s_thunkPoolHeap != null);
             }
 

@@ -728,7 +728,7 @@ GenTree* DecomposeLongs::DecomposeCast(LIR::Use& use)
                                                                           NI_AVX512_BlendVariableMask, dstType, 16);
 
             GenTreeVecCon* maxLong = m_compiler->gtNewVconNode(TYP_SIMD16);
-            maxLong->EvaluateBroadcastInPlace(dstType, INT64_MAX);
+            maxLong->EvaluateBroadcastInPlace(dstType, static_cast<int64_t>(INT64_MAX));
 
             castRange.InsertAtEnd(convertMasked);
             castRange.InsertAtEnd(maxLong);

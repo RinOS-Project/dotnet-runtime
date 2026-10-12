@@ -701,9 +701,15 @@ function(add_library_clr targetName kind)
   if("${kind}" STREQUAL "SHARED" AND CLR_CMAKE_TARGET_RINOS)
     if(CLR_CROSS_COMPONENTS_BUILD)
       # Cross-component JIT/JitInterface builds are host tools. CMake sees the
-      # RinOS target system and otherwise emits .elf, but crossgen2 loads these
-      # binaries on Windows, so keep the host DLL boundary explicit.
-      set_target_properties(${targetName} PROPERTIES PREFIX "" SUFFIX ".dll")
+      # RinOS target system, so use the host platform's shared-library naming
+      # instead of the target's native module naming.
+      if(CLR_CMAKE_HOST_WIN32)
+        set_target_properties(${targetName} PROPERTIES PREFIX "" SUFFIX ".dll")
+      elseif(CLR_CMAKE_HOST_OSX)
+        set_target_properties(${targetName} PROPERTIES PREFIX "lib" SUFFIX ".dylib")
+      elseif(CLR_CMAKE_HOST_UNIX)
+        set_target_properties(${targetName} PROPERTIES PREFIX "lib" SUFFIX ".so")
+      endif()
     else()
       # CoreCLR target shared components are signed RLL modules on RinOS. Do
       # not let the host build's default lib*.so naming leak into target assets.

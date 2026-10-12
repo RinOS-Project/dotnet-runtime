@@ -238,10 +238,10 @@ add_library(coreclrpal_objects
 )
 
 # PAL sources include POSIX-shaped headers such as unistd.h and ucontext.h.
-# Keep those declarations tied to the RinOS target ABI even when CoreCLR is
-# configured as part of a cross-component build; otherwise Clang can resolve
-# the host libc headers and compile against an incompatible ucontext layout.
-if(CLR_CMAKE_TARGET_RINOS AND NOT RINOS_CROSS_COMPONENTS_HOST)
+# Bind this target explicitly to the RinOS ABI: directory-level target include
+# paths are not present in every CoreCLR cross-component CMake pass, and host
+# libc's ucontext layout is incompatible with RinOS's FXSAVE representation.
+if(CLR_CMAKE_TARGET_RINOS AND DEFINED RINOS_DOTNET_TARGET_INCLUDE_DIRS)
   target_include_directories(coreclrpal_objects SYSTEM BEFORE PRIVATE
     ${RINOS_DOTNET_TARGET_INCLUDE_DIRS}
   )

@@ -112,8 +112,11 @@ namespace System.Runtime.InteropServices
 
             public PInvokeDelegateThunk(Delegate del)
             {
-                Thunk = RuntimeAugments.AllocateThunk(s_thunkPoolHeap);
-                if (Thunk == IntPtr.Zero)
+                Thunk = IntPtr.Zero;
+                ContextData = IntPtr.Zero;
+
+                IntPtr thunk = RuntimeAugments.AllocateThunk(s_thunkPoolHeap);
+                if (thunk == IntPtr.Zero)
                 {
                     throw new OutOfMemoryException();
                 }
@@ -121,49 +124,60 @@ namespace System.Runtime.InteropServices
                 //
                 //  For open static delegates set target to ReverseOpenStaticDelegateStub which calls the static function pointer directly
                 //
-                IntPtr openStaticFunctionPointer = del.TryGetOpenStaticFunctionPointer();
-
-                //
-                // Allocate unmanaged memory for GCHandle of delegate and function pointer of open static delegate
-                // We will store this pointer on the context slot of thunk data
-                //
-                unsafe
+                IntPtr openStaticFunctionPointer;
+                IntPtr contextData = IntPtr.Zero;
+                try
                 {
-                    ContextData = (IntPtr)NativeMemory.AllocZeroed((nuint)(2 * IntPtr.Size));
+                    openStaticFunctionPointer = del.TryGetOpenStaticFunctionPointer();
 
-                    ThunkContextData* thunkData = (ThunkContextData*)ContextData;
+                    //
+                    // Allocate unmanaged memory for GCHandle of delegate and function pointer of open static delegate
+                    // We will store this pointer on the context slot of thunk data
+                    //
+                    contextData = (IntPtr)NativeMemory.AllocZeroed((nuint)(2 * IntPtr.Size));
+                    if (contextData == IntPtr.Zero)
+                    {
+                        throw new OutOfMemoryException();
+                    }
+
+                    ThunkContextData* thunkData = (ThunkContextData*)contextData;
 
                     // allocate a weak GChandle for the delegate
                     thunkData->Handle = new WeakGCHandle<Delegate>(del, trackResurrection: true);
                     thunkData->FunctionPtr = openStaticFunctionPointer;
+
+                    IntPtr pTarget = RuntimeInteropData.GetDelegateMarshallingStub(new RuntimeTypeHandle(del.GetMethodTable()), openStaticFunctionPointer != IntPtr.Zero);
+                    if (pTarget == IntPtr.Zero)
+                    {
+                        throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+                    }
+
+                    RuntimeAugments.SetThunkData(s_thunkPoolHeap, thunk, contextData, pTarget);
+
+                    Thunk = thunk;
+                    ContextData = contextData;
                 }
-
-                IntPtr pTarget = RuntimeInteropData.GetDelegateMarshallingStub(new RuntimeTypeHandle(del.GetMethodTable()), openStaticFunctionPointer != IntPtr.Zero);
-                Debug.Assert(pTarget != IntPtr.Zero);
-
-                RuntimeAugments.SetThunkData(s_thunkPoolHeap, Thunk, ContextData, pTarget);
+                catch
+                {
+                    FreeThunkContextData(contextData);
+                    RuntimeAugments.FreeThunk(s_thunkPoolHeap, thunk);
+                    throw;
+                }
             }
 
             ~PInvokeDelegateThunk()
             {
                 if (ContextData != IntPtr.Zero)
                 {
-                    // free the GCHandle
                     WeakGCHandle<Delegate> handle = ((ThunkContextData*)ContextData)->Handle;
-                    if (handle.IsAllocated)
+                    if (handle.IsAllocated && handle.TryGetTarget(out _))
                     {
                         // If the delegate is still alive, defer finalization.
-                        if (handle.TryGetTarget(out _))
-                        {
-                            GC.ReRegisterForFinalize(this);
-                            return;
-                        }
-
-                        handle.Dispose();
+                        GC.ReRegisterForFinalize(this);
+                        return;
                     }
 
-                    // Free the allocated context data memory
-                    NativeMemory.Free((void*)ContextData);
+                    FreeThunkContextData(ContextData);
                 }
 
                 // Free the thunk
@@ -171,6 +185,22 @@ namespace System.Runtime.InteropServices
                 {
                     RuntimeAugments.FreeThunk(s_thunkPoolHeap, Thunk);
                 }
+            }
+
+            private static void FreeThunkContextData(IntPtr contextData)
+            {
+                if (contextData == IntPtr.Zero)
+                {
+                    return;
+                }
+
+                WeakGCHandle<Delegate> handle = ((ThunkContextData*)contextData)->Handle;
+                if (handle.IsAllocated)
+                {
+                    handle.Dispose();
+                }
+
+                NativeMemory.Free((void*)contextData);
             }
         }
 

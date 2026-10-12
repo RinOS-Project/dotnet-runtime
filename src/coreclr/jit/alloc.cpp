@@ -96,7 +96,7 @@ void JitMemStatsInfo::dumpMaxMemStats(FILE* file)
 #endif // MEASURE_MEM_ALLOC
 
 // RinOS provides the global operators from its libc++ compatibility layer.
-#if defined(JIT_STANDALONE_BUILD) && !defined(TARGET_RINOS)
+#if defined(JIT_STANDALONE_BUILD) && !defined(TARGET_RINOS) && !defined(RIN_TARGET_RINOS)
 
 // Note that code in libstdc++ (for example) may call the global new
 // during thread initialization etc. so don't assert during init.

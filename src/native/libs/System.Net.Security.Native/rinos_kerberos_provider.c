@@ -1790,6 +1790,73 @@ static uint32_t provider_operation(
                : RIN_AUTH_PROVIDER_OK;
 }
 
+/* Reacquire the current authenticated live-session handle after the owner
+ * reports that the old generation has expired.  This is deliberately a
+ * generation refresh of an opaque keyring record, not a KDC login, TGT
+ * renewal, or locally manufactured credential.  The owner remains the only
+ * authority allowed to select the session credential. */
+static uint32_t provider_refresh_initiator_credential(
+    RinOsKerberosProviderCredential* credential,
+    RinOsKerberosProviderContext* provider_context, uint32_t* minor_status)
+{
+    const RinKerberosCredentialOwnerV1* owner;
+    void* replacement = NULL;
+    void* old_credential;
+    uint32_t status;
+    uint32_t cleanup_minor = 0u;
+
+    if (minor_status != NULL) *minor_status = 0u;
+    if (credential == NULL || provider_context == NULL ||
+        !provider_credential_valid(
+            credential, RIN_KERBEROS_OPERATION_CREDENTIAL_INITIATOR) ||
+        !provider_context_valid(provider_context) ||
+        provider_context->kind !=
+            RIN_KERBEROS_OPERATION_CREDENTIAL_INITIATOR ||
+        provider_context->owner_credential != credential->owner_credential)
+        return provider_unavailable(minor_status);
+    owner = credential->owner;
+    if (owner == NULL || owner->acquire_session_initiator == NULL ||
+        owner->release_credential == NULL)
+        return provider_unavailable(minor_status);
+
+    status = owner->acquire_session_initiator(
+        owner->context, minor_status, NULL, &replacement);
+    if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK || replacement == NULL) {
+        /* A failed acquire may still return an owner handle.  Do not leak or
+         * adopt it, and preserve the acquire failure as the visible result. */
+        if (replacement != NULL)
+            (void)owner->release_credential(
+                owner->context, &cleanup_minor, &replacement);
+        return status == RIN_KERBEROS_CREDENTIAL_OWNER_OK
+                   ? provider_unavailable(minor_status)
+                   : provider_status_from_owner(status, minor_status);
+    }
+
+    old_credential = credential->owner_credential;
+    status = owner->release_credential(
+        owner->context, minor_status, &old_credential);
+    if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK ||
+        old_credential != NULL) {
+        /* Keep the old handle when the owner can still expose it.  If the
+         * owner consumed it while reporting failure, invalidate both wrapper
+         * objects rather than leaving a stale context reachable. */
+        (void)owner->release_credential(
+            owner->context, &cleanup_minor, &replacement);
+        if (old_credential == NULL) {
+            credential->owner_credential = NULL;
+            provider_context->owner_credential = NULL;
+        }
+        return status != RIN_KERBEROS_CREDENTIAL_OWNER_OK
+                   ? provider_status_from_owner(status, minor_status)
+                   : provider_unavailable(minor_status);
+    }
+
+    credential->owner_credential = replacement;
+    provider_context->owner_credential = replacement;
+    if (minor_status != NULL) *minor_status = 0u;
+    return RIN_AUTH_PROVIDER_OK;
+}
+
 static uint32_t provider_init_sec_context(
     void* context, uint32_t* minor_status, void* claimant_cred,
     void** security_context, uint32_t package_type, void* target_name,
@@ -1981,6 +2048,32 @@ static uint32_t provider_init_sec_context(
     status = provider_operation(credential, provider_context, &request,
                                 operation_input, operation_input_size, output,
                                 1u, return_flags, minor_status);
+    if (status == RIN_AUTH_PROVIDER_CREDENTIALS_EXPIRED &&
+        provider_context->state == RINOS_KERBEROS_CONTEXT_NEGOTIATING &&
+        provider_context->token_size == 0u && mechanism_input_length == 0u &&
+        provider_refresh_initiator_credential(
+            credential, provider_context, minor_status) ==
+            RIN_AUTH_PROVIDER_OK) {
+        /* Retry exactly one empty-input initial leg with the newly acquired
+         * live-session generation.  Continuations are never replayed. */
+        if (operation_input != NULL) {
+            provider_zero(operation_input, operation_input_size);
+            free(operation_input);
+            operation_input = NULL;
+            operation_input_size = 0u;
+        }
+        if (!provider_build_sec_context_input(
+                mechanism, requested_flags, name, NULL, 0u,
+                mechanism_input, mechanism_input_length, &operation_input,
+                &operation_input_size)) {
+            status = provider_unavailable(minor_status);
+        } else {
+            request.input_size = operation_input_size;
+            status = provider_operation(
+                credential, provider_context, &request, operation_input,
+                operation_input_size, output, 1u, return_flags, minor_status);
+        }
+    }
     if (operation_input != NULL) {
         provider_zero(operation_input, operation_input_size);
         free(operation_input);

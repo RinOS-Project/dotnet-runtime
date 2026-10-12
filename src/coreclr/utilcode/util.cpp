@@ -2457,7 +2457,7 @@ lDone: ;
     }
     PAL_ENDTRY
 #elif defined(HOST_UNIX) && !defined(TARGET_WASM) && !defined(DACCESS_COMPILE)
-    if (pModuleBaseAddress != NULL && ip != NULL)
+    if (pModuleBaseAddress != NULL && ip != 0)
     {
         IsIPInModuleData data{
             reinterpret_cast<uintptr_t>(pModuleBaseAddress),

@@ -89,6 +89,11 @@ _Ux86_64_getcontext:
 #endif
 	movq $UC_MCONTEXT_MC_LEN_VAL, UC_MCONTEXT_MC_LEN(%rdi)
 #elif defined(__QNX__)
+#elif defined(__rinos__)
+	/* RinOS stores the complete FXSAVE image in the inline ucontext buffer. */
+	leaq UC_MCONTEXT_FPREGS_MEM(%rdi),%r8
+	movq %r8, UC_MCONTEXT_FPREGS_PTR(%rdi)
+	fxsave (%r8)
 #else
 #error Port me
 #endif

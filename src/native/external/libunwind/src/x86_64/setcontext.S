@@ -55,6 +55,10 @@ _Ux86_64_setcontext:
 	fxrstor UC_MCONTEXT_FPSTATE(%rdi)
 1:
 #elif defined (__QNX__)
+#elif defined (__rinos__)
+	/* RinOS stores the complete FXSAVE image through mcontext.fpregs. */
+	mov    UC_MCONTEXT_FPREGS_PTR(%rdi),%r8
+	fxrstor (%r8)
 #else
 #error Port me
 #endif

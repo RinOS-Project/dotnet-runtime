@@ -297,6 +297,11 @@ static uint32_t rinos_gss_map_kerberos_major(
         case 48u: /* KRB_AP_ERR_METHOD */
         case 69u: /* KRB_AP_ERR_USER_TO_USER_REQUIRED */
             return PAL_GSS_S_UNAVAILABLE;
+        case 40u: /* KRB_AP_ERR_MSG_TYPE */
+            /* RFC 4120 defines this as an invalid top-level message type.
+             * Preserve the mechanism minor while exposing the standard GSS
+             * defective-token major status to the managed PAL. */
+            return PAL_GSS_S_DEFECTIVE_TOKEN;
         case 18u: /* KDC_ERR_CLIENT_REVOKED */
         case 19u: /* KDC_ERR_SERVICE_REVOKED */
         case 20u: /* KDC_ERR_TGT_REVOKED */

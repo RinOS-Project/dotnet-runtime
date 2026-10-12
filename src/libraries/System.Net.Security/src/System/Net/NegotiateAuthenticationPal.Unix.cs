@@ -817,6 +817,9 @@ namespace System.Net
                             case 0x8000005Au: // KDC_ERR_PREAUTH_EXPIRED
                             case 0x80000020u: // KRB_AP_ERR_TKT_EXPIRED
                                 return NegotiateAuthenticationStatusCode.CredentialsExpired;
+                            case 0x80000025u: // KRB_AP_ERR_SKEW
+                            case 0x80000028u: // KRB_AP_ERR_MSG_TYPE
+                                return NegotiateAuthenticationStatusCode.InvalidToken;
                             case 0x80000018u: // KDC_ERR_PREAUTH_FAILED
                             case 0x80000012u: // KDC_ERR_CLIENT_REVOKED
                             case 0x80000013u: // KDC_ERR_SERVICE_REVOKED

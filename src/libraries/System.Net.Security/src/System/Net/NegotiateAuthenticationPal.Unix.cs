@@ -784,7 +784,10 @@ namespace System.Net
                             case 0x80000001u: // KDC_ERR_NAME_EXP
                                 return NegotiateAuthenticationStatusCode.CredentialsExpired;
                             case 0x96C73A07u: // KRB5KDC_ERR_S_PRINCIPAL_UNKNOWN
+                            case 0x80000002u: // KDC_ERR_SERVICE_EXP
                             case 0x80000007u: // KDC_ERR_S_PRINCIPAL_UNKNOWN
+                            case 0x80000008u: // KDC_ERR_PRINCIPAL_NOT_UNIQUE
+                            case 0x80000016u: // KDC_ERR_SERVICE_NOTYET
                             case 0x8000001Au: // KDC_ERR_SERVER_NOMATCH
                             case 0x80000023u: // KRB_AP_ERR_NOT_US
                                 return NegotiateAuthenticationStatusCode.TargetUnknown;

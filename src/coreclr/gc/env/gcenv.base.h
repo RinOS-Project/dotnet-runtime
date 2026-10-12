@@ -69,8 +69,12 @@ inline HRESULT HRESULT_FROM_WIN32(unsigned long x)
 #define NOERROR                 0x0
 #define ERROR_TIMEOUT           1460
 
+#ifndef TRUE
 #define TRUE true
+#endif
+#ifndef FALSE
 #define FALSE false
+#endif
 
 #define CALLBACK __stdcall
 

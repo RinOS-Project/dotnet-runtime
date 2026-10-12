@@ -16,6 +16,7 @@
 #include "ucontext_i.h"
 
 #include <signal.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/syscall.h>
@@ -39,7 +40,10 @@ rinos_signal_trampoline(struct cursor *c)
   unw_accessors_t *accessors;
   int ret;
 
-  if (c == NULL || c->dwarf.as == NULL)
+  if (c == NULL || c->dwarf.as == NULL || c->dwarf.ip == 0u ||
+      !rinos_amd64_canonical(c->dwarf.ip) ||
+      c->dwarf.ip > UINTPTR_MAX - UINT64_C(16) ||
+      !rinos_amd64_canonical(c->dwarf.ip + UINT64_C(8)))
     return 0;
 
   accessors = unw_get_accessors_int(c->dwarf.as);
@@ -72,13 +76,19 @@ HIDDEN int
 x86_64_handle_signal_frame(unw_cursor_t *cursor)
 {
   struct cursor *c = (struct cursor *)cursor;
-  const unw_word_t ucontext = c->dwarf.cfa + RINOS_SIGINFO_SIZE;
+  unw_word_t ucontext;
   unw_word_t restored_rsp;
   unw_word_t restored_rip;
   int ret;
   int i;
 
-  if (c->sigcontext_format != X86_64_SCF_LINUX_RT_SIGFRAME)
+  if (c == NULL || c->sigcontext_format != X86_64_SCF_LINUX_RT_SIGFRAME ||
+      c->dwarf.cfa == 0u || !rinos_amd64_canonical(c->dwarf.cfa) ||
+      c->dwarf.cfa > UINTPTR_MAX - RINOS_SIGINFO_SIZE - UINT64_C(256))
+    return -UNW_EBADFRAME;
+
+  ucontext = c->dwarf.cfa + RINOS_SIGINFO_SIZE;
+  if (!rinos_amd64_canonical(ucontext))
     return -UNW_EBADFRAME;
 
   /* cfa points at the kernel-written siginfo_t. sigreturn needs the

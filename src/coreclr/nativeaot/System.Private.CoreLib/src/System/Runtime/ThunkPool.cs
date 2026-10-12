@@ -569,17 +569,40 @@ namespace System.Runtime
         private static int s_currentlyMappedThunkBlocksIndex = Constants.NumThunkBlocksPerMapping;
         private static Lock s_lock = new Lock(useTrivialWaits: true);
 
+        private static void ValidateThunkBlockPair(IntPtr thunksBlock, out IntPtr dataAddress)
+        {
+            // Validate the provider result before publishing the block into
+            // the managed mapping cache. A malformed result must not leave a
+            // bad block available to a later allocation attempt.
+            if (thunksBlock == IntPtr.Zero ||
+                ((nuint)(nint)thunksBlock & Constants.PageSizeMask) != 0)
+            {
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
+
+            dataAddress = RuntimeImports.RhpGetThunkDataBlockAddress(thunksBlock);
+            if (dataAddress == IntPtr.Zero ||
+                ((nuint)(nint)dataAddress & Constants.PageSizeMask) != 0 ||
+                RuntimeImports.RhpGetThunkStubsBlockAddress(dataAddress) != thunksBlock)
+            {
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
+        }
+
         public static unsafe IntPtr GetNewThunksBlock()
         {
             using Lock.Scope scope = s_lock.EnterScope();
 
             IntPtr nextThunksBlock;
+            IntPtr dataAddress;
 
             // Check the most recently mapped thunks block. Each mapping consists of multiple
             // thunk stubs pages, and multiple thunk data pages (typically 8 pages of each in a single mapping)
             if (s_currentlyMappedThunkBlocksIndex < Constants.NumThunkBlocksPerMapping)
             {
-                nextThunksBlock = s_currentlyMappedThunkBlocks[s_currentlyMappedThunkBlocksIndex++];
+                nextThunksBlock = s_currentlyMappedThunkBlocks[s_currentlyMappedThunkBlocksIndex];
+                ValidateThunkBlockPair(nextThunksBlock, out dataAddress);
+                s_currentlyMappedThunkBlocksIndex++;
 #if DEBUG
                 s_currentlyMappedThunkBlocks[s_currentlyMappedThunkBlocksIndex - 1] = IntPtr.Zero;
                 Debug.Assert(nextThunksBlock != IntPtr.Zero);
@@ -594,6 +617,8 @@ namespace System.Runtime
                 else if (result != HResults.S_OK)
                     throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
 
+                ValidateThunkBlockPair(nextThunksBlock, out dataAddress);
+
                 // Each mapping consists of multiple blocks of thunk stubs/data pairs. Keep track of those
                 // so that we do not create a new mapping until all blocks in the sections we just mapped are consumed
                 IntPtr currentThunksBlock = nextThunksBlock;
@@ -606,29 +631,8 @@ namespace System.Runtime
                 s_currentlyMappedThunkBlocksIndex = 1;
             }
 
-            // The provider owns the mapping ABI, but the managed free-list
-            // code still requires a page-aligned code block. Reject malformed
-            // providers before publishing any block addresses.
-            if (nextThunksBlock == IntPtr.Zero ||
-                ((nuint)(nint)nextThunksBlock & Constants.PageSizeMask) != 0)
-            {
-                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
-            }
-
             // Setup the thunks in the new block as a linked list of thunks.
             // Use the first data field of the thunk to build the linked list.
-            IntPtr dataAddress = RuntimeImports.RhpGetThunkDataBlockAddress(nextThunksBlock);
-            if (dataAddress == IntPtr.Zero ||
-                ((nuint)(nint)dataAddress & Constants.PageSizeMask) != 0 ||
-                RuntimeImports.RhpGetThunkStubsBlockAddress(dataAddress) != nextThunksBlock)
-            {
-                // A provider may advertise a valid callback table but still
-                // fail to resolve a particular mapping block, or return a
-                // data block paired with a different code block. Do not turn
-                // either provider failure into a write through an invalid
-                // address.
-                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
-            }
 
             for (int i = 0; i < Constants.NumThunksPerBlock; i++)
             {

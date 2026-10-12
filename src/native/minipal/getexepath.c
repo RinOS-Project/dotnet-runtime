@@ -23,7 +23,7 @@
 #include <unistd.h>
 #elif defined(_WIN32)
 #include <windows.h>
-#elif defined(TARGET_RINOS)
+#elif defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST)
 #include <unistd.h>
 #elif defined(__HAIKU__)
 #include <FindDirectory.h>
@@ -132,7 +132,7 @@ char* minipal_getexepath(void)
     }
 
     return _strdup(path);
-#elif defined(TARGET_RINOS)
+#elif defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST)
     RinProcessImagePathResponseV1 response = {0};
     if (rin_process_image_path_get(&response) != 0)
     {

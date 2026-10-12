@@ -63,7 +63,9 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 # include <sys/syscall.h>   /* For SYS_xxx definitions */
 #endif
 
-#if defined(HAVE_ELF_H)
+#if defined(__rinos__)
+# include <link.h>          /* RinOS exports the ELF ABI from its loader header. */
+#elif defined(HAVE_ELF_H)
 # include <elf.h>
 #elif defined(HAVE_SYS_ELF_H)
 # include <sys/elf.h>
@@ -109,7 +111,16 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 # define UNW_BIG_ENDIAN 4321
 #endif
 
-#if defined(__BYTE_ORDER)
+#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) \
+    && defined(__ORDER_BIG_ENDIAN__)
+# if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#  define UNW_BYTE_ORDER UNW_LITTLE_ENDIAN
+# elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#  define UNW_BYTE_ORDER UNW_BIG_ENDIAN
+# else
+#  error Target has unsupported byte ordering.
+# endif
+#elif defined(__BYTE_ORDER)
 # define UNW_BYTE_ORDER __BYTE_ORDER
 #elif defined(_BYTE_ORDER)
 # define UNW_BYTE_ORDER _BYTE_ORDER

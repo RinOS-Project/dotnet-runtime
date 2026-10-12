@@ -2,7 +2,16 @@ include(CheckCSourceCompiles)
 include(CheckIncludeFiles)
 include(CheckFunctionExists)
 
-if(CLR_CMAKE_HOST_WIN32)
+if(CLR_CMAKE_TARGET_RINOS)
+    # RinOS exposes the ELF and program-header ABI through its own link.h.
+    # It intentionally has no Linux elf.h/endian.h headers in the target sysroot.
+    set(HAVE_ELF_H 0)
+    set(HAVE_SYS_ELF_H 0)
+    set(HAVE_ENDIAN_H 0)
+    set(HAVE_SYS_ENDIAN_H 0)
+    set(HAVE_LINK_H 1)
+    set(HAVE_SYS_LINK_H 0)
+elseif(CLR_CMAKE_HOST_WIN32)
     # Our posix abstraction layer will provide these headers
     set(HAVE_ELF_H 1)
     set(HAVE_ENDIAN_H 1)

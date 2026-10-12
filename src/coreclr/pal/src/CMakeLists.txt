@@ -247,6 +247,18 @@ if(CLR_CMAKE_TARGET_RINOS AND DEFINED RINOS_DOTNET_TARGET_INCLUDE_DIRS)
   )
 endif()
 
+# PAL object files are also compiled in the cross-component graph, where the
+# directory-level RinOS C++ options from CoreCLR's top-level CMakeLists are not
+# installed. Keep them on this target so it uses libc++ rather than the host's
+# libstdc++ headers when targeting RinOS.
+if(CLR_CMAKE_TARGET_RINOS AND DEFINED RINOS_DOTNET_CXX_FLAGS)
+  foreach(_RINOS_CXX_FLAG IN LISTS RINOS_DOTNET_CXX_FLAGS)
+    target_compile_options(coreclrpal_objects PRIVATE
+      "$<$<COMPILE_LANGUAGE:CXX>:${_RINOS_CXX_FLAG}>"
+    )
+  endforeach()
+endif()
+
 add_library(coreclrpal STATIC
   $<TARGET_OBJECTS:coreclrpal_objects>
   ${LIBUNWIND_OBJECTS}

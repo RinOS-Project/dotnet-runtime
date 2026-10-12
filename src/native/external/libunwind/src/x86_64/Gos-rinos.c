@@ -20,6 +20,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/syscall.h>
+#ifndef __linux__
+#include <unistd.h>
+#endif
 
 #define RINOS_SIGINFO_SIZE UINT64_C(128)
 #define RINOS_RT_SIGRETURN_MOV UINT64_C(0x0f000000adc0c748)
@@ -66,6 +69,22 @@ tdep_reuse_frame(struct dwarf_cursor *dw, int frame)
   }
 }
 #endif
+
+void
+tdep_get_exe_image_path(char *path)
+{
+#ifdef __linux__
+  /* Crossgen's host JIT is built from this RinOS platform source, but runs
+   * on Linux and needs the host executable image for .eh_frame lookup. */
+  strcpy(path, "/proc/self/exe");
+#else
+  RinProcessImagePathResponseV1 response = { 0 };
+  if (rin_process_image_path_get(&response) == 0)
+    strcpy(path, response.path);
+  else
+    path[0] = '\0';
+#endif
+}
 
 static int
 rinos_amd64_canonical(unw_word_t value)

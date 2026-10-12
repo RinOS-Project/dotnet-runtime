@@ -1336,20 +1336,51 @@ static void provider_context_release(
     context->credential_ref_held = 0u;
 }
 
+static int provider_credential_owner_valid(
+    const RinKerberosCredentialOwnerV1* owner)
+{
+    return owner != NULL &&
+           owner->struct_size == sizeof(*owner) &&
+           owner->version == RIN_KERBEROS_CREDENTIAL_OWNER_ABI_VERSION &&
+           owner->reserved0 == 0u && owner->reserved1 == 0u &&
+           (owner->capability_mask &
+                RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES) ==
+               RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES &&
+           (owner->capability_mask &
+                ~RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES) == 0u &&
+           owner->acquire_session_initiator != NULL &&
+           owner->acquire_acceptor_keytab != NULL &&
+           owner->release_credential != NULL &&
+           owner->get_session_principal != NULL;
+}
+
+static int provider_operation_owner_valid(
+    const RinKerberosOperationOwnerV1* owner)
+{
+    return owner != NULL &&
+           owner->struct_size == sizeof(*owner) &&
+           owner->version == RIN_KERBEROS_OPERATION_OWNER_ABI_VERSION &&
+           owner->reserved0 == 0u && owner->operation != NULL;
+}
+
 static const RinKerberosCredentialOwnerV1* provider_credential_owner(void)
 {
+    const RinKerberosCredentialOwnerV1* owner;
 #if !defined(RINOS_KERBEROS_OWNER_LINKED)
     if (rin_kerberos_credential_owner_get_v1 == NULL) return NULL;
 #endif
-    return rin_kerberos_credential_owner_get_v1();
+    owner = rin_kerberos_credential_owner_get_v1();
+    return provider_credential_owner_valid(owner) ? owner : NULL;
 }
 
 static const RinKerberosOperationOwnerV1* provider_operation_owner(void)
 {
+    const RinKerberosOperationOwnerV1* owner;
 #if !defined(RINOS_KERBEROS_OWNER_LINKED)
     if (rin_kerberos_operation_owner_get_v1 == NULL) return NULL;
 #endif
-    return rin_kerberos_operation_owner_get_v1();
+    owner = rin_kerberos_operation_owner_get_v1();
+    return provider_operation_owner_valid(owner) ? owner : NULL;
 }
 
 static uint32_t provider_alloc_name(uint32_t* minor_status, char* input,
@@ -3421,12 +3452,15 @@ const RinAuthProviderV1* rin_auth_provider_get_v1(void)
     /* A transport-only build must not advertise a usable Kerberos provider. */
     return NULL;
 #else
+    const RinKerberosCredentialOwnerV1* credential_owner =
+        provider_credential_owner();
+    const RinKerberosOperationOwnerV1* operation_owner =
+        provider_operation_owner();
     /* Capability advertisement is also conditional on the live RinOS
      * credential and operation owners.  The provider must never make a
      * username, fixed token, or success-only stub look like session
      * credentials. */
-    if (provider_credential_owner() == NULL ||
-        provider_operation_owner() == NULL)
+    if (credential_owner == NULL || operation_owner == NULL)
         return NULL;
     return &g_provider;
 #endif

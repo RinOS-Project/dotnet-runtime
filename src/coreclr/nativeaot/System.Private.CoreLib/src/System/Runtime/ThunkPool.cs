@@ -124,6 +124,7 @@ namespace System.Runtime
         private class AllocatedBlock
         {
             internal IntPtr _blockBaseAddress;
+            internal IntPtr _dataBlockAddress;
             internal AllocatedBlock _nextBlock;
         }
 
@@ -189,6 +190,7 @@ namespace System.Runtime
             _freeThunkCount = (nuint)Constants.NumThunksPerBlock;
 
             _allocatedBlocks._blockBaseAddress = thunkStubsBlock;
+            _allocatedBlocks._dataBlockAddress = thunkDataBlock;
         }
 
         public static unsafe ThunksHeap CreateThunksHeap(IntPtr commonStubAddress)
@@ -239,6 +241,7 @@ namespace System.Runtime
                     (nuint)Constants.ThunkDataSize);
 
             newBlockInfo._blockBaseAddress = thunkStubsBlock;
+            newBlockInfo._dataBlockAddress = thunkDataBlock;
             newBlockInfo._nextBlock = _allocatedBlocks;
 
             _allocatedBlocks = newBlockInfo;
@@ -253,6 +256,7 @@ namespace System.Runtime
             Debug.Assert(_nextAvailableThunkPtr != IntPtr.Zero);
 
             IntPtr nextAvailableThunkPtr;
+            IntPtr thunkAddress;
             lock (this)
             {
                 if (_nextAvailableThunkPtr == IntPtr.Zero ||
@@ -261,7 +265,19 @@ namespace System.Runtime
                     throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
                 }
 
+                // The free-list links live in writable thunk data. Validate
+                // the current node before dereferencing it and validate the
+                // successor before publishing the mutation. A malformed
+                // provider mapping or corrupted link must not consume a
+                // free-list entry and leave the heap partially advanced.
+                if (!IsThunkDataInHeap(_nextAvailableThunkPtr))
+                    throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+
                 nextAvailableThunkPtr = _nextAvailableThunkPtr;
+                // Resolve the executable address before ExpandHeap can map a
+                // new section. A malformed current node must not allocate a
+                // section and then fail with a half-advanced heap.
+                thunkAddress = GetThunkAddressFromDataAddress(nextAvailableThunkPtr);
                 IntPtr nextNextAvailableThunkPtr = *((IntPtr*)(nextAvailableThunkPtr));
 
                 if (nextNextAvailableThunkPtr == IntPtr.Zero)
@@ -273,6 +289,9 @@ namespace System.Runtime
                     Debug.Assert(nextNextAvailableThunkPtr != IntPtr.Zero);
                 }
 
+                if (!IsThunkDataInHeap(nextNextAvailableThunkPtr))
+                    throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+
                 _nextAvailableThunkPtr = nextNextAvailableThunkPtr;
                 --_freeThunkCount;
             }
@@ -282,38 +301,6 @@ namespace System.Runtime
             // Reset debug flag indicating the thunk is now in use
             *((IntPtr*)(nextAvailableThunkPtr + IntPtr.Size)) = IntPtr.Zero;
 #endif
-
-            nuint nextAvailableThunkValue = (nuint)(nint)nextAvailableThunkPtr;
-            nuint dataPageOffset = nextAvailableThunkValue & Constants.PageSizeMask;
-            if (dataPageOffset % (nuint)Constants.ThunkDataSize != 0)
-            {
-                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
-            }
-
-            nuint thunkIndexValue = dataPageOffset / (nuint)Constants.ThunkDataSize;
-            if (thunkIndexValue >= (nuint)Constants.NumThunksPerBlock)
-            {
-                // The final cell in a data page stores the common stub address;
-                // it is not an allocatable thunk node.  Do not turn a malformed
-                // free-list value into an executable thunk address.
-                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
-            }
-            int thunkIndex = (int)thunkIndexValue;
-
-            IntPtr thunkStubsBlock = RuntimeImports.RhpGetThunkStubsBlockAddress(nextAvailableThunkPtr);
-            if (thunkStubsBlock == IntPtr.Zero)
-            {
-                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
-            }
-
-            IntPtr thunkAddress = Constants.AddOffsetChecked(
-                thunkStubsBlock,
-                (nuint)thunkIndex * (nuint)Constants.ThunkCodeSize);
-
-            if (thunkAddress == IntPtr.Zero)
-            {
-                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
-            }
 
             return SetThumbBit(thunkAddress);
         }
@@ -400,6 +387,64 @@ namespace System.Runtime
             }
 
             return false;
+        }
+
+        private bool IsThunkDataInHeap(IntPtr dataAddress)
+        {
+            nuint dataAddressValue = (nuint)(nint)dataAddress;
+            if (dataAddressValue == 0)
+                return false;
+
+            AllocatedBlock currentBlock = _allocatedBlocks;
+            while (currentBlock != null)
+            {
+                nuint dataBlockAddress = (nuint)(nint)currentBlock._dataBlockAddress;
+                if (dataBlockAddress != 0 &&
+                    dataBlockAddress % Constants.PageSize == 0 &&
+                    dataBlockAddress <= nuint.MaxValue - Constants.ThunkDataSpan &&
+                    dataAddressValue >= dataBlockAddress &&
+                    dataAddressValue < dataBlockAddress + Constants.ThunkDataSpan &&
+                    (dataAddressValue - dataBlockAddress) %
+                        (nuint)Constants.ThunkDataSize == 0)
+                {
+                    return true;
+                }
+
+                currentBlock = currentBlock._nextBlock;
+            }
+
+            return false;
+        }
+
+        private unsafe IntPtr GetThunkAddressFromDataAddress(IntPtr dataAddress)
+        {
+            if (!IsThunkDataInHeap(dataAddress))
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+
+            nuint dataAddressValue = (nuint)(nint)dataAddress;
+            nuint dataPageOffset = dataAddressValue & Constants.PageSizeMask;
+            if (dataPageOffset % (nuint)Constants.ThunkDataSize != 0)
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            nuint thunkIndexValue = dataPageOffset / (nuint)Constants.ThunkDataSize;
+            if (thunkIndexValue >= (nuint)Constants.NumThunksPerBlock)
+            {
+                // The final cell in a data page stores the common stub address;
+                // it is not an allocatable thunk node.  Do not turn a malformed
+                // free-list value into an executable thunk address.
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
+
+            IntPtr thunkStubsBlock = RuntimeImports.RhpGetThunkStubsBlockAddress(dataAddress);
+            if (thunkStubsBlock == IntPtr.Zero)
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+
+            IntPtr thunkAddress = Constants.AddOffsetChecked(
+                thunkStubsBlock,
+                thunkIndexValue * (nuint)Constants.ThunkCodeSize);
+            if (thunkAddress == IntPtr.Zero)
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+
+            return thunkAddress;
         }
 
         private static IntPtr TryGetThunkDataAddress(IntPtr thunkAddress)

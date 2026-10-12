@@ -272,7 +272,7 @@ struct sve_context {
 #define MCREG_Sp(mc)      0
 #define MCREG_Pc(mc)      0
 
-#elif defined(TARGET_RINOS) && defined(HOST_AMD64)
+#elif defined(TARGET_RINOS) && defined(HOST_AMD64) && !defined(RINOS_CROSS_COMPONENTS_HOST)
 
 /* RinOS ucontext.h intentionally uses the target-owned gregset_t and a raw
  * 512-byte FXSAVE image.  It is not layout-compatible with glibc's

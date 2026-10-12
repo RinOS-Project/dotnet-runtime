@@ -1082,7 +1082,7 @@ GetProcessIdDisambiguationKey(DWORD processId, UINT64 *disambiguationKey)
         return FALSE;
     }
 
-#elif HAVE_PROCFS_STAT
+#elif HAVE_PROCFS_STAT || (defined(RINOS_CROSS_COMPONENTS_HOST) && defined(__linux__))
 
     // Here we read /proc/<pid>/stat file to get the start time for the process.
     // We return this value (which is expressed in jiffies since boot time).
@@ -1138,7 +1138,7 @@ GetProcessIdDisambiguationKey(DWORD processId, UINT64 *disambiguationKey)
     *disambiguationKey = starttime;
     return TRUE;
 
-#elif defined(TARGET_RINOS)
+#elif defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST)
 
     /* RinOS has no procfs.  Ask the process-namespace ABI for the
     * generation-stable instance cookie instead of using a recycled process

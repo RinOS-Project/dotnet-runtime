@@ -237,6 +237,14 @@ add_library(coreclrpal_objects
   ${PLATFORM_SOURCES}
 )
 
+# The cross-components graph builds host tools while retaining TARGET_RINOS
+# for target-specific source selection. Let PAL sources distinguish that host
+# graph from the actual RinOS ABI build before choosing POSIX context/process
+# interfaces.
+if(CLR_CMAKE_TARGET_RINOS AND RINOS_CROSS_COMPONENTS_HOST)
+  target_compile_definitions(coreclrpal_objects PRIVATE RINOS_CROSS_COMPONENTS_HOST=1)
+endif()
+
 # PAL sources include POSIX-shaped headers such as unistd.h and ucontext.h.
 # Bind the RinOS target build explicitly to the target ABI: directory-level
 # target include paths are not present in every CoreCLR configure pass. The

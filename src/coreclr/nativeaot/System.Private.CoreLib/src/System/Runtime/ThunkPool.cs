@@ -130,7 +130,6 @@ namespace System.Runtime
 
         private IntPtr _commonStubAddress;
         private IntPtr _nextAvailableThunkPtr;
-        private IntPtr _lastThunkPtr;
         // Every free thunk stores its list link in the first data cell. Keep
         // a bounded count so stale-list validation cannot loop forever.
         private nuint _freeThunkCount;
@@ -183,10 +182,6 @@ namespace System.Runtime
 
             // Set the head and end of the linked list
             _nextAvailableThunkPtr = thunkDataBlock;
-            _lastThunkPtr = Constants.AddOffsetChecked(
-                _nextAvailableThunkPtr,
-                (nuint)(Constants.NumThunksPerBlock - 1) *
-                    (nuint)Constants.ThunkDataSize);
             _freeThunkCount = (nuint)Constants.NumThunksPerBlock;
 
             _allocatedBlocks._blockBaseAddress = thunkStubsBlock;
@@ -206,10 +201,22 @@ namespace System.Runtime
         //
         // Note: Expected to be called under lock
         //
-        private unsafe void ExpandHeap()
+        private unsafe void ExpandHeap(IntPtr freeListTail)
         {
             nuint addedFreeThunks = (nuint)Constants.NumThunksPerBlock;
             if (_freeThunkCount > nuint.MaxValue - addedFreeThunks)
+            {
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
+
+            // The mapping's physical last cell is not necessarily the free-list
+            // tail: an earlier cell can be the only remaining free thunk after
+            // later cells have been allocated.  Link through the actual free
+            // tail, otherwise an expansion can overwrite an allocated thunk's
+            // context field.
+            if (freeListTail == IntPtr.Zero ||
+                !IsThunkDataInHeap(freeListTail) ||
+                *((IntPtr*)freeListTail) != IntPtr.Zero)
             {
                 throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
             }
@@ -231,14 +238,10 @@ namespace System.Runtime
             *(IntPtr*)(thunkDataBlock + (int)(Constants.PageSize - IntPtr.Size)) = _commonStubAddress;
             Debug.Assert(*(IntPtr*)(thunkDataBlock + (int)(Constants.PageSize - IntPtr.Size)) == _commonStubAddress);
 
-            // Link the last entry in the old list to the first entry in the new list
-            *((IntPtr*)_lastThunkPtr) = thunkDataBlock;
-
-            // Update the pointer to the last entry in the list
-            _lastThunkPtr = Constants.AddOffsetChecked(
-                *((IntPtr*)_lastThunkPtr),
-                (nuint)(Constants.NumThunksPerBlock - 1) *
-                    (nuint)Constants.ThunkDataSize);
+            // Link the actual free-list tail to the first entry in the new list.
+            // Do not write through the physical last cell of the old mapping:
+            // that cell may already hold an allocated thunk's context.
+            *((IntPtr*)freeListTail) = thunkDataBlock;
 
             newBlockInfo._blockBaseAddress = thunkStubsBlock;
             newBlockInfo._dataBlockAddress = thunkDataBlock;
@@ -282,7 +285,7 @@ namespace System.Runtime
 
                 if (nextNextAvailableThunkPtr == IntPtr.Zero)
                 {
-                    ExpandHeap();
+                    ExpandHeap(nextAvailableThunkPtr);
 
                     nextAvailableThunkPtr = _nextAvailableThunkPtr;
                     nextNextAvailableThunkPtr = *((IntPtr*)(nextAvailableThunkPtr));

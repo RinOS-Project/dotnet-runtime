@@ -323,17 +323,21 @@ namespace System.Runtime
             // TODO: optimize the implementation and make it lock-free
             // or at least change it to a per-heap lock instead of a global lock.
 
-            IntPtr dataAddress = TryGetThunkDataAddress(thunkAddress);
-            if (dataAddress == IntPtr.Zero || !IsThunkInHeap(thunkAddress))
-            {
-                // FreeThunk is an internal runtime primitive.  A malformed or
-                // stale address must not let the release build write a linked
-                // list pointer into an unrelated writable page.
-                return;
-            }
-
             lock (this)
             {
+                // Keep address derivation and ownership validation under the
+                // same lock as the free-list mutation.  Otherwise a stale
+                // caller can race with free-then-reallocate and release a
+                // newly allocated thunk at the same address (an ABA window).
+                IntPtr dataAddress = TryGetThunkDataAddress(thunkAddress);
+                if (dataAddress == IntPtr.Zero || !IsThunkInHeap(thunkAddress))
+                {
+                    // FreeThunk is an internal runtime primitive.  A malformed or
+                    // stale address must not let the release build write a linked
+                    // list pointer into an unrelated writable page.
+                    return;
+                }
+
                 // Cleanup paths can call FreeThunk more than once. Do not
                 // put an already-free cell back at the head: that would make
                 // the free list self-loop and return one executable thunk
@@ -440,13 +444,14 @@ namespace System.Runtime
             context = IntPtr.Zero;
             target = IntPtr.Zero;
 
-            IntPtr dataAddress = TryGetThunkDataAddress(thunkAddress);
-            if (dataAddress == IntPtr.Zero)
-                return false;
-
             lock (this)
             {
-                if (!IsThunkInHeap(thunkAddress) ||
+                // Derive and validate the data address while holding the heap
+                // lock so a concurrent free/reallocate cannot turn a stale thunk handle
+                // into an observation of a different allocation.
+                IntPtr dataAddress = TryGetThunkDataAddress(thunkAddress);
+                if (dataAddress == IntPtr.Zero ||
+                    !IsThunkInHeap(thunkAddress) ||
                     IsFreeThunkDataAddress(dataAddress))
                     return false;
 
@@ -467,13 +472,14 @@ namespace System.Runtime
         /// </summary>
         public unsafe void SetThunkData(IntPtr thunkAddress, IntPtr context, IntPtr target)
         {
-            IntPtr dataAddress = TryGetThunkDataAddress(thunkAddress);
-            if (dataAddress == IntPtr.Zero)
-                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
-
             lock (this)
             {
-                if (!IsThunkInHeap(thunkAddress) ||
+                // Keep address derivation, ownership validation, and the write
+                // atomic with respect to FreeThunk and AllocateThunk.  This prevents
+                // an ABA reuse from redirecting a stale write.
+                IntPtr dataAddress = TryGetThunkDataAddress(thunkAddress);
+                if (dataAddress == IntPtr.Zero ||
+                    !IsThunkInHeap(thunkAddress) ||
                     IsFreeThunkDataAddress(dataAddress))
                     throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
 

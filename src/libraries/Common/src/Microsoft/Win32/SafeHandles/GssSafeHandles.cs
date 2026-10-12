@@ -81,6 +81,10 @@ namespace Microsoft.Win32.SafeHandles
             status = Interop.NetSecurityNative.AcquireAcceptorCred(out minorStatus, out retHandle);
             if (status != Interop.NetSecurityNative.Status.GSS_S_COMPLETE)
             {
+                // The native PAL may retain a provider handle when owner
+                // cleanup failed transiently. Dispose it here so a failed
+                // acquisition does not strand a retryable opaque handle.
+                retHandle?.Dispose();
                 throw new Interop.NetSecurityNative.GssApiException(status, minorStatus);
             }
 
@@ -161,8 +165,16 @@ namespace Microsoft.Win32.SafeHandles
         protected override bool ReleaseHandle()
         {
             Interop.NetSecurityNative.Status status = Interop.NetSecurityNative.ReleaseCred(out _, ref handle);
-            SetHandle(IntPtr.Zero);
-            return status == Interop.NetSecurityNative.Status.GSS_S_COMPLETE;
+            if (status == Interop.NetSecurityNative.Status.GSS_S_COMPLETE)
+            {
+                SetHandle(IntPtr.Zero);
+                return true;
+            }
+
+            // A live opaque handle means the owner rejected cleanup without
+            // consuming it. Keep the SafeHandle non-invalid so its retryable
+            // release contract is not converted into a leak.
+            return false;
         }
 
         private static bool InitIsNtlmInstalled()
@@ -186,8 +198,16 @@ namespace Microsoft.Win32.SafeHandles
         protected override unsafe bool ReleaseHandle()
         {
             Interop.NetSecurityNative.Status status = Interop.NetSecurityNative.DeleteSecContext(out _, ref handle);
-            SetHandle(IntPtr.Zero);
-            return status == Interop.NetSecurityNative.Status.GSS_S_COMPLETE;
+            if (status == Interop.NetSecurityNative.Status.GSS_S_COMPLETE)
+            {
+                SetHandle(IntPtr.Zero);
+                return true;
+            }
+
+            // The RinOS owner keeps a failed-delete context retryable. Do not
+            // erase the handle before SafeHandle retry/finalization can call
+            // DeleteSecContext again.
+            return false;
         }
     }
 }

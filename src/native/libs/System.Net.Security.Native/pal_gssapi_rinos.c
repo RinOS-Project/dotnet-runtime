@@ -447,10 +447,12 @@ static uint32_t rinos_gss_finish_provider_handle(
 {
     uint32_t mappedStatus = rinos_gss_map_kerberos_major(
         status, minorStatus, 0);
+    uint32_t releaseStatus = RIN_AUTH_PROVIDER_UNAVAILABLE;
 
-    /* A failed acquire must never leak a provider-owned opaque handle into
-     * the SafeHandle marshaller. A successful acquire without a handle is
-     * equally invalid and is treated as provider unavailability. */
+    /* A failed acquire must not publish a usable provider-owned opaque
+     * handle. If cleanup itself fails while retaining that handle, keep it
+     * attached to the managed SafeHandle so its release path can retry; a
+     * successful acquire without a handle is equally invalid. */
     if (mappedStatus != RINOS_GSS_S_COMPLETE ||
         outputHandle == NULL || *outputHandle == NULL)
     {
@@ -461,9 +463,14 @@ static uint32_t rinos_gss_finish_provider_handle(
              * provider object before returning its status.  Return that
              * object through the matching provider owner before hiding the
              * handle from the SafeHandle marshaller. */
-            (void)release(provider->context, minorStatus, outputHandle);
+            releaseStatus = release(provider->context, minorStatus,
+                                    outputHandle);
         }
-        if (outputHandle != NULL)
+        /* A provider release that fails while retaining its opaque owner
+         * handle is retryable. Do not discard the wrapper here; managed
+         * SafeHandle cleanup must be able to issue the release again. */
+        if (outputHandle != NULL &&
+            (releaseStatus == RIN_AUTH_PROVIDER_OK || *outputHandle == NULL))
         {
             *outputHandle = NULL;
         }
@@ -484,6 +491,7 @@ static uint32_t rinos_gss_finish_provider_context(
         provider, minorStatus, status, initiator_context, outBuffer);
     const uint32_t savedMinorStatus =
         minorStatus != NULL ? *minorStatus : 0u;
+    uint32_t releaseStatus = RIN_AUTH_PROVIDER_UNAVAILABLE;
 
     /* GSS-API returns a context handle on both COMPLETE and CONTINUE_NEEDED.
      * A provider that reports success without one cannot make progress on a
@@ -510,11 +518,10 @@ static uint32_t rinos_gss_finish_provider_context(
         return rinos_gss_unavailable(minorStatus);
     }
 
-    /* A provider must not leave a failed security-context handle or status
-     * flags reachable through the managed SafeHandle path.  This is the
-     * context analogue of rinos_gss_finish_provider_handle: provider-owned
-     * output is failure-atomic even when a buggy provider filled it before
-     * returning UNAVAILABLE or an unknown local status. */
+    /* A failed context must not expose provider output or status flags as a
+     * usable authentication result.  Cleanup is failure-atomic when the
+     * provider consumes the handle; a retryable owner handle is deliberately
+     * retained so the managed SafeHandle can complete teardown later. */
     if (mappedStatus != RINOS_GSS_S_COMPLETE &&
         mappedStatus != PAL_GSS_CONTINUE_NEEDED)
     {
@@ -523,11 +530,18 @@ static uint32_t rinos_gss_finish_provider_context(
         {
             /* A provider can allocate a context before reporting failure.
              * Release that provider-owned object before hiding it from the
-             * managed SafeHandle path. */
-            (void)release(provider->context, minorStatus,
-                          (void**)contextHandle);
+             * managed SafeHandle path. The RinOS Kerberos provider keeps
+             * the local handle live when owner cleanup fails; preserve that
+             * pointer so managed cleanup can retry the delete instead of
+             * orphaning the owner context. */
+            releaseStatus = release(provider->context, minorStatus,
+                                    (void**)contextHandle);
         }
-        if (contextHandle != NULL)
+        /* A successful release, or an owner that consumed the handle while
+         * reporting failure, sets the ABI slot to NULL. Only then is it
+         * safe to hide the handle from the managed SafeHandle. */
+        if (contextHandle != NULL &&
+            (releaseStatus == RIN_AUTH_PROVIDER_OK || *contextHandle == NULL))
         {
             *contextHandle = NULL;
         }

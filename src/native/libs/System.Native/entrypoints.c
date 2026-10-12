@@ -274,6 +274,10 @@ static const Entry s_sysNative[] =
     DllImportEntry(SystemNative_FreeLibrary)
     DllImportEntry(SystemNative_GetDefaultSearchOrderPseudoHandle)
     DllImportEntry(SystemNative_SchedGetCpu)
+#if defined(TARGET_RINOS)
+    DllImportEntry(SystemNative_GetThreadScheduling)
+    DllImportEntry(SystemNative_SetThreadScheduling)
+#endif
     DllImportEntry(SystemNative_Exit)
     DllImportEntry(SystemNative_Abort)
     DllImportEntry(SystemNative_UTimensat)

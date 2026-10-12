@@ -31,17 +31,84 @@ namespace System.Threading
             _stopped = new ManualResetEvent(false);
         }
 
-#pragma warning disable CA1822, IDE0060
         private ThreadPriority GetPriorityLive()
         {
+#if TARGET_RINOS
+            if (Interop.Sys.GetThreadScheduling(_osThreadId, out int policy, out int priority) == 0)
+            {
+                return MapFromRinOSScheduling(policy, priority);
+            }
+
+            // A scheduler query failure must not expose stale or guessed
+            // priority state to managed code.
             return ThreadPriority.Normal;
+#else
+            return ThreadPriority.Normal;
+#endif
         }
 
         private bool SetPriorityLive(ThreadPriority priority)
         {
+#if TARGET_RINOS
+            MapToRinOSScheduling(priority, out int policy, out int schedulerPriority);
+            return Interop.Sys.SetThreadScheduling(_osThreadId, policy, schedulerPriority) == 0;
+#else
             return true;
+#endif
         }
-#pragma warning restore CA1822, IDE0060
+
+
+#if TARGET_RINOS
+        private const int RinOSSchedOther = 0;
+        private const int RinOSSchedFifo = 1;
+        private const int RinOSSchedRoundRobin = 2;
+        private const int RinOSSchedBatch = 3;
+        private const int RinOSSchedIdle = 5;
+
+        private static ThreadPriority MapFromRinOSScheduling(int policy, int priority)
+        {
+            return policy switch
+            {
+                RinOSSchedIdle => ThreadPriority.Lowest,
+                RinOSSchedBatch => ThreadPriority.BelowNormal,
+                RinOSSchedOther => ThreadPriority.Normal,
+                RinOSSchedFifo or RinOSSchedRoundRobin when priority >= 50 => ThreadPriority.Highest,
+                RinOSSchedFifo or RinOSSchedRoundRobin => ThreadPriority.AboveNormal,
+                _ => ThreadPriority.Normal,
+            };
+        }
+
+        private static void MapToRinOSScheduling(ThreadPriority priority, out int policy, out int schedulerPriority)
+        {
+            switch (priority)
+            {
+                case ThreadPriority.Lowest:
+                    policy = RinOSSchedIdle;
+                    schedulerPriority = 0;
+                    break;
+                case ThreadPriority.BelowNormal:
+                    policy = RinOSSchedBatch;
+                    schedulerPriority = 0;
+                    break;
+                case ThreadPriority.Normal:
+                    policy = RinOSSchedOther;
+                    schedulerPriority = 0;
+                    break;
+                case ThreadPriority.AboveNormal:
+                    policy = RinOSSchedRoundRobin;
+                    schedulerPriority = 25;
+                    break;
+                case ThreadPriority.Highest:
+                    policy = RinOSSchedRoundRobin;
+                    schedulerPriority = 50;
+                    break;
+                default:
+                    policy = RinOSSchedOther;
+                    schedulerPriority = 0;
+                    break;
+            }
+        }
+#endif
 
         [UnmanagedCallersOnly]
         private static void OnThreadExit()
@@ -75,9 +142,6 @@ namespace System.Threading
             {
                 return false;
             }
-
-            // CoreCLR ignores OS errors while setting the priority, so do we
-            SetPriorityLive(_priority);
 
             return true;
         }

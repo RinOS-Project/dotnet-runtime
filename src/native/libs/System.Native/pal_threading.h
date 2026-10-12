@@ -33,6 +33,17 @@ PALEXPORT int32_t SystemNative_CreateThread(uintptr_t stackSize, void *(*startAd
 
 PALEXPORT int32_t SystemNative_SchedGetCpu(void);
 
+#if defined(TARGET_RINOS)
+// Returns a process-local RinOS thread's scheduler policy and priority.  A
+// thread ID of zero means the calling thread; outputs are kernel-owned values.
+PALEXPORT int32_t SystemNative_GetThreadScheduling(uint32_t threadId, int32_t* policy, int32_t* priority);
+
+// Applies a process-local thread scheduler tuple.  A thread ID of zero means
+// the calling thread.  The RinOS kernel performs capability and policy
+// validation; -1 preserves that failure.
+PALEXPORT int32_t SystemNative_SetThreadScheduling(uint32_t threadId, int32_t policy, int32_t priority);
+#endif
+
 PALEXPORT __attribute__((noreturn)) void SystemNative_Exit(int32_t exitCode);
 
 PALEXPORT __attribute__((noreturn)) void SystemNative_Abort(void);

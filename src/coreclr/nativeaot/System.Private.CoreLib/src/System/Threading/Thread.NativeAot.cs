@@ -30,6 +30,11 @@ namespace System.Threading
 
         private volatile int _threadState = (int)ThreadState.Unstarted;
         private ThreadPriority _priority;
+#if TARGET_RINOS
+        // RinOS scheduler syscalls address process-local TIDs, not managed
+        // Thread IDs. It is populated only after the native thread exists.
+        private uint _osThreadId;
+#endif
         [DataContract]
         private ManagedThreadId _managedThreadId;
         [DataContract]
@@ -105,6 +110,9 @@ namespace System.Threading
 
             currentThread._threadState = (int)(state | ThreadState.Running);
             currentThread.PlatformSpecificInitializeExistingThread();
+#if TARGET_RINOS
+            currentThread._osThreadId = Interop.Sys.TryGetUInt32OSThreadId();
+#endif
             currentThread._priority = currentThread.GetPriorityLive();
             t_currentThread = currentThread;
 
@@ -412,6 +420,15 @@ namespace System.Threading
             {
                 t_currentThread = thread;
                 System.Threading.ManagedThreadId.SetForCurrentThread(thread._managedThreadId);
+#if TARGET_RINOS
+                thread._osThreadId = Interop.Sys.TryGetUInt32OSThreadId();
+                // The native thread is current only after pthread_create has
+                // entered this callback. Applying the requested scheduler
+                // tuple here avoids changing the creator thread's priority.
+                // As in CoreCLR, a start-time OS rejection is not surfaced to
+                // the creator; an explicit Priority setter reports failure.
+                thread.SetPriorityLive(thread._priority);
+#endif
                 thread.InitializeComOnNewThread();
             }
             catch (Exception e)

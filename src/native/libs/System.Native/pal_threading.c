@@ -387,6 +387,42 @@ int32_t SystemNative_SchedGetCpu(void)
 #endif
 }
 
+#if defined(TARGET_RINOS)
+int32_t SystemNative_GetThreadScheduling(uint32_t threadId, int32_t* policy, int32_t* priority)
+{
+    struct sched_param parameters;
+    int32_t currentPolicy;
+
+    if (policy == NULL || priority == NULL)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    currentPolicy = (int32_t)sched_getscheduler((pid_t)threadId);
+    if (currentPolicy < 0)
+    {
+        return -1;
+    }
+
+    if (sched_getparam((pid_t)threadId, &parameters) != 0)
+    {
+        return -1;
+    }
+
+    *policy = currentPolicy;
+    *priority = (int32_t)parameters.sched_priority;
+    return 0;
+}
+
+int32_t SystemNative_SetThreadScheduling(uint32_t threadId, int32_t policy, int32_t priority)
+{
+    struct sched_param parameters;
+    parameters.sched_priority = priority;
+    return (int32_t)sched_setscheduler((pid_t)threadId, (int)policy, &parameters);
+}
+#endif
+
 __attribute__((noreturn))
 void SystemNative_Exit(int32_t exitCode)
 {

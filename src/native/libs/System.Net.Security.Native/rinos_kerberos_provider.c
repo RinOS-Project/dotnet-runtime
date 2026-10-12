@@ -1693,9 +1693,16 @@ static uint32_t provider_operation(
          * real protocol result from the PAL. */
         return provider_status_from_owner(status, minor_status);
     }
+    /* DELETE_SEC_CONTEXT is the one operation whose successful response does
+     * not publish a live context generation.  The owner ABI deliberately
+     * returns generation zero after it has discarded the remote context;
+     * every other operation must remain generation-bound.  Treating delete
+     * like an ordinary context operation leaves the local handle retryable
+     * forever against the real keyring owner. */
     if (owner_minor_status != 0u ||
         provider_result > RIN_KERBEROS_OPERATION_RESULT_ERROR ||
-        operation_generation == 0u ||
+        (request->operation != RIN_KERBEROS_OPERATION_DELETE_SEC_CONTEXT &&
+         operation_generation == 0u) ||
         operation_output_size > request->output_capacity ||
         next_context_size > sizeof(next_context) ||
         (operation_output_size != 0u && output == NULL) ||
@@ -1717,6 +1724,9 @@ static uint32_t provider_operation(
           operation_output_size == 0u || next_context_size != 0u ||
           (operation_return_flags &
            ~RIN_KERBEROS_OPERATION_RETURN_FLAG_EXTENDED_ERROR) != 0u)) ||
+        (request->operation == RIN_KERBEROS_OPERATION_DELETE_SEC_CONTEXT &&
+         (operation_generation != 0u || operation_output_size != 0u ||
+          next_context_size != 0u || operation_return_flags != 0u)) ||
         (operation_return_flags &
          ~RIN_KERBEROS_OPERATION_KNOWN_RETURN_FLAGS) != 0u) {
         if (operation_output != NULL) {
@@ -1741,7 +1751,8 @@ static uint32_t provider_operation(
             *minor_status = RINOS_KERBEROS_MINOR_PROTOCOL_ERROR | error_code;
     }
     if (provider_context != NULL) {
-        if (provider_context->generation != 0u &&
+        if (request->operation != RIN_KERBEROS_OPERATION_DELETE_SEC_CONTEXT &&
+            provider_context->generation != 0u &&
             provider_context->generation != operation_generation) {
             if (operation_output != NULL) {
                 provider_zero(operation_output, request->output_capacity);

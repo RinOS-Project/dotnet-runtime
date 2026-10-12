@@ -392,11 +392,11 @@ namespace System.Runtime
             return false;
         }
 
-        private bool IsThunkDataInHeap(IntPtr dataAddress)
+        private AllocatedBlock GetAllocatedBlockForThunkDataAddress(IntPtr dataAddress)
         {
             nuint dataAddressValue = (nuint)(nint)dataAddress;
             if (dataAddressValue == 0)
-                return false;
+                return null;
 
             AllocatedBlock currentBlock = _allocatedBlocks;
             while (currentBlock != null)
@@ -410,22 +410,29 @@ namespace System.Runtime
                     (dataAddressValue - dataBlockAddress) %
                         (nuint)Constants.ThunkDataSize == 0)
                 {
-                    return true;
+                    return currentBlock;
                 }
 
                 currentBlock = currentBlock._nextBlock;
             }
 
-            return false;
+            return null;
+        }
+
+        private bool IsThunkDataInHeap(IntPtr dataAddress)
+        {
+            return GetAllocatedBlockForThunkDataAddress(dataAddress) != null;
         }
 
         private unsafe IntPtr GetThunkAddressFromDataAddress(IntPtr dataAddress)
         {
-            if (!IsThunkDataInHeap(dataAddress))
+            AllocatedBlock block = GetAllocatedBlockForThunkDataAddress(dataAddress);
+            if (block == null)
                 throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
 
             nuint dataAddressValue = (nuint)(nint)dataAddress;
-            nuint dataPageOffset = dataAddressValue & Constants.PageSizeMask;
+            nuint dataBlockAddress = (nuint)(nint)block._dataBlockAddress;
+            nuint dataPageOffset = dataAddressValue - dataBlockAddress;
             if (dataPageOffset % (nuint)Constants.ThunkDataSize != 0)
                 throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
             nuint thunkIndexValue = dataPageOffset / (nuint)Constants.ThunkDataSize;
@@ -437,20 +444,20 @@ namespace System.Runtime
                 throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
             }
 
-            IntPtr thunkStubsBlock = RuntimeImports.RhpGetThunkStubsBlockAddress(dataAddress);
-            if (thunkStubsBlock == IntPtr.Zero)
+            nuint codeOffset = thunkIndexValue * (nuint)Constants.ThunkCodeSize;
+            nuint thunkStubsBlockAddress = (nuint)(nint)block._blockBaseAddress;
+            if (thunkStubsBlockAddress == 0 ||
+                thunkStubsBlockAddress > nuint.MaxValue - codeOffset)
                 throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
 
-            IntPtr thunkAddress = Constants.AddOffsetChecked(
-                thunkStubsBlock,
-                thunkIndexValue * (nuint)Constants.ThunkCodeSize);
+            IntPtr thunkAddress = (IntPtr)(nint)(thunkStubsBlockAddress + codeOffset);
             if (thunkAddress == IntPtr.Zero)
                 throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
 
             return thunkAddress;
         }
 
-        private static IntPtr TryGetThunkDataAddress(IntPtr thunkAddress)
+        private IntPtr TryGetThunkDataAddress(IntPtr thunkAddress)
         {
             nuint thunkAddressValue = (nuint)(nint)ClearThumbBit(thunkAddress);
 
@@ -479,7 +486,11 @@ namespace System.Runtime
             if (dataBlockValue > nuint.MaxValue - dataOffset)
                 return IntPtr.Zero;
 
-            return (IntPtr)(nint)(dataBlockValue + dataOffset);
+            IntPtr dataAddress = (IntPtr)(nint)(dataBlockValue + dataOffset);
+            if (!IsThunkDataInHeap(dataAddress))
+                return IntPtr.Zero;
+
+            return dataAddress;
         }
 
         /// <summary>

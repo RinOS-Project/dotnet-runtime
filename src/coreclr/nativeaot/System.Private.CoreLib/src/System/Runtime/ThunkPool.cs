@@ -606,33 +606,45 @@ namespace System.Runtime
                 s_currentlyMappedThunkBlocksIndex = 1;
             }
 
-            Debug.Assert(nextThunksBlock != IntPtr.Zero);
+            // The provider owns the mapping ABI, but the managed free-list
+            // code still requires a page-aligned code block. Reject malformed
+            // providers before publishing any block addresses.
+            if (nextThunksBlock == IntPtr.Zero ||
+                ((nuint)(nint)nextThunksBlock & Constants.PageSizeMask) != 0)
+            {
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
 
             // Setup the thunks in the new block as a linked list of thunks.
             // Use the first data field of the thunk to build the linked list.
             IntPtr dataAddress = RuntimeImports.RhpGetThunkDataBlockAddress(nextThunksBlock);
-            if (dataAddress == IntPtr.Zero)
+            if (dataAddress == IntPtr.Zero ||
+                ((nuint)(nint)dataAddress & Constants.PageSizeMask) != 0 ||
+                RuntimeImports.RhpGetThunkStubsBlockAddress(dataAddress) != nextThunksBlock)
             {
                 // A provider may advertise a valid callback table but still
-                // fail to resolve a particular mapping block.  Do not turn
-                // that provider failure into a write through address zero (or
-                // an unrelated address returned by a malformed callback).
+                // fail to resolve a particular mapping block, or return a
+                // data block paired with a different code block. Do not turn
+                // either provider failure into a write through an invalid
+                // address.
                 throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
             }
 
             for (int i = 0; i < Constants.NumThunksPerBlock; i++)
             {
+                IntPtr nextDataAddress = Constants.AddOffsetChecked(
+                    dataAddress, (nuint)Constants.ThunkDataSize);
                 if (i == (Constants.NumThunksPerBlock - 1))
                     *((IntPtr*)(dataAddress)) = IntPtr.Zero;
                 else
-                    *((IntPtr*)(dataAddress)) = dataAddress + Constants.ThunkDataSize;
+                    *((IntPtr*)(dataAddress)) = nextDataAddress;
 
 #if DEBUG
                 // Debug flag in the second data cell indicating the thunk is not used
                 *((IntPtr*)(dataAddress + IntPtr.Size)) = new IntPtr(-1);
 #endif
 
-                dataAddress += Constants.ThunkDataSize;
+                dataAddress = nextDataAddress;
             }
 
             return nextThunksBlock;

@@ -25,6 +25,45 @@
 #define RINOS_RT_SIGRETURN_MOV UINT64_C(0x0f000000adc0c748)
 #define RINOS_RT_SIGRETURN_TAIL UINT64_C(0x00000000000b0f05)
 
+/* The x86-64 libunwind headers select these hooks when the host compiler
+ * defines __linux__. Crossgen builds a Linux host JIT from this RinOS source
+ * too, so provide the cursor-cache hooks used by Gparser.c while retaining
+ * RinOS's signal-frame layout handling below. */
+HIDDEN void
+tdep_fetch_frame(struct dwarf_cursor *dw, unw_word_t ip UNUSED,
+                 int need_unwind_info UNUSED)
+{
+  struct cursor *c = (struct cursor *)dw;
+
+  assert(!need_unwind_info || dw->pi_valid);
+  assert(!need_unwind_info || dw->pi.unwind_info);
+  if (dw->pi_valid && dw->pi.unwind_info &&
+      ((struct dwarf_cie_info *)dw->pi.unwind_info)->signal_frame)
+    c->sigcontext_format = X86_64_SCF_LINUX_RT_SIGFRAME;
+  else
+    c->sigcontext_format = X86_64_SCF_NONE;
+}
+
+HIDDEN int
+tdep_cache_frame(struct dwarf_cursor *dw)
+{
+  struct cursor *c = (struct cursor *)dw;
+  return c->sigcontext_format;
+}
+
+HIDDEN void
+tdep_reuse_frame(struct dwarf_cursor *dw, int frame)
+{
+  struct cursor *c = (struct cursor *)dw;
+
+  c->sigcontext_format = frame;
+  if (c->sigcontext_format == X86_64_SCF_LINUX_RT_SIGFRAME) {
+    c->frame_info.frame_type = UNW_X86_64_FRAME_SIGRETURN;
+    c->frame_info.cfa_reg_offset = 0;
+    c->sigcontext_addr = dw->cfa;
+  }
+}
+
 static int
 rinos_amd64_canonical(unw_word_t value)
 {

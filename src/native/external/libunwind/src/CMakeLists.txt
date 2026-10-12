@@ -90,9 +90,19 @@ SET(libunwind_la_SOURCES_os_solaris_local
 # Nothing
 )
 
-if(CLR_CMAKE_TARGET_RINOS)
+if(CLR_CMAKE_TARGET_RINOS AND NOT (RINOS_CROSS_COMPONENTS_HOST AND CLR_CMAKE_HOST_LINUX))
     SET(libunwind_la_SOURCES_x86_64_os          x86_64/Gos-rinos.c)
     SET(libunwind_la_SOURCES_x86_64_os_local    x86_64/Los-rinos.c)
+elseif(CLR_CMAKE_TARGET_RINOS AND RINOS_CROSS_COMPONENTS_HOST AND CLR_CMAKE_HOST_LINUX)
+    # The cross-components build compiles host tools and their JIT for Linux,
+    # even though source selection still uses the RinOS target configuration.
+    # Use Linux's process-image lookup and signal-frame support in that host
+    # graph; the RinOS target implementation intentionally does not provide
+    # _Ux86_64_get_elf_image.
+    SET(libunwind_la_SOURCES_os                 ${libunwind_la_SOURCES_os_linux})
+    SET(libunwind_la_SOURCES_os_local           ${libunwind_la_SOURCES_os_linux_local})
+    SET(libunwind_la_SOURCES_x86_64_os          x86_64/Gos-linux.c)
+    SET(libunwind_la_SOURCES_x86_64_os_local    x86_64/Los-linux.c)
 elseif(UNW_CMAKE_TARGET_LINUX)
     SET(libunwind_la_SOURCES_os                 ${libunwind_la_SOURCES_os_linux})
     SET(libunwind_la_SOURCES_os_local           ${libunwind_la_SOURCES_os_linux_local})

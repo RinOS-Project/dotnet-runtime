@@ -533,6 +533,14 @@ namespace System.Runtime
             // Setup the thunks in the new block as a linked list of thunks.
             // Use the first data field of the thunk to build the linked list.
             IntPtr dataAddress = RuntimeImports.RhpGetThunkDataBlockAddress(nextThunksBlock);
+            if (dataAddress == IntPtr.Zero)
+            {
+                // A provider may advertise a valid callback table but still
+                // fail to resolve a particular mapping block.  Do not turn
+                // that provider failure into a write through address zero (or
+                // an unrelated address returned by a malformed callback).
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
 
             for (int i = 0; i < Constants.NumThunksPerBlock; i++)
             {

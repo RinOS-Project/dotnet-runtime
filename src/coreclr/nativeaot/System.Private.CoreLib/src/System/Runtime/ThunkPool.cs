@@ -128,6 +128,8 @@ namespace System.Runtime
         internal int _outstandingBlockCount;
         internal bool _releaseAttempted;
         internal bool _releaseSucceeded;
+        internal ThunkMapping _nextReleaseRetry;
+        internal bool _releaseRetryQueued;
 
         internal ThunkMapping(IntPtr mappingBaseAddress)
         {
@@ -694,6 +696,11 @@ namespace System.Runtime
         private static IntPtr[] s_currentlyMappedThunkBlocks = new IntPtr[Constants.NumThunkBlocksPerMapping];
         private static int s_currentlyMappedThunkBlocksIndex = Constants.NumThunkBlocksPerMapping;
         private static ThunkMapping s_currentMapping;
+        // A provider-validation cleanup can fail after native allocation has
+        // succeeded but before the mapping is leased to a heap.  Retain that
+        // owner without allocating another managed collection so a later
+        // mapping request can retry the native release.
+        private static ThunkMapping s_releaseRetryHead;
         private static Lock s_lock = new Lock(useTrivialWaits: true);
 
         private static void ValidateThunkBlockPair(IntPtr thunksBlock, out IntPtr dataAddress)
@@ -716,12 +723,50 @@ namespace System.Runtime
             }
         }
 
+        private static void RemoveReleaseRetry(ThunkMapping mapping)
+        {
+            if (mapping == null || !mapping._releaseRetryQueued)
+                return;
+
+            ThunkMapping previous = null;
+            ThunkMapping current = s_releaseRetryHead;
+            while (current != null && !ReferenceEquals(current, mapping))
+            {
+                previous = current;
+                current = current._nextReleaseRetry;
+            }
+
+            if (current == null)
+                return;
+
+            if (previous == null)
+                s_releaseRetryHead = current._nextReleaseRetry;
+            else
+                previous._nextReleaseRetry = current._nextReleaseRetry;
+
+            mapping._nextReleaseRetry = null;
+            mapping._releaseRetryQueued = false;
+        }
+
+        private static void QueueReleaseRetry(ThunkMapping mapping)
+        {
+            if (mapping == null || mapping._releaseSucceeded || mapping._releaseRetryQueued)
+                return;
+
+            mapping._nextReleaseRetry = s_releaseRetryHead;
+            s_releaseRetryHead = mapping;
+            mapping._releaseRetryQueued = true;
+        }
+
         private static bool TryReleaseMapping(ThunkMapping mapping)
         {
             if (mapping == null)
                 return false;
             if (mapping._releaseSucceeded)
+            {
+                RemoveReleaseRetry(mapping);
                 return true;
+            }
 
             mapping._releaseSucceeded = RuntimeImports.RhFreeThunksMapping(
                 mapping._mappingBaseAddress) == HResults.S_OK;
@@ -729,7 +774,23 @@ namespace System.Runtime
             // make a failed attempt terminal.  The native owner registry keeps
             // the mapping live on failure and expects a later retry.
             mapping._releaseAttempted = true;
+            if (mapping._releaseSucceeded)
+                RemoveReleaseRetry(mapping);
+            else
+                QueueReleaseRetry(mapping);
             return mapping._releaseSucceeded;
+        }
+
+        private static void RetryFailedReleases()
+        {
+            ThunkMapping current = s_releaseRetryHead;
+            while (current != null)
+            {
+                ThunkMapping next = current._nextReleaseRetry;
+                if (current._outstandingBlockCount == 0)
+                    TryReleaseMapping(current);
+                current = next;
+            }
         }
 
         internal static bool ReleaseBlock(ThunkMapping mapping)
@@ -766,6 +827,8 @@ namespace System.Runtime
         public static unsafe IntPtr GetNewThunksBlock(out ThunkMapping mapping)
         {
             using Lock.Scope scope = s_lock.EnterScope();
+
+            RetryFailedReleases();
 
             IntPtr nextThunksBlock;
             IntPtr dataAddress;

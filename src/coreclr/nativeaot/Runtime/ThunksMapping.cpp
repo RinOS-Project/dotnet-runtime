@@ -813,6 +813,15 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
         return E_INVALIDARG;
     }
 
+    // The image-owned template is the authority that establishes this
+    // template-mapping family.  Before the first successful allocation there
+    // is no valid family owner, so do not pass an arbitrary page-aligned input
+    // to the PAL release operation.
+    if (g_pThunksTemplateAddress == NULL)
+    {
+        return E_INVALIDARG;
+    }
+
     // The first mapping is the image-owned template and must remain live for
     // the module lifetime.  Dynamically copied mappings are independent and
     // can use the same PAL release operation as allocation failure cleanup.

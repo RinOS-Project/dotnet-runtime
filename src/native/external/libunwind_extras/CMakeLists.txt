@@ -191,7 +191,7 @@ else()
         # old hand-rolled ELF lookup branch instead of the bundled libunwind
         # range API.
         set_source_files_properties(${CLR_DIR}/pal/src/exception/remote-unwind.cpp PROPERTIES
-            INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/pal/src;${CLR_DIR}/inc")
+            INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/pal/src;${CLR_DIR}/inc;${CLR_DIR}/pal/src/include")
     else()
         set_source_files_properties(${CLR_DIR}/pal/src/exception/remote-unwind.cpp PROPERTIES COMPILE_FLAGS /TP INCLUDE_DIRECTORIES ${CLR_DIR}/inc)
     endif()

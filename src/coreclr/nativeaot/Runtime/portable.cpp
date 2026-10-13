@@ -488,6 +488,15 @@ FCIMPL1(HRESULT, RhAllocateThunksMapping, void ** ppThunksSection)
 }
 FCIMPLEND
 
+FCIMPL1(HRESULT, RhFreeThunksMapping, void* pThunksSection)
+{
+    UNREFERENCED_PARAMETER(pThunksSection);
+    // PortableRuntime has no executable mapping owner or native thunk
+    // lifetime ABI.  ThunkPool must retain its fail-closed boundary here.
+    return E_NOTIMPL;
+}
+FCIMPLEND
+
 FCIMPL0(void *, RhpGetThunksBase)
 {
     const RinNativeAotThunkProviderV1* provider =

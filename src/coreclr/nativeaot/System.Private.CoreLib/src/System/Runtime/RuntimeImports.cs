@@ -362,6 +362,9 @@ namespace System.Runtime
         [LibraryImport(RuntimeLibrary, EntryPoint = "RhAllocateThunksMapping")]
         internal static unsafe partial int RhAllocateThunksMapping(IntPtr* ppMapping);
 
+        [LibraryImport(RuntimeLibrary, EntryPoint = "RhFreeThunksMapping")]
+        internal static partial int RhFreeThunksMapping(IntPtr mapping);
+
         //
         // calls to runtime for type equality checks
         //

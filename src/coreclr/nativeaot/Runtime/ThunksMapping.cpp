@@ -528,6 +528,19 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     return S_OK;
 }
 
+EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
+{
+    if (pThunksSection == NULL || !IsValidThunkPageGeometry() ||
+        ((uintptr_t)pThunksSection % (uintptr_t)OS_PAGE_SIZE) != 0 ||
+        THUNKS_MAP_SIZE > SIZE_MAX / 2)
+    {
+        return E_INVALIDARG;
+    }
+
+    return PalVirtualFreeChecked(
+        pThunksSection, (uintptr_t)THUNKS_MAP_SIZE * 2u) ? S_OK : E_FAIL;
+}
+
 // FEATURE_RX_THUNKS
 #elif FEATURE_FIXED_POOL_THUNKS
 // This is used by the thunk code to find the stub data for the called thunk slot
@@ -617,6 +630,14 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     return S_OK;
 }
 
+EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
+{
+    UNREFERENCED_PARAMETER(pThunksSection);
+    // Fixed-pool mappings are backed by a process-wide reserved region and
+    // their slot allocator has no safe reuse/release contract yet.
+    return E_NOTIMPL;
+}
+
 #else // FEATURE_FIXED_POOL_THUNKS
 
 FCDECL0(void*, RhpGetThunksBase);
@@ -695,6 +716,16 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
 
     *ppThunksSection = pThunkMap;
     return S_OK;
+}
+
+EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
+{
+    UNREFERENCED_PARAMETER(pThunksSection);
+    // The template image and the dynamically copied template mappings do not
+    // currently expose a lifetime owner to ThunkPool.  Keep this boundary
+    // explicit instead of freeing a mapping that may still contain a block
+    // owned by another heap.
+    return E_NOTIMPL;
 }
 
 #endif // FEATURE_RX_THUNKS

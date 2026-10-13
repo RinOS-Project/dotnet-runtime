@@ -119,12 +119,29 @@ namespace System.Runtime
         public static readonly nuint MappingSpan = ComputeSpan(ThunkBlockSize, NumThunkBlocksPerMapping, 0);
     }
 
+    // A native RX thunk mapping can be shared by several managed heaps. Keep
+    // the ownership record separate from AllocatedBlock so a heap can return
+    // its blocks without freeing a mapping still leased by another heap.
+    internal sealed class ThunkMapping
+    {
+        internal readonly IntPtr _mappingBaseAddress;
+        internal int _outstandingBlockCount;
+        internal bool _releaseAttempted;
+        internal bool _releaseSucceeded;
+
+        internal ThunkMapping(IntPtr mappingBaseAddress)
+        {
+            _mappingBaseAddress = mappingBaseAddress;
+        }
+    }
+
     internal class ThunksHeap
     {
         private class AllocatedBlock
         {
             internal IntPtr _blockBaseAddress;
             internal IntPtr _dataBlockAddress;
+            internal ThunkMapping _mapping;
             internal AllocatedBlock _nextBlock;
         }
 
@@ -133,6 +150,8 @@ namespace System.Runtime
         // Every free thunk stores its list link in the first data cell. Keep
         // a bounded count so stale-list validation cannot loop forever.
         private nuint _freeThunkCount;
+        private nuint _allocatedThunkCount;
+        private bool _destroyed;
 
         private AllocatedBlock _allocatedBlocks;
 
@@ -178,8 +197,18 @@ namespace System.Runtime
 
             _allocatedBlocks = new AllocatedBlock();
 
-            IntPtr thunkStubsBlock = ThunkBlocks.GetNewThunksBlock();
-            IntPtr thunkDataBlock = GetValidatedThunkDataBlockAddress(thunkStubsBlock);
+            ThunkMapping mapping;
+            IntPtr thunkStubsBlock = ThunkBlocks.GetNewThunksBlock(out mapping);
+            IntPtr thunkDataBlock;
+            try
+            {
+                thunkDataBlock = GetValidatedThunkDataBlockAddress(thunkStubsBlock);
+            }
+            catch
+            {
+                ThunkBlocks.ReleaseBlock(mapping);
+                throw;
+            }
 
             // Address of the first thunk data cell should be at the beginning of the thunks data block (page-aligned)
             Debug.Assert(((nuint)(nint)thunkDataBlock % Constants.PageSize) == 0);
@@ -191,9 +220,11 @@ namespace System.Runtime
             // Set the head and end of the linked list
             _nextAvailableThunkPtr = thunkDataBlock;
             _freeThunkCount = (nuint)Constants.NumThunksPerBlock;
+            _allocatedThunkCount = _freeThunkCount;
 
             _allocatedBlocks._blockBaseAddress = thunkStubsBlock;
             _allocatedBlocks._dataBlockAddress = thunkDataBlock;
+            _allocatedBlocks._mapping = mapping;
         }
 
         public static unsafe ThunksHeap CreateThunksHeap(IntPtr commonStubAddress)
@@ -201,10 +232,59 @@ namespace System.Runtime
             return new ThunksHeap(commonStubAddress);
         }
 
-        // TODO: Feature
-        // public static ThunksHeap DestroyThunksHeap(ThunksHeap heapToDestroy)
-        // {
-        // }
+        public static bool DestroyThunksHeap(ThunksHeap heapToDestroy)
+        {
+            return heapToDestroy != null && heapToDestroy.Destroy();
+        }
+
+        private unsafe bool Destroy()
+        {
+            AllocatedBlock blocksToRelease;
+            lock (this)
+            {
+                if (_destroyed || _allocatedThunkCount != _freeThunkCount)
+                    return false;
+
+                blocksToRelease = _allocatedBlocks;
+                for (AllocatedBlock block = blocksToRelease;
+                     block != null;
+                     block = block._nextBlock)
+                {
+                    // A failed native release must not leave callable thunks
+                    // carrying the old context/target pointers.
+                    ClearThunkData(block._dataBlockAddress);
+                }
+
+                _destroyed = true;
+                _commonStubAddress = IntPtr.Zero;
+                _nextAvailableThunkPtr = IntPtr.Zero;
+                _freeThunkCount = 0;
+                _allocatedThunkCount = 0;
+                _allocatedBlocks = null;
+            }
+
+            bool released = true;
+            for (AllocatedBlock block = blocksToRelease;
+                 block != null;
+                 block = block._nextBlock)
+            {
+                released = ThunkBlocks.ReleaseBlock(block._mapping) && released;
+            }
+
+            return released;
+        }
+
+        private static unsafe void ClearThunkData(IntPtr dataBlockAddress)
+        {
+            if (dataBlockAddress == IntPtr.Zero)
+                return;
+
+            IntPtr* cells = (IntPtr*)dataBlockAddress;
+            for (int i = 0; i < Constants.NumThunksPerBlock * 2; i++)
+                cells[i] = IntPtr.Zero;
+
+            *(IntPtr*)(dataBlockAddress + (int)(Constants.PageSize - IntPtr.Size)) = IntPtr.Zero;
+        }
 
         //
         // Note: Expected to be called under lock
@@ -231,8 +311,18 @@ namespace System.Runtime
 
             AllocatedBlock newBlockInfo = new AllocatedBlock();
 
-            IntPtr thunkStubsBlock = ThunkBlocks.GetNewThunksBlock();
-            IntPtr thunkDataBlock = GetValidatedThunkDataBlockAddress(thunkStubsBlock);
+            ThunkMapping mapping;
+            IntPtr thunkStubsBlock = ThunkBlocks.GetNewThunksBlock(out mapping);
+            IntPtr thunkDataBlock;
+            try
+            {
+                thunkDataBlock = GetValidatedThunkDataBlockAddress(thunkStubsBlock);
+            }
+            catch
+            {
+                ThunkBlocks.ReleaseBlock(mapping);
+                throw;
+            }
 
             // Address of the first thunk data cell should be at the beginning of the thunks data block (page-aligned)
             Debug.Assert(((nuint)(nint)thunkDataBlock % Constants.PageSize) == 0);
@@ -248,10 +338,12 @@ namespace System.Runtime
 
             newBlockInfo._blockBaseAddress = thunkStubsBlock;
             newBlockInfo._dataBlockAddress = thunkDataBlock;
+            newBlockInfo._mapping = mapping;
             newBlockInfo._nextBlock = _allocatedBlocks;
 
             _allocatedBlocks = newBlockInfo;
             _freeThunkCount += addedFreeThunks;
+            _allocatedThunkCount += addedFreeThunks;
         }
 
         public unsafe IntPtr AllocateThunk()
@@ -265,6 +357,9 @@ namespace System.Runtime
             IntPtr thunkAddress;
             lock (this)
             {
+                if (_destroyed)
+                    throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+
                 if (_nextAvailableThunkPtr == IntPtr.Zero ||
                     _freeThunkCount == 0)
                 {
@@ -318,6 +413,9 @@ namespace System.Runtime
 
             lock (this)
             {
+                if (_destroyed)
+                    return;
+
                 // Keep address derivation and ownership validation under the
                 // same lock as the free-list mutation.  Otherwise a stale
                 // caller can race with free-then-reallocate and release a
@@ -521,6 +619,9 @@ namespace System.Runtime
 
             lock (this)
             {
+                if (_destroyed)
+                    return false;
+
                 // Derive and validate the data address while holding the heap
                 // lock so a concurrent free/reallocate cannot turn a stale thunk handle
                 // into an observation of a different allocation.
@@ -549,6 +650,9 @@ namespace System.Runtime
         {
             lock (this)
             {
+                if (_destroyed)
+                    throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+
                 // Keep address derivation, ownership validation, and the write
                 // atomic with respect to FreeThunk and AllocateThunk.  This prevents
                 // an ABA reuse from redirecting a stale write.
@@ -570,6 +674,7 @@ namespace System.Runtime
     {
         private static IntPtr[] s_currentlyMappedThunkBlocks = new IntPtr[Constants.NumThunkBlocksPerMapping];
         private static int s_currentlyMappedThunkBlocksIndex = Constants.NumThunkBlocksPerMapping;
+        private static ThunkMapping s_currentMapping;
         private static Lock s_lock = new Lock(useTrivialWaits: true);
 
         private static void ValidateThunkBlockPair(IntPtr thunksBlock, out IntPtr dataAddress)
@@ -592,7 +697,45 @@ namespace System.Runtime
             }
         }
 
-        public static unsafe IntPtr GetNewThunksBlock()
+        private static bool TryReleaseMapping(ThunkMapping mapping)
+        {
+            if (mapping == null)
+                return false;
+            if (mapping._releaseAttempted)
+                return mapping._releaseSucceeded;
+
+            mapping._releaseAttempted = true;
+            mapping._releaseSucceeded = RuntimeImports.RhFreeThunksMapping(
+                mapping._mappingBaseAddress) == HResults.S_OK;
+            return mapping._releaseSucceeded;
+        }
+
+        internal static bool ReleaseBlock(ThunkMapping mapping)
+        {
+            using Lock.Scope scope = s_lock.EnterScope();
+
+            if (mapping == null || mapping._outstandingBlockCount <= 0)
+                return false;
+
+            --mapping._outstandingBlockCount;
+            if (mapping._outstandingBlockCount != 0)
+                return true;
+
+            // The current cache may still contain blocks that have never been
+            // leased.  Once no heap owns this mapping, discard those cached
+            // addresses before asking native code to unmap the whole section.
+            if (ReferenceEquals(s_currentMapping, mapping))
+            {
+                for (int i = 0; i < s_currentlyMappedThunkBlocks.Length; i++)
+                    s_currentlyMappedThunkBlocks[i] = IntPtr.Zero;
+                s_currentlyMappedThunkBlocksIndex = Constants.NumThunkBlocksPerMapping;
+                s_currentMapping = null;
+            }
+
+            return TryReleaseMapping(mapping);
+        }
+
+        public static unsafe IntPtr GetNewThunksBlock(out ThunkMapping mapping)
         {
             using Lock.Scope scope = s_lock.EnterScope();
 
@@ -603,9 +746,14 @@ namespace System.Runtime
             // thunk stubs pages, and multiple thunk data pages (typically 8 pages of each in a single mapping)
             if (s_currentlyMappedThunkBlocksIndex < Constants.NumThunkBlocksPerMapping)
             {
+                mapping = s_currentMapping;
+                if (mapping == null)
+                    throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+
                 nextThunksBlock = s_currentlyMappedThunkBlocks[s_currentlyMappedThunkBlocksIndex];
                 ValidateThunkBlockPair(nextThunksBlock, out dataAddress);
                 s_currentlyMappedThunkBlocksIndex++;
+                mapping._outstandingBlockCount++;
 #if DEBUG
                 s_currentlyMappedThunkBlocks[s_currentlyMappedThunkBlocksIndex - 1] = IntPtr.Zero;
                 Debug.Assert(nextThunksBlock != IntPtr.Zero);
@@ -620,18 +768,30 @@ namespace System.Runtime
                 else if (result != HResults.S_OK)
                     throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
 
-                ValidateThunkBlockPair(nextThunksBlock, out dataAddress);
-
-                // Each mapping consists of multiple blocks of thunk stubs/data pairs. Keep track of those
-                // so that we do not create a new mapping until all blocks in the sections we just mapped are consumed
-                IntPtr currentThunksBlock = nextThunksBlock;
-                for (int i = 0; i < Constants.NumThunkBlocksPerMapping; i++)
+                mapping = new ThunkMapping(nextThunksBlock);
+                try
                 {
-                    s_currentlyMappedThunkBlocks[i] = currentThunksBlock;
-                    currentThunksBlock = Constants.AddOffsetChecked(
-                        currentThunksBlock, (nuint)Constants.ThunkBlockSize);
+                    ValidateThunkBlockPair(nextThunksBlock, out dataAddress);
+
+                    // Each mapping consists of multiple blocks of thunk stubs/data pairs. Keep track of those
+                    // so that we do not create a new mapping until all blocks in the sections we just mapped are consumed
+                    IntPtr currentThunksBlock = nextThunksBlock;
+                    for (int i = 0; i < Constants.NumThunkBlocksPerMapping; i++)
+                    {
+                        s_currentlyMappedThunkBlocks[i] = currentThunksBlock;
+                        currentThunksBlock = Constants.AddOffsetChecked(
+                            currentThunksBlock, (nuint)Constants.ThunkBlockSize);
+                    }
                 }
+                catch
+                {
+                    TryReleaseMapping(mapping);
+                    throw;
+                }
+
+                s_currentMapping = mapping;
                 s_currentlyMappedThunkBlocksIndex = 1;
+                mapping._outstandingBlockCount = 1;
             }
 
             // Setup the thunks in the new block as a linked list of thunks.
@@ -656,10 +816,5 @@ namespace System.Runtime
 
             return nextThunksBlock;
         }
-
-        // TODO: [Feature] Keep track of mapped sections and free them if we need to.
-        // public static unsafe void FreeThunksBlock()
-        // {
-        // }
     }
 }

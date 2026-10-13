@@ -671,6 +671,11 @@ namespace Internal.Runtime.Augments
             return ThunksHeap.CreateThunksHeap(commonStubAddress);
         }
 
+        public static bool DestroyThunksHeap(object thunksHeap)
+        {
+            return ThunksHeap.DestroyThunksHeap((ThunksHeap)thunksHeap);
+        }
+
         public static IntPtr AllocateThunk(object thunksHeap)
         {
             return ((ThunksHeap)thunksHeap).AllocateThunk();

@@ -674,6 +674,23 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
 extern "C" uintptr_t g_pThunkStubData;
 uintptr_t g_pThunkStubData = NULL;
 static size_t g_thunkStubDataSize = 0;
+static uint8_t* g_thunkDataMappingInUse = NULL;
+static size_t g_thunkDataMappingCount = 0;
+static volatile int32_t g_fixedPoolThunkMappingLock = 0;
+
+static void LockFixedPoolThunkMappings()
+{
+    while (PalInterlockedCompareExchange(
+               &g_fixedPoolThunkMappingLock, 1, 0) != 0)
+    {
+        PalSwitchToThread();
+    }
+}
+
+static void UnlockFixedPoolThunkMappings()
+{
+    VolatileStore<volatile int32_t>(&g_fixedPoolThunkMappingLock, 0);
+}
 
 FCDECL0(int, RhpGetThunkBlockCount);
 FCDECL0(int, RhpGetNumThunkBlocksPerMapping);
@@ -688,8 +705,6 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         return E_INVALIDARG;
     }
     *ppThunksSection = NULL;
-
-    static int nextThunkDataMapping = 0;
 
     int thunkBlocksPerMapping = RhpGetNumThunkBlocksPerMapping();
     int thunkBlockSize = RhpGetThunkBlockSize();
@@ -722,11 +737,8 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     }
 
     size_t thunkDataSize = thunkDataMappingSize * thunkDataMappingCount;
-    if (nextThunkDataMapping < 0 ||
-        (size_t)nextThunkDataMapping >= thunkDataMappingCount)
-    {
-        return E_FAIL;
-    }
+
+    LockFixedPoolThunkMappings();
 
     if (g_pThunkStubData == NULL)
     {
@@ -734,24 +746,54 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
 
         if (g_pThunkStubData == NULL)
         {
+            UnlockFixedPoolThunkMappings();
             return E_OUTOFMEMORY;
         }
 
         g_thunkStubDataSize = thunkDataSize;
+        g_thunkDataMappingInUse = new (std::nothrow) uint8_t[thunkDataMappingCount]();
+        if (g_thunkDataMappingInUse == NULL)
+        {
+            VirtualFree((void*)g_pThunkStubData, 0, MEM_RELEASE);
+            g_pThunkStubData = NULL;
+            g_thunkStubDataSize = 0;
+            UnlockFixedPoolThunkMappings();
+            return E_OUTOFMEMORY;
+        }
+        g_thunkDataMappingCount = thunkDataMappingCount;
     }
-    else if (g_thunkStubDataSize != thunkDataSize)
+    else if (g_thunkStubDataSize != thunkDataSize ||
+             g_thunkDataMappingInUse == NULL ||
+             g_thunkDataMappingCount != thunkDataMappingCount)
     {
         // The fixed-pool geometry is process-wide.  A provider that changes
         // its block count or size after reservation cannot safely address the
         // existing pool with the new layout.
+        UnlockFixedPoolThunkMappings();
         return E_FAIL;
     }
 
-    size_t blockOffset = thunkDataMappingSize * (size_t)nextThunkDataMapping;
+    size_t mappingIndex = thunkDataMappingCount;
+    for (size_t index = 0; index < thunkDataMappingCount; index++)
+    {
+        if (g_thunkDataMappingInUse[index] == 0)
+        {
+            mappingIndex = index;
+            break;
+        }
+    }
+    if (mappingIndex == thunkDataMappingCount)
+    {
+        UnlockFixedPoolThunkMappings();
+        return E_OUTOFMEMORY;
+    }
+
+    size_t blockOffset = thunkDataMappingSize * mappingIndex;
     void* pThunkDataBlock = (int8_t*)g_pThunkStubData + blockOffset;
 
     if (VirtualAlloc(pThunkDataBlock, thunkDataMappingSize, MEM_COMMIT, PAGE_READWRITE) == NULL)
     {
+        UnlockFixedPoolThunkMappings();
         return E_OUTOFMEMORY;
     }
 
@@ -759,11 +801,13 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     if (pThunks == NULL || RhpGetThunkDataBlockAddress(pThunks) != pThunkDataBlock)
     {
         VirtualFree(pThunkDataBlock, thunkDataMappingSize, MEM_DECOMMIT);
+        UnlockFixedPoolThunkMappings();
         return E_FAIL;
     }
 
-    nextThunkDataMapping++;
+    g_thunkDataMappingInUse[mappingIndex] = 1;
     *ppThunksSection = pThunks;
+    UnlockFixedPoolThunkMappings();
     return S_OK;
 }
 
@@ -828,13 +872,34 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
         return E_INVALIDARG;
     }
 
+    size_t mappingIndex = (size_t)(dataBegin - poolBegin) /
+                          thunkDataMappingSize;
+    if (g_thunkDataMappingInUse == NULL ||
+        mappingIndex >= g_thunkDataMappingCount)
+    {
+        return E_INVALIDARG;
+    }
+
+    LockFixedPoolThunkMappings();
+    if (g_thunkDataMappingInUse[mappingIndex] == 0)
+    {
+        UnlockFixedPoolThunkMappings();
+        return E_INVALIDARG;
+    }
+
     // The fixed pool reserves the complete address range once, then commits
     // each data mapping independently.  Release exactly that committed data
-    // range; the process-wide reservation remains available for the pool's
-    // monotonic allocator and is not accidentally torn down here.
-    return VirtualFree(pThunkDataBlock, thunkDataMappingSize, MEM_DECOMMIT)
-               ? S_OK
-               : E_FAIL;
+    // range; the process-wide reservation remains available for later reuse
+    // and is not accidentally torn down here.
+    if (!VirtualFree(pThunkDataBlock, thunkDataMappingSize, MEM_DECOMMIT))
+    {
+        UnlockFixedPoolThunkMappings();
+        return E_FAIL;
+    }
+
+    g_thunkDataMappingInUse[mappingIndex] = 0;
+    UnlockFixedPoolThunkMappings();
+    return S_OK;
 }
 
 #else // FEATURE_FIXED_POOL_THUNKS

@@ -76,7 +76,7 @@ static void LockRxThunkMappingOwners()
 
 static void UnlockRxThunkMappingOwners()
 {
-    VolatileStore(&g_rxThunkMappingOwnerLock, 0);
+    VolatileStore(&g_rxThunkMappingOwnerLock, int32_t{ 0 });
 }
 
 /*

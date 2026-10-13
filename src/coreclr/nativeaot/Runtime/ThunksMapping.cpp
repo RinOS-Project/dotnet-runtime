@@ -632,10 +632,41 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
 
 EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
 {
-    UNREFERENCED_PARAMETER(pThunksSection);
-    // Fixed-pool mappings are backed by a process-wide reserved region and
-    // their slot allocator has no safe reuse/release contract yet.
-    return E_NOTIMPL;
+    if (pThunksSection == NULL)
+    {
+        return E_INVALIDARG;
+    }
+
+    int thunkBlocksPerMapping = RhpGetNumThunkBlocksPerMapping();
+    int thunkBlockSize = RhpGetThunkBlockSize();
+    int blockCount = RhpGetThunkBlockCount();
+    if (thunkBlocksPerMapping <= 0 || thunkBlockSize <= 0 || blockCount <= 0 ||
+        blockCount % thunkBlocksPerMapping != 0)
+    {
+        return E_FAIL;
+    }
+
+    size_t thunkDataMappingSize = (size_t)thunkBlocksPerMapping;
+    if (thunkDataMappingSize > SIZE_MAX / (size_t)thunkBlockSize)
+    {
+        return E_FAIL;
+    }
+    thunkDataMappingSize *= (size_t)thunkBlockSize;
+
+    void* pThunkDataBlock = RhpGetThunkDataBlockAddress(pThunksSection);
+    if (pThunkDataBlock == NULL ||
+        RhpGetThunkStubsBlockAddress(pThunkDataBlock) != pThunksSection)
+    {
+        return E_INVALIDARG;
+    }
+
+    // The fixed pool reserves the complete address range once, then commits
+    // each data mapping independently.  Release exactly that committed data
+    // range; the process-wide reservation remains available for the pool's
+    // monotonic allocator and is not accidentally torn down here.
+    return VirtualFree(pThunkDataBlock, thunkDataMappingSize, MEM_DECOMMIT)
+               ? S_OK
+               : E_FAIL;
 }
 
 #else // FEATURE_FIXED_POOL_THUNKS
@@ -646,6 +677,8 @@ FCDECL0(int, RhpGetNumThunksPerBlock);
 FCDECL0(int, RhpGetThunkSize);
 FCDECL0(int, RhpGetThunkBlockSize);
 
+static void* g_pThunksTemplateAddress = NULL;
+
 EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
 {
     if (ppThunksSection == NULL)
@@ -653,8 +686,6 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         return E_INVALIDARG;
     }
     *ppThunksSection = NULL;
-
-    static void* pThunksTemplateAddress = NULL;
 
     void *pThunkMap = NULL;
 
@@ -668,12 +699,12 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     size_t templateSize = (size_t)thunkBlocksPerMapping * (size_t)thunkBlockSize;
 
 #ifndef TARGET_APPLE // Apple platforms cannot use the initial template
-    if (pThunksTemplateAddress == NULL)
+    if (g_pThunksTemplateAddress == NULL)
     {
         // First, we use the thunks directly from the thunks template sections in the module until all
         // thunks in that template are used up.
-        pThunksTemplateAddress = RhpGetThunksBase();
-        pThunkMap = pThunksTemplateAddress;
+        g_pThunksTemplateAddress = RhpGetThunksBase();
+        pThunkMap = g_pThunksTemplateAddress;
     }
     else
 #endif
@@ -708,7 +739,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         thunkBlockSize,
         thunkBlocksPerMapping))
     {
-        if (pThunkMap != pThunksTemplateAddress)
+        if (pThunkMap != g_pThunksTemplateAddress)
             PalFreeThunksFromTemplate(pThunkMap, templateSize);
 
         return E_FAIL;
@@ -720,12 +751,38 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
 
 EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
 {
-    UNREFERENCED_PARAMETER(pThunksSection);
-    // The template image and the dynamically copied template mappings do not
-    // currently expose a lifetime owner to ThunkPool.  Keep this boundary
-    // explicit instead of freeing a mapping that may still contain a block
-    // owned by another heap.
-    return E_NOTIMPL;
+    if (pThunksSection == NULL)
+    {
+        return E_INVALIDARG;
+    }
+
+    int thunkBlocksPerMapping = RhpGetNumThunkBlocksPerMapping();
+    int thunkBlockSize = RhpGetThunkBlockSize();
+    if (thunkBlocksPerMapping <= 0 || thunkBlockSize <= 0 ||
+        (size_t)thunkBlocksPerMapping > SIZE_MAX / (size_t)thunkBlockSize ||
+        OS_PAGE_SIZE == 0)
+    {
+        return E_FAIL;
+    }
+    size_t templateSize = (size_t)thunkBlocksPerMapping *
+                          (size_t)thunkBlockSize;
+    if (templateSize == 0 || templateSize % OS_PAGE_SIZE != 0 ||
+        ((uintptr_t)pThunksSection % OS_PAGE_SIZE) != 0)
+    {
+        return E_INVALIDARG;
+    }
+
+    // The first mapping is the image-owned template and must remain live for
+    // the module lifetime.  Dynamically copied mappings are independent and
+    // can use the same PAL release operation as allocation failure cleanup.
+    if (pThunksSection == g_pThunksTemplateAddress)
+    {
+        return E_NOTIMPL;
+    }
+
+    return PalFreeThunksFromTemplate(pThunksSection, templateSize)
+               ? S_OK
+               : E_FAIL;
 }
 
 #endif // FEATURE_RX_THUNKS

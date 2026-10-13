@@ -159,7 +159,9 @@ rinos_inventory_copy_path(const RinDlInventoryRecordV1 *record,
 
   if (path == NULL)
     return 0;
-  if (pathlen == 0u || length + 1u > pathlen) {
+  if (pathlen == 0u)
+    return -UNW_ENOMEM;
+  if (length + 1u > pathlen) {
     path[0] = '\0';
     return -UNW_ENOMEM;
   }

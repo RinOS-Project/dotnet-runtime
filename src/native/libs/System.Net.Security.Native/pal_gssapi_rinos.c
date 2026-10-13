@@ -304,6 +304,12 @@ static uint32_t rinos_gss_map_kerberos_major(
              * Preserve the mechanism minor while exposing the standard GSS
              * defective-token major status to the managed PAL. */
             return PAL_GSS_S_DEFECTIVE_TOKEN;
+        case 37u: /* KRB_AP_ERR_SKEW */
+            /* The upstream managed PAL classifies clock-skew rejection as an
+             * invalid input token.  Keep the RFC 4120 minor so callers can
+             * distinguish the remediation (clock synchronization) while
+             * returning the same GSS major classification as .NET. */
+            return PAL_GSS_S_DEFECTIVE_TOKEN;
         case 18u: /* KDC_ERR_CLIENT_REVOKED */
         case 19u: /* KDC_ERR_SERVICE_REVOKED */
         case 20u: /* KDC_ERR_TGT_REVOKED */

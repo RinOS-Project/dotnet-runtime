@@ -178,7 +178,10 @@ if(CLR_CMAKE_TARGET_ANDROID)
     add_compile_options(-Wno-error)
 endif()
 
-if(CLR_CMAKE_HOST_UNIX AND NOT CLR_CMAKE_TARGET_RINOS)
+# Linux cross-component JITs are executed by the build host even though the
+# configure keeps TARGET_RINOS set. They need the local-only unwind entry
+# points (for example, _ULx86_64_get_reg) as well as the target remote API.
+if(CLR_CMAKE_HOST_UNIX AND (NOT CLR_CMAKE_TARGET_RINOS OR RINOS_CROSS_COMPONENTS_HOST))
     if(CLR_CMAKE_HOST_APPLE)
         add_library(libunwind_dac OBJECT ${LIBUNWIND_SOURCES})
     else()

@@ -30,6 +30,11 @@ static const Entry s_securityNative[] =
     DllImportEntry(NetSecurityNative_Wrap)
     DllImportEntry(NetSecurityNative_GetMic)
     DllImportEntry(NetSecurityNative_VerifyMic)
+    // The RinOS Kerberos provider compiles the service adapter into this
+    // library, so its public service operations are exported alongside the
+    // GSSAPI PAL entry points.
+    DllImportEntry(rin_service_find_system_slot)
+    DllImportEntry(rin_service_start)
 };
 
 EXTERN_C const void* SecurityResolveDllImport(const char* name);

@@ -229,10 +229,10 @@ if (GEN_SHARED_LIB)
     endif()
 
     add_custom_command(TARGET System.Security.Cryptography.Native.OpenSsl POST_BUILD
-        COMMENT "Verifying System.Security.Cryptography.Native.OpenSsl entry points against entrypoints.c "
+        COMMENT "Verifying System.Security.Cryptography.Native.OpenSsl entry points against ${NATIVECRYPTO_ENTRYPOINTS} "
         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../verify-entrypoints.sh
             $<TARGET_FILE:System.Security.Cryptography.Native.OpenSsl>
-            ${CMAKE_CURRENT_SOURCE_DIR}/entrypoints.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/${NATIVECRYPTO_ENTRYPOINTS}
             ${CMAKE_NM}
         VERBATIM
     )

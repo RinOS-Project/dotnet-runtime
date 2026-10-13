@@ -1296,8 +1296,6 @@ static int provider_credential_releaseable(
     return credential != NULL &&
            credential->magic == RINOS_KERBEROS_CREDENTIAL_MAGIC &&
            credential->kind == kind && credential->owner != NULL &&
-           (credential->owner_credential != NULL ||
-            credential->pending_release_credential != NULL) &&
            credential->owner->release_credential != NULL;
 }
 

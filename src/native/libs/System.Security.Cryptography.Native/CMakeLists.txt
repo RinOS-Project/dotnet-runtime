@@ -214,7 +214,10 @@ if (GEN_SHARED_LIB)
         #
         # on Linux, the build will succeed with undefined symbols, then the script reports them
         # and fails the build for us.
-        if (NOT APPLE AND NOT CLR_CMAKE_TARGET_LINUX_MUSL AND NOT CLR_CMAKE_TARGET_HAIKU)
+        # RinOS shared images intentionally import libc symbols from the target runtime.
+        # This check uses the host's ldd, which cannot resolve those target imports.
+        if (NOT APPLE AND NOT CLR_CMAKE_TARGET_LINUX_MUSL AND
+            NOT CLR_CMAKE_TARGET_HAIKU AND NOT CLR_CMAKE_TARGET_RINOS)
             add_custom_command(TARGET System.Security.Cryptography.Native.OpenSsl POST_BUILD
                 COMMENT "Verifying System.Security.Cryptography.Native.OpenSsl.so dependencies"
                 COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../verify-so.sh

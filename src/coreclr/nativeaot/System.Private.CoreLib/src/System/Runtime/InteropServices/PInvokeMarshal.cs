@@ -215,11 +215,8 @@ namespace System.Runtime.InteropServices
                 // Serialize only this one-time initialization instead.
                 lock (s_thunkPoolInitializationLock)
                 {
-                    if (s_thunkPoolHeap == null)
-                    {
-                        s_thunkPoolHeap = RuntimeAugments.CreateThunksHeap(
-                            RuntimeImports.GetInteropCommonStubAddress());
-                    }
+                    s_thunkPoolHeap ??= RuntimeAugments.CreateThunksHeap(
+                        RuntimeImports.GetInteropCommonStubAddress());
                 }
                 Debug.Assert(s_thunkPoolHeap != null);
             }

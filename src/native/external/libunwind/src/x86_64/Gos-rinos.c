@@ -15,6 +15,7 @@
 #include "unwind_i.h"
 #include "ucontext_i.h"
 
+#include <rin/dynlink/inventory_abi.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -70,15 +71,115 @@ tdep_reuse_frame(struct dwarf_cursor *dw, int frame)
 }
 #endif
 
+/* RIN images are not ELF objects.  The kernel nevertheless publishes a
+ * generation-consistent, authenticated image inventory which is sufficient
+ * for the metadata half of libunwind's image lookup hook.  Keep this adapter
+ * deliberately separate from the generic ELF loader: it must never invent
+ * program headers or point an elf_image at an arbitrary RIN mapping. */
+#ifndef __linux__
+static int
+rinos_inventory_fetch(uint32_t index, RinDlInventoryRecordV1 *record)
+{
+  intptr_t result;
+  uint32_t name_index;
+
+  if (record == NULL)
+    return -UNW_EINVAL;
+
+  memset(record, 0, sizeof(*record));
+  result = _syscall2((uintptr_t)SYS_DLINVENTORY, (uintptr_t)index,
+                     (uintptr_t)record);
+  if (result != 0)
+    return -UNW_ENOINFO;
+
+  /* A legacy RLL snapshot is an explicitly empty image graph. */
+  if (record->flags == RIN_DLINVENTORY_V1_FLAG_LEGACY_RLL &&
+      index == 0u && record->record_count == 0u &&
+      record->launch_generation != 0u && record->name_length == 0u &&
+      record->load_address == 0u && record->mapped_size == 0u &&
+      record->record_index == 0u && record->add_count == 0u &&
+      record->sub_count == 0u && record->program_headers == 0u &&
+      record->program_header_count == 0u && record->tls_data == 0u &&
+      record->tls_module_id == 0u)
+    return 1;
+
+  if (record->abi_version != RIN_DLINVENTORY_V1_ABI_VERSION ||
+      record->record_count == 0u ||
+      (record->flags == RIN_DLINVENTORY_V1_FLAG_LEGACY_RLL
+           ? record->record_count > RIN_DLINVENTORY_V1_MAX_LAUNCH_RECORDS
+           : record->record_count > RIN_DLINVENTORY_V1_MAX_RECORDS) ||
+      record->record_index != index || record->launch_generation == 0u ||
+      record->add_count != record->record_count || record->sub_count != 0u ||
+      record->name_length == 0u ||
+      record->name_length >= RIN_DLINVENTORY_V1_NAME_CAPACITY ||
+      record->name[record->name_length] != '\0' ||
+      record->load_address == 0u || record->mapped_size == 0u ||
+      record->mapped_size > UINTPTR_MAX -
+          (uintptr_t)record->load_address ||
+      record->program_headers != 0u || record->program_header_count != 0u ||
+      record->tls_data != 0u || record->tls_module_id != 0u ||
+      record->reserved0 != 0u ||
+      ((record->flags == RIN_DLINVENTORY_V1_FLAG_LEGACY_RLL) == 0 &&
+       (index == 0u
+            ? record->flags != RIN_DLINVENTORY_V1_FLAG_MAIN_IMAGE
+            : record->flags != 0u)))
+    return -UNW_ENOINFO;
+
+  for (name_index = 0u; name_index < record->name_length; ++name_index) {
+    if (record->name[name_index] == '\0')
+      return -UNW_ENOINFO;
+  }
+  return 0;
+}
+
+static int
+rinos_inventory_copy_path(const RinDlInventoryRecordV1 *record,
+                          char *path, size_t pathlen)
+{
+  const char *source = record->name;
+  size_t length = (size_t)record->name_length;
+  RinProcessImagePathResponseV1 response;
+
+  if ((record->flags & RIN_DLINVENTORY_V1_FLAG_MAIN_IMAGE) != 0u) {
+    memset(&response, 0, sizeof(response));
+    if (rin_process_image_path_get(&response) != 0 ||
+        response.struct_size != sizeof(response) ||
+        response.version != RIN_PROCESS_IMAGE_PATH_ABI_VERSION ||
+        (response.flags & ~RIN_PROCESS_IMAGE_PATH_FLAG_AUTHENTICATED) != 0u ||
+        (response.flags & RIN_PROCESS_IMAGE_PATH_FLAG_AUTHENTICATED) == 0u ||
+        response.reserved0 != 0u || response.reserved[0] != 0u ||
+        response.reserved[1] != 0u || response.length == 0u ||
+        response.length >= RIN_PROCESS_IMAGE_PATH_MAX ||
+        response.path[response.length] != '\0' ||
+        memchr(response.path, '\0', response.length) != NULL)
+      return -UNW_ENOINFO;
+    source = response.path;
+    length = (size_t)response.length;
+  }
+
+  if (path == NULL)
+    return 0;
+  if (pathlen == 0u || length + 1u > pathlen) {
+    path[0] = '\0';
+    return -UNW_ENOMEM;
+  }
+  memcpy(path, source, length);
+  path[length] = '\0';
+  return 0;
+}
+#endif
+
 int
 tdep_get_elf_image(struct elf_image *ei, pid_t pid, unw_word_t ip,
                    unsigned long *segbase, unsigned long *mapoff,
                    char *path, size_t pathlen)
 {
   /* A failed image lookup must not leave caller-visible metadata from an
-   * earlier frame.  The RinOS process-image ABI currently exposes only the
-   * authenticated executable path, not an IP-to-image map, so fail closed
-   * after clearing every optional output. */
+   * earlier frame. */
+  if (ei != NULL) {
+    ei->image = NULL;
+    ei->size = 0;
+  }
   if (segbase != NULL)
     *segbase = 0;
   if (mapoff != NULL)
@@ -86,9 +187,10 @@ tdep_get_elf_image(struct elf_image *ei, pid_t pid, unw_word_t ip,
   if (path != NULL && pathlen != 0)
     path[0] = '\0';
 
-  /* RinOS does not expose process memory maps to libunwind. The generic ELF
-   * helpers are shared with other targets, so provide the platform hook and
-   * report that process-image lookup is unavailable. */
+#ifdef __linux__
+  /* Crossgen's host JIT is built from this RinOS platform source, but runs
+   * on Linux and must retain the host ELF implementation supplied by the
+   * shared libunwind sources.  This target hook is selected only for RinOS. */
   (void)ei;
   (void)pid;
   (void)ip;
@@ -97,6 +199,64 @@ tdep_get_elf_image(struct elf_image *ei, pid_t pid, unw_word_t ip,
   (void)path;
   (void)pathlen;
   return -UNW_ENOINFO;
+#else
+  RinDlInventoryRecordV1 record;
+  uint32_t index;
+  uint32_t expected_count = 0u;
+  uint64_t expected_generation = 0u;
+  uint64_t expected_adds = 0u;
+  uint64_t expected_subs = 0u;
+  uint32_t expected_flags = 0u;
+  int fetch_result;
+
+  if (pid != 0 && pid != getpid())
+    return -UNW_ENOINFO;
+
+  for (index = 0u; index < RIN_DLINVENTORY_V1_MAX_RECORDS; ++index) {
+    fetch_result = rinos_inventory_fetch(index, &record);
+    if (fetch_result == 1)
+      return -UNW_ENOINFO;
+    if (fetch_result != 0)
+      return fetch_result;
+
+    if (index == 0u) {
+      expected_count = record.record_count;
+      expected_generation = record.launch_generation;
+      expected_adds = record.add_count;
+      expected_subs = record.sub_count;
+      expected_flags = record.flags & RIN_DLINVENTORY_V1_FLAG_LEGACY_RLL;
+    } else if (record.record_count != expected_count ||
+               record.launch_generation != expected_generation ||
+               record.add_count != expected_adds ||
+               record.sub_count != expected_subs ||
+               (record.flags & RIN_DLINVENTORY_V1_FLAG_LEGACY_RLL) !=
+                   expected_flags)
+      return -UNW_ENOINFO;
+
+    if (ip >= (unw_word_t)record.load_address &&
+        ip - (unw_word_t)record.load_address <
+            (unw_word_t)record.mapped_size) {
+      if (segbase != NULL)
+        *segbase = (unsigned long)record.load_address;
+      if (mapoff != NULL)
+        *mapoff = 0;
+      fetch_result = rinos_inventory_copy_path(&record, path, pathlen);
+      if (fetch_result != 0)
+        return fetch_result;
+
+      /* The formal inventory describes RIN mappings, not ELF images.  Keep
+       * the generic ELF path fail-closed until a native RIN unwind-table
+       * adapter is defined; never cast a code mapping into elf_image. */
+      if (ei != NULL)
+        return -UNW_ENOINFO;
+      return 0;
+    }
+
+    if (index + 1u == expected_count)
+      break;
+  }
+  return -UNW_ENOINFO;
+#endif
 }
 
 #ifndef UNW_REMOTE_ONLY

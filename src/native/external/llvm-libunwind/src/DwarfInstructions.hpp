@@ -414,16 +414,19 @@ int DwarfInstructions<A, R>::stepWithDwarf(
       if (R::getArch() == REGISTERS_PPC64 && returnAddress != 0) {
         pint_t sp = newRegisters.getRegister(UNW_REG_SP);
         pint_t r2 = 0;
+        pint_t r2Location = 0;
         switch (addressSpace.get32(returnAddress)) {
         case PPC64_ELFV1_R2_LOAD_INST_ENCODING:
-          r2 = addressSpace.get64(sp + PPC64_ELFV1_R2_OFFSET);
+          r2Location = sp + PPC64_ELFV1_R2_OFFSET;
+          r2 = addressSpace.get64(r2Location);
           break;
         case PPC64_ELFV2_R2_LOAD_INST_ENCODING:
-          r2 = addressSpace.get64(sp + PPC64_ELFV2_R2_OFFSET);
+          r2Location = sp + PPC64_ELFV2_R2_OFFSET;
+          r2 = addressSpace.get64(r2Location);
           break;
         }
         if (r2)
-          newRegisters.setRegister(UNW_PPC64_R2, r2);
+          newRegisters.setRegister(UNW_PPC64_R2, r2, r2Location);
       }
 #endif
 

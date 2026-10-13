@@ -52,7 +52,7 @@ static const RinNativeAotThunkProviderV1* GetRinNativeAotThunkProvider()
     const RinNativeAotThunkProviderV1* provider =
         rin_nativeaot_thunk_provider_get_v1();
     if (provider == nullptr ||
-        provider->struct_size != sizeof(RinNativeAotThunkProviderV1) ||
+        provider->struct_size < RIN_NATIVEAOT_THUNK_PROVIDER_V1_REQUIRED_SIZE ||
         provider->abi_version != RIN_NATIVEAOT_THUNK_ABI_VERSION ||
         provider->reserved0 != 0 ||
         (provider->capability_mask & ~RIN_NATIVEAOT_THUNK_KNOWN_CAPABILITIES) != 0 ||
@@ -68,6 +68,11 @@ static const RinNativeAotThunkProviderV1* GetRinNativeAotThunkProvider()
         provider->get_thunk_block_size == nullptr ||
         provider->get_common_stub_address == nullptr ||
         provider->get_current_thunk_context == nullptr)
+        return nullptr;
+
+    if ((provider->capability_mask & RIN_NATIVEAOT_THUNK_CAP_MAPPING_RELEASE) != 0 &&
+        (provider->struct_size < RIN_NATIVEAOT_THUNK_PROVIDER_V1_RELEASE_SIZE ||
+         provider->free_thunks_mapping == nullptr))
         return nullptr;
 
     /* All geometry callbacks describe one immutable provider layout.  Do the
@@ -493,8 +498,20 @@ FCIMPL1(HRESULT, RhFreeThunksMapping, void* pThunksSection)
     if (pThunksSection == nullptr)
         return E_INVALIDARG;
 
-    // PortableRuntime has no executable mapping owner or native thunk
-    // lifetime ABI.  ThunkPool must retain its fail-closed boundary here.
+    const RinNativeAotThunkProviderV1* provider =
+        GetRinNativeAotThunkProvider();
+    if (provider != nullptr &&
+        (provider->capability_mask & RIN_NATIVEAOT_THUNK_CAP_MAPPING_RELEASE) != 0 &&
+        provider->struct_size >= RIN_NATIVEAOT_THUNK_PROVIDER_V1_RELEASE_SIZE &&
+        provider->free_thunks_mapping != nullptr)
+    {
+        return (HRESULT)provider->free_thunks_mapping(
+            provider->context, pThunksSection);
+    }
+
+    // A provider that only advertises allocation cannot safely release an
+    // executable mapping. Keep the managed retry/fail-closed boundary until
+    // the product owner publishes the release capability.
     return E_NOTIMPL;
 }
 FCIMPLEND

@@ -98,10 +98,18 @@ tdep_get_exe_image_path(char *path)
   strcpy(path, "/proc/self/exe");
 #else
   RinProcessImagePathResponseV1 response = { 0 };
-  if (rin_process_image_path_get(&response) == 0)
-    strcpy(path, response.path);
-  else
+  if (rin_process_image_path_get(&response) != 0 ||
+      response.struct_size != sizeof(response) ||
+      response.version != RIN_PROCESS_IMAGE_PATH_ABI_VERSION ||
+      (response.flags & ~RIN_PROCESS_IMAGE_PATH_FLAG_AUTHENTICATED) != 0u ||
+      (response.flags & RIN_PROCESS_IMAGE_PATH_FLAG_AUTHENTICATED) == 0u ||
+      response.reserved0 != 0u || response.length == 0u ||
+      response.length >= RIN_PROCESS_IMAGE_PATH_MAX ||
+      response.path[response.length] != '\0' ||
+      memchr(response.path, '\0', response.length) != NULL)
     path[0] = '\0';
+  else
+    memcpy(path, response.path, (size_t)response.length + 1u);
 #endif
 }
 #endif /* !UNW_REMOTE_ONLY */

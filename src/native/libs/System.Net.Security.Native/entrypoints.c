@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 #include <minipal/entrypoints.h>
+#include <rin/service.h>
 
 // Include System.Net.Security.Native headers
 #include "pal_gssapi.h"

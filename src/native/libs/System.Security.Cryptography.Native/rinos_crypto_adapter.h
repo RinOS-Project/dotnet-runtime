@@ -5,6 +5,7 @@
 #define RINOS_CRYPTO_ADAPTER_H
 
 #include <stdint.h>
+#include "../Common/pal_compiler.h"
 
 /* RinTLS headers are product-owned inputs and are compiled under the .NET
  * native library's -Weverything -Werror policy. Keep their existing ABI
@@ -25,85 +26,85 @@
 extern "C" {
 #endif
 
-void* CryptoNative_RinOSHashCreate(int32_t algorithm);
-void* CryptoNative_RinOSHashClone(const void* source);
-int32_t CryptoNative_RinOSHashUpdate(void* handle, const uint8_t* data, int32_t length);
-int32_t CryptoNative_RinOSHashFinal(void* handle, uint8_t* destination, int32_t destination_length);
-int32_t CryptoNative_RinOSHashCurrent(const void* handle, uint8_t* destination, int32_t destination_length);
-int32_t CryptoNative_RinOSHashReset(void* handle);
-void CryptoNative_RinOSHashDestroy(void* handle);
+PALEXPORT void* CryptoNative_RinOSHashCreate(int32_t algorithm);
+PALEXPORT void* CryptoNative_RinOSHashClone(const void* source);
+PALEXPORT int32_t CryptoNative_RinOSHashUpdate(void* handle, const uint8_t* data, int32_t length);
+PALEXPORT int32_t CryptoNative_RinOSHashFinal(void* handle, uint8_t* destination, int32_t destination_length);
+PALEXPORT int32_t CryptoNative_RinOSHashCurrent(const void* handle, uint8_t* destination, int32_t destination_length);
+PALEXPORT int32_t CryptoNative_RinOSHashReset(void* handle);
+PALEXPORT void CryptoNative_RinOSHashDestroy(void* handle);
 
-void* CryptoNative_RinOSHmacCreate(int32_t algorithm, const uint8_t* key, int32_t key_length);
-void* CryptoNative_RinOSHmacClone(const void* source);
-int32_t CryptoNative_RinOSHmacUpdate(void* handle, const uint8_t* data, int32_t length);
-int32_t CryptoNative_RinOSHmacFinal(void* handle, uint8_t* destination, int32_t destination_length);
-int32_t CryptoNative_RinOSHmacCurrent(const void* handle, uint8_t* destination, int32_t destination_length);
-int32_t CryptoNative_RinOSHmacReset(void* handle);
-void CryptoNative_RinOSHmacDestroy(void* handle);
+PALEXPORT void* CryptoNative_RinOSHmacCreate(int32_t algorithm, const uint8_t* key, int32_t key_length);
+PALEXPORT void* CryptoNative_RinOSHmacClone(const void* source);
+PALEXPORT int32_t CryptoNative_RinOSHmacUpdate(void* handle, const uint8_t* data, int32_t length);
+PALEXPORT int32_t CryptoNative_RinOSHmacFinal(void* handle, uint8_t* destination, int32_t destination_length);
+PALEXPORT int32_t CryptoNative_RinOSHmacCurrent(const void* handle, uint8_t* destination, int32_t destination_length);
+PALEXPORT int32_t CryptoNative_RinOSHmacReset(void* handle);
+PALEXPORT void CryptoNative_RinOSHmacDestroy(void* handle);
 
-int32_t CryptoNative_GetRandomBytes(uint8_t* buffer, int32_t length);
+PALEXPORT int32_t CryptoNative_GetRandomBytes(uint8_t* buffer, int32_t length);
 
-void* CryptoNative_RinOSAesGcmCreate(const uint8_t* key, int32_t key_length);
-int32_t CryptoNative_RinOSAesGcmEncrypt(
+PALEXPORT void* CryptoNative_RinOSAesGcmCreate(const uint8_t* key, int32_t key_length);
+PALEXPORT int32_t CryptoNative_RinOSAesGcmEncrypt(
     const void* handle, const uint8_t* nonce, int32_t nonce_length,
     const uint8_t* aad, int32_t aad_length, const uint8_t* plaintext,
     int32_t plaintext_length, uint8_t* ciphertext, int32_t ciphertext_length,
     uint8_t* tag, int32_t tag_length);
-int32_t CryptoNative_RinOSAesGcmDecrypt(
+PALEXPORT int32_t CryptoNative_RinOSAesGcmDecrypt(
     const void* handle, const uint8_t* nonce, int32_t nonce_length,
     const uint8_t* aad, int32_t aad_length, const uint8_t* ciphertext,
     int32_t ciphertext_length, const uint8_t* tag, int32_t tag_length,
     uint8_t* plaintext, int32_t plaintext_length);
-void CryptoNative_RinOSAesGcmDestroy(void* handle);
-void* CryptoNative_RinOSAesCreate(
+PALEXPORT void CryptoNative_RinOSAesGcmDestroy(void* handle);
+PALEXPORT void* CryptoNative_RinOSAesCreate(
     const uint8_t* key, int32_t key_length, int32_t mode,
     int32_t feedback_size, const uint8_t* iv, int32_t iv_length,
     int32_t encrypting);
-int32_t CryptoNative_RinOSAesTransform(
+PALEXPORT int32_t CryptoNative_RinOSAesTransform(
     void* handle, const uint8_t* input, int32_t input_length,
     uint8_t* output, int32_t output_length);
-int32_t CryptoNative_RinOSAesReset(
+PALEXPORT int32_t CryptoNative_RinOSAesReset(
     void* handle, const uint8_t* iv, int32_t iv_length);
-void CryptoNative_RinOSAesDestroy(void* handle);
+PALEXPORT void CryptoNative_RinOSAesDestroy(void* handle);
 
-void* CryptoNative_RinOSEcdhCreate(void);
-int32_t CryptoNative_RinOSEcdhGenerateKey(void* handle);
-int32_t CryptoNative_RinOSEcdhImportParameters(
+PALEXPORT void* CryptoNative_RinOSEcdhCreate(void);
+PALEXPORT int32_t CryptoNative_RinOSEcdhGenerateKey(void* handle);
+PALEXPORT int32_t CryptoNative_RinOSEcdhImportParameters(
     void* handle, const uint8_t* private_key, int32_t private_key_length,
     const uint8_t* public_key, int32_t public_key_length);
-int32_t CryptoNative_RinOSEcdhGetKeySize(const void* handle);
-int32_t CryptoNative_RinOSEcdhExportParameters(
+PALEXPORT int32_t CryptoNative_RinOSEcdhGetKeySize(const void* handle);
+PALEXPORT int32_t CryptoNative_RinOSEcdhExportParameters(
     const void* handle, int32_t include_private, uint8_t* private_key,
     int32_t private_key_capacity, int32_t* private_key_length,
     uint8_t* public_key, int32_t public_key_capacity, int32_t* public_key_length);
-int32_t CryptoNative_RinOSEcdhDeriveRawSecret(
+PALEXPORT int32_t CryptoNative_RinOSEcdhDeriveRawSecret(
     const void* handle, const uint8_t* peer_public_key,
     int32_t peer_public_key_length, uint8_t* secret, int32_t secret_capacity,
     int32_t* secret_length);
-void CryptoNative_RinOSEcdhDestroy(void* handle);
+PALEXPORT void CryptoNative_RinOSEcdhDestroy(void* handle);
 
-void* CryptoNative_RinOSEcdsaCreate(void);
-int32_t CryptoNative_RinOSEcdsaGenerateKey(void* handle);
-int32_t CryptoNative_RinOSEcdsaImportParameters(
+PALEXPORT void* CryptoNative_RinOSEcdsaCreate(void);
+PALEXPORT int32_t CryptoNative_RinOSEcdsaGenerateKey(void* handle);
+PALEXPORT int32_t CryptoNative_RinOSEcdsaImportParameters(
     void* handle, const uint8_t* private_key, int32_t private_key_length,
     const uint8_t* public_key, int32_t public_key_length);
-int32_t CryptoNative_RinOSEcdsaGetKeySize(const void* handle);
-int32_t CryptoNative_RinOSEcdsaExportParameters(
+PALEXPORT int32_t CryptoNative_RinOSEcdsaGetKeySize(const void* handle);
+PALEXPORT int32_t CryptoNative_RinOSEcdsaExportParameters(
     const void* handle, int32_t include_private, uint8_t* private_key,
     int32_t private_key_capacity, int32_t* private_key_length,
     uint8_t* public_key, int32_t public_key_capacity, int32_t* public_key_length);
-int32_t CryptoNative_RinOSEcdsaSignHash(
+PALEXPORT int32_t CryptoNative_RinOSEcdsaSignHash(
     const void* handle, const uint8_t* hash, int32_t hash_length,
     uint8_t* signature, int32_t signature_capacity, int32_t* signature_length);
-int32_t CryptoNative_RinOSEcdsaVerifyHash(
+PALEXPORT int32_t CryptoNative_RinOSEcdsaVerifyHash(
     const void* handle, const uint8_t* hash, int32_t hash_length,
     const uint8_t* signature, int32_t signature_length);
-void CryptoNative_RinOSEcdsaDestroy(void* handle);
+PALEXPORT void CryptoNative_RinOSEcdsaDestroy(void* handle);
 
-void* CryptoNative_RinOSRsaCreate(void);
-int32_t CryptoNative_RinOSRsaGenerateKey(
+PALEXPORT void* CryptoNative_RinOSRsaCreate(void);
+PALEXPORT int32_t CryptoNative_RinOSRsaGenerateKey(
     void* handle, int32_t key_size, int32_t public_exponent);
-int32_t CryptoNative_RinOSRsaImportParameters(
+PALEXPORT int32_t CryptoNative_RinOSRsaImportParameters(
     void* handle, const uint8_t* modulus, int32_t modulus_length,
     const uint8_t* exponent, int32_t exponent_length,
     const uint8_t* private_exponent, int32_t private_exponent_length,
@@ -112,8 +113,8 @@ int32_t CryptoNative_RinOSRsaImportParameters(
     const uint8_t* exponent1, int32_t exponent1_length,
     const uint8_t* exponent2, int32_t exponent2_length,
     const uint8_t* coefficient, int32_t coefficient_length);
-int32_t CryptoNative_RinOSRsaGetKeySize(const void* handle);
-int32_t CryptoNative_RinOSRsaExportParameters(
+PALEXPORT int32_t CryptoNative_RinOSRsaGetKeySize(const void* handle);
+PALEXPORT int32_t CryptoNative_RinOSRsaExportParameters(
     const void* handle, int32_t include_private,
     uint8_t* modulus, int32_t modulus_capacity, int32_t* modulus_length,
     uint8_t* exponent, int32_t exponent_capacity, int32_t* exponent_length,
@@ -124,95 +125,95 @@ int32_t CryptoNative_RinOSRsaExportParameters(
     int32_t* exponent1_length, uint8_t* exponent2, int32_t exponent2_capacity,
     int32_t* exponent2_length, uint8_t* coefficient,
     int32_t coefficient_capacity, int32_t* coefficient_length);
-int32_t CryptoNative_RinOSRsaEncrypt(
+PALEXPORT int32_t CryptoNative_RinOSRsaEncrypt(
     const void* handle, int32_t padding, int32_t hash_algorithm,
     const uint8_t* input, int32_t input_length, uint8_t* output,
     int32_t output_capacity, int32_t* output_length);
-int32_t CryptoNative_RinOSRsaDecrypt(
+PALEXPORT int32_t CryptoNative_RinOSRsaDecrypt(
     const void* handle, int32_t padding, int32_t hash_algorithm,
     const uint8_t* input, int32_t input_length, uint8_t* output,
     int32_t output_capacity, int32_t* output_length);
-int32_t CryptoNative_RinOSRsaSignHash(
+PALEXPORT int32_t CryptoNative_RinOSRsaSignHash(
     const void* handle, int32_t padding, int32_t hash_algorithm,
     const uint8_t* hash, int32_t hash_length, int32_t salt_length,
     uint8_t* signature, int32_t signature_capacity, int32_t* signature_length);
-int32_t CryptoNative_RinOSRsaVerifyHash(
+PALEXPORT int32_t CryptoNative_RinOSRsaVerifyHash(
     const void* handle, int32_t padding, int32_t hash_algorithm,
     const uint8_t* hash, int32_t hash_length, int32_t salt_length,
     const uint8_t* signature, int32_t signature_length);
-void CryptoNative_RinOSRsaDestroy(void* handle);
+PALEXPORT void CryptoNative_RinOSRsaDestroy(void* handle);
 
-int32_t CryptoNative_RinOSX509VerifySignature(
+PALEXPORT int32_t CryptoNative_RinOSX509VerifySignature(
     const uint8_t* certificate_der, int32_t certificate_length,
     const uint8_t* issuer_der, int32_t issuer_length);
 
-void* CryptoNative_RinTlsCreate(int32_t is_server, const char* hostname,
+PALEXPORT void* CryptoNative_RinTlsCreate(int32_t is_server, const char* hostname,
                                 uint32_t options, uint64_t trusted_time,
                                 int32_t* error);
-void CryptoNative_RinTlsDestroy(void* handle);
-int32_t CryptoNative_RinTlsSetCipherSuites(
+PALEXPORT void CryptoNative_RinTlsDestroy(void* handle);
+PALEXPORT int32_t CryptoNative_RinTlsSetCipherSuites(
     void* handle, const uint16_t* cipher_suites, int32_t cipher_suite_count);
-int32_t CryptoNative_RinTlsLoadTrustStore(
+PALEXPORT int32_t CryptoNative_RinTlsLoadTrustStore(
     void* handle, const uint8_t* bundle, int32_t bundle_length);
-int32_t CryptoNative_RinTlsHandshake(
+PALEXPORT int32_t CryptoNative_RinTlsHandshake(
     void* handle, const uint8_t* input, int32_t input_length, int32_t* consumed);
-int32_t CryptoNative_RinTlsSetClientCertificate(
+PALEXPORT int32_t CryptoNative_RinTlsSetClientCertificate(
     void* handle, const uint8_t* certificate_list,
     int32_t certificate_list_length, void* signer, void* signer_opaque);
-int32_t CryptoNative_RinTlsSetServerCertificate(
+PALEXPORT int32_t CryptoNative_RinTlsSetServerCertificate(
     void* handle, const uint8_t* certificate_list,
     int32_t certificate_list_length, void* signer, void* signer_opaque);
-int32_t CryptoNative_RinTlsClientCertificateRequested(void* handle);
-int32_t CryptoNative_RinTlsPendingOutputLength(void* handle);
-int32_t CryptoNative_RinTlsReadOutput(
+PALEXPORT int32_t CryptoNative_RinTlsClientCertificateRequested(void* handle);
+PALEXPORT int32_t CryptoNative_RinTlsPendingOutputLength(void* handle);
+PALEXPORT int32_t CryptoNative_RinTlsReadOutput(
     void* handle, uint8_t* destination, int32_t capacity);
-int32_t CryptoNative_RinTlsEncrypt(
+PALEXPORT int32_t CryptoNative_RinTlsEncrypt(
     void* handle, const uint8_t* plaintext, int32_t plaintext_length,
     int32_t* consumed);
-int32_t CryptoNative_RinTlsDecrypt(
+PALEXPORT int32_t CryptoNative_RinTlsDecrypt(
     void* handle, const uint8_t* encrypted, int32_t encrypted_length,
     uint8_t* plaintext, int32_t plaintext_capacity, int32_t* consumed,
     int32_t* written);
-int32_t CryptoNative_RinTlsShutdown(void* handle);
-int32_t CryptoNative_RinTlsIsClosed(void* handle);
-int32_t CryptoNative_RinTlsGetVersion(void* handle);
-int32_t CryptoNative_RinTlsGetCipherSuite(void* handle);
-int32_t CryptoNative_RinTlsGetApplicationProtocolLength(
+PALEXPORT int32_t CryptoNative_RinTlsShutdown(void* handle);
+PALEXPORT int32_t CryptoNative_RinTlsIsClosed(void* handle);
+PALEXPORT int32_t CryptoNative_RinTlsGetVersion(void* handle);
+PALEXPORT int32_t CryptoNative_RinTlsGetCipherSuite(void* handle);
+PALEXPORT int32_t CryptoNative_RinTlsGetApplicationProtocolLength(
     void* handle, int32_t* length);
-int32_t CryptoNative_RinTlsCopyApplicationProtocol(
+PALEXPORT int32_t CryptoNative_RinTlsCopyApplicationProtocol(
     void* handle, uint8_t* destination, int32_t capacity);
-int32_t CryptoNative_RinTlsGetError(void* handle);
-int32_t CryptoNative_RinTlsGetPeerCertificateLength(
+PALEXPORT int32_t CryptoNative_RinTlsGetError(void* handle);
+PALEXPORT int32_t CryptoNative_RinTlsGetPeerCertificateLength(
     void* handle, int32_t* length);
-int32_t CryptoNative_RinTlsCopyPeerCertificate(
+PALEXPORT int32_t CryptoNative_RinTlsCopyPeerCertificate(
     void* handle, uint8_t* destination, int32_t capacity);
-int32_t CryptoNative_RinTlsGetPeerCertificateChainLength(
+PALEXPORT int32_t CryptoNative_RinTlsGetPeerCertificateChainLength(
     void* handle, int32_t* length);
-int32_t CryptoNative_RinTlsCopyPeerCertificateChain(
+PALEXPORT int32_t CryptoNative_RinTlsCopyPeerCertificateChain(
     void* handle, uint8_t* destination, int32_t capacity);
-int32_t CryptoNative_RinTlsGetPeerRevocationEndpoint(
+PALEXPORT int32_t CryptoNative_RinTlsGetPeerRevocationEndpoint(
     void* handle, int32_t source, uint8_t* destination, int32_t capacity,
     int32_t* length);
-int32_t CryptoNative_RinTlsGetPeerRevocationEndpointAt(
+PALEXPORT int32_t CryptoNative_RinTlsGetPeerRevocationEndpointAt(
     void* handle, int32_t certificate_index, int32_t source,
     uint8_t* destination, int32_t capacity, int32_t* length);
-int32_t CryptoNative_RinTlsVerifyPeerRevocation(
+PALEXPORT int32_t CryptoNative_RinTlsVerifyPeerRevocation(
     void* handle, int32_t source, const uint8_t* response,
     int32_t response_length, uint64_t sequence, uint64_t trusted_unix_time,
     int32_t* status);
-int32_t CryptoNative_RinTlsVerifyPeerRevocationAt(
+PALEXPORT int32_t CryptoNative_RinTlsVerifyPeerRevocationAt(
     void* handle, int32_t certificate_index, int32_t source,
     const uint8_t* response, int32_t response_length, uint64_t sequence,
     uint64_t trusted_unix_time, int32_t* status);
-int32_t CryptoNative_RinOSX509GetRevocationEndpoint(
+PALEXPORT int32_t CryptoNative_RinOSX509GetRevocationEndpoint(
     const uint8_t* certificate_der, int32_t certificate_length,
     int32_t source, uint8_t* destination, int32_t capacity, int32_t* length);
-int32_t CryptoNative_RinOSX509VerifyRevocation(
+PALEXPORT int32_t CryptoNative_RinOSX509VerifyRevocation(
     const uint8_t* certificate_der, int32_t certificate_length,
     const uint8_t* issuer_der, int32_t issuer_length, int32_t source,
     const uint8_t* response, int32_t response_length,
     uint64_t trusted_unix_time, uint64_t sequence, int32_t* status);
-int32_t CryptoNative_RinOSX509LookupRevocation(
+PALEXPORT int32_t CryptoNative_RinOSX509LookupRevocation(
     const uint8_t* certificate_der, int32_t certificate_length,
     const uint8_t* issuer_der, int32_t issuer_length,
     uint64_t trusted_unix_time, int32_t* status);

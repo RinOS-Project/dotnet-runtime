@@ -490,7 +490,9 @@ FCIMPLEND
 
 FCIMPL1(HRESULT, RhFreeThunksMapping, void* pThunksSection)
 {
-    UNREFERENCED_PARAMETER(pThunksSection);
+    if (pThunksSection == nullptr)
+        return E_INVALIDARG;
+
     // PortableRuntime has no executable mapping owner or native thunk
     // lifetime ABI.  ThunkPool must retain its fail-closed boundary here.
     return E_NOTIMPL;

@@ -90,10 +90,10 @@ SET(libunwind_la_SOURCES_os_solaris_local
 # Nothing
 )
 
-if(CLR_CMAKE_TARGET_RINOS AND NOT (RINOS_CROSS_COMPONENTS_HOST AND CLR_CMAKE_HOST_LINUX))
+if(CLR_CMAKE_TARGET_RINOS AND NOT (CLR_CROSS_COMPONENTS_BUILD AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux"))
     SET(libunwind_la_SOURCES_x86_64_os          x86_64/Gos-rinos.c)
     SET(libunwind_la_SOURCES_x86_64_os_local    x86_64/Los-rinos.c)
-elseif(CLR_CMAKE_TARGET_RINOS AND RINOS_CROSS_COMPONENTS_HOST AND CLR_CMAKE_HOST_LINUX)
+elseif(CLR_CMAKE_TARGET_RINOS AND CLR_CROSS_COMPONENTS_BUILD AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
     # The cross-components build compiles host tools and their JIT for Linux,
     # even though source selection still uses the RinOS target configuration.
     # Use Linux's process-image lookup and signal-frame support in that host

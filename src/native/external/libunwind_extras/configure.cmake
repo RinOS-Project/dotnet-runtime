@@ -2,7 +2,7 @@ include(CheckCSourceCompiles)
 include(CheckIncludeFiles)
 include(CheckFunctionExists)
 
-if(CLR_CMAKE_TARGET_RINOS AND NOT (RINOS_CROSS_COMPONENTS_HOST AND CLR_CMAKE_HOST_LINUX))
+if(CLR_CMAKE_TARGET_RINOS AND NOT (CLR_CROSS_COMPONENTS_BUILD AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux"))
     # RinOS exposes the ELF and program-header ABI through its own link.h.
     # It intentionally has no Linux elf.h/endian.h headers in the target sysroot.
     set(HAVE_ELF_H 0)
@@ -34,13 +34,13 @@ elseif(CLR_CMAKE_HOST_WIN32)
     if (NOT HAVE_THREAD_LOCAL)
         add_definitions(-D_Thread_local=)
     endif (NOT HAVE_THREAD_LOCAL)
-else(CLR_CMAKE_HOST_WIN32)
+else()
     check_include_files(elf.h HAVE_ELF_H)
     check_include_files(sys/elf.h HAVE_SYS_ELF_H)
 
     check_include_files(endian.h HAVE_ENDIAN_H)
     check_include_files(sys/endian.h HAVE_SYS_ENDIAN_H)
-endif(CLR_CMAKE_HOST_WIN32)
+endif()
 
 check_include_files(link.h HAVE_LINK_H)
 check_include_files(sys/link.h HAVE_SYS_LINK_H)

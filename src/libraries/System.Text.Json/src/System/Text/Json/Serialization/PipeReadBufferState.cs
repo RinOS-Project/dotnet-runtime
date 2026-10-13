@@ -76,7 +76,7 @@ namespace System.Text.Json.Serialization
         public void Read(PipeReader utf8Json)
         {
             int minBufferSize = _unsuccessfulReadBytes > 0 ? _unsuccessfulReadBytes : 0;
-            ReadResult readResult = _utf8Json.ReadAtLeastAsync(minBufferSize).GetAwaiter().GetResult();
+            ReadResult readResult = _utf8Json.ReadAtLeastAsync(minBufferSize).AsTask().GetAwaiter().GetResult();
 
             _sequence = readResult.Buffer;
             _isFinalBlock = readResult.IsCompleted;

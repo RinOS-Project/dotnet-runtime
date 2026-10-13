@@ -62,6 +62,11 @@ typedef struct RinOsKerberosProviderCredential {
     uint32_t magic;
     uint32_t kind;
     void* owner_credential;
+    /* A refresh can obtain a replacement handle and then fail to release it
+     * after the old handle has expired.  Keep that owner object reachable so
+     * the next provider release can retry cleanup instead of leaking an
+     * opaque session capability.  It is never used for Kerberos operations. */
+    void* pending_release_credential;
     const RinKerberosCredentialOwnerV1* owner;
     uint32_t active_contexts;
 } RinOsKerberosProviderCredential;
@@ -1285,6 +1290,17 @@ static int provider_credential_valid(
            credential->owner->release_credential != NULL;
 }
 
+static int provider_credential_releaseable(
+    const RinOsKerberosProviderCredential* credential, uint32_t kind)
+{
+    return credential != NULL &&
+           credential->magic == RINOS_KERBEROS_CREDENTIAL_MAGIC &&
+           credential->kind == kind && credential->owner != NULL &&
+           (credential->owner_credential != NULL ||
+            credential->pending_release_credential != NULL) &&
+           credential->owner->release_credential != NULL;
+}
+
 static int provider_context_valid(
     const RinOsKerberosProviderContext* context)
 {
@@ -1442,8 +1458,28 @@ static void provider_initialize_credential(
     credential->magic = RINOS_KERBEROS_CREDENTIAL_MAGIC;
     credential->kind = kind;
     credential->owner_credential = owner_credential;
+    credential->pending_release_credential = NULL;
     credential->owner = owner;
     credential->active_contexts = 0u;
+}
+
+/* Cleanup for a replacement obtained during a failed refresh.  The pending
+ * handle is deliberately not usable for operations; this helper only
+ * retries the same owner release until the owner consumes it. */
+static uint32_t provider_release_pending_credential(
+    RinOsKerberosProviderCredential* credential, uint32_t* minor_status)
+{
+    uint32_t status;
+    if (credential == NULL || credential->pending_release_credential == NULL)
+        return RIN_AUTH_PROVIDER_OK;
+    status = credential->owner->release_credential(
+        credential->owner->context, minor_status,
+        &credential->pending_release_credential);
+    if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK)
+        return provider_status_from_owner(status, minor_status);
+    if (credential->pending_release_credential != NULL)
+        return provider_unavailable(minor_status);
+    return RIN_AUTH_PROVIDER_OK;
 }
 
 static uint32_t provider_acquire_acceptor_cred(
@@ -1539,12 +1575,13 @@ static uint32_t provider_release_cred(void* context, uint32_t* minor_status,
                                       void** input)
 {
     RinOsKerberosProviderCredential* credential;
+    uint32_t pending_status;
     uint32_t status;
     (void)context;
     if (input == NULL || *input == NULL)
         return provider_unavailable(minor_status);
     credential = (RinOsKerberosProviderCredential*)*input;
-    if (!provider_credential_valid(credential, credential->kind)) {
+    if (!provider_credential_releaseable(credential, credential->kind)) {
         *input = NULL;
         return provider_unavailable(minor_status);
     }
@@ -1553,29 +1590,38 @@ static uint32_t provider_release_cred(void* context, uint32_t* minor_status,
      * handle, so fail closed and leave the caller's credential retryable. */
     if (credential->active_contexts != 0u)
         return provider_unavailable(minor_status);
-    status = credential->owner->release_credential(
-        credential->owner->context, minor_status, &credential->owner_credential);
-    if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK) {
-        /* An owner may report failure after consuming its opaque handle (for
-         * example, the service removed the keyring record but lost the final
-         * acknowledgement).  In that case the wrapper is no longer
-         * retryable; retain it only while the owner still exposes a handle.
-         * Never leave an invalid wrapper reachable through the provider ABI. */
-        if (credential->owner_credential == NULL) {
-            provider_zero(credential, sizeof(*credential));
-            free(credential);
-            *input = NULL;
+    pending_status = provider_release_pending_credential(credential, minor_status);
+    if (credential->pending_release_credential != NULL)
+        return pending_status;
+    if (credential->owner_credential != NULL) {
+        status = credential->owner->release_credential(
+            credential->owner->context, minor_status,
+            &credential->owner_credential);
+        if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK) {
+            /* An owner may report failure after consuming its opaque handle
+             * (for example, the service removed the keyring record but lost
+             * the final acknowledgement).  In that case the wrapper is no
+             * longer retryable; retain it only while the owner still exposes
+             * a handle. */
+            if (credential->owner_credential == NULL) {
+                provider_zero(credential, sizeof(*credential));
+                free(credential);
+                *input = NULL;
+            }
+            return provider_status_from_owner(status, minor_status);
         }
-        return provider_status_from_owner(status, minor_status);
+        if (credential->owner_credential != NULL)
+            return provider_status_from_owner(
+                RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE,
+                minor_status);
     }
-    if (credential->owner_credential != NULL)
-        return provider_status_from_owner(
-            RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE,
-            minor_status);
     provider_zero(credential, sizeof(*credential));
     free(credential);
     *input = NULL;
-    return provider_status_from_owner(status, minor_status);
+    return pending_status != RIN_AUTH_PROVIDER_OK
+               ? pending_status
+               : provider_status_from_owner(
+                     RIN_KERBEROS_CREDENTIAL_OWNER_OK, minor_status);
 }
 
 static uint32_t provider_build_sec_context_input(
@@ -1890,14 +1936,21 @@ static uint32_t provider_refresh_initiator_credential(
         owner->release_credential == NULL)
         return provider_unavailable(minor_status);
 
+    status = provider_release_pending_credential(credential, &cleanup_minor);
+    if (credential->pending_release_credential != NULL)
+        return status;
+
     status = owner->acquire_session_initiator(
         owner->context, minor_status, NULL, &replacement);
     if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK || replacement == NULL) {
         /* A failed acquire may still return an owner handle.  Do not leak or
          * adopt it, and preserve the acquire failure as the visible result. */
-        if (replacement != NULL)
+        if (replacement != NULL) {
             (void)owner->release_credential(
                 owner->context, &cleanup_minor, &replacement);
+            if (replacement != NULL)
+                credential->pending_release_credential = replacement;
+        }
         return status == RIN_KERBEROS_CREDENTIAL_OWNER_OK
                    ? provider_unavailable(minor_status)
                    : provider_status_from_owner(status, minor_status);
@@ -1913,6 +1966,8 @@ static uint32_t provider_refresh_initiator_credential(
          * objects rather than leaving a stale context reachable. */
         (void)owner->release_credential(
             owner->context, &cleanup_minor, &replacement);
+        if (replacement != NULL)
+            credential->pending_release_credential = replacement;
         if (old_credential == NULL) {
             credential->owner_credential = NULL;
             provider_context->owner_credential = NULL;

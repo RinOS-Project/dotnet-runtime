@@ -67,6 +67,64 @@ if (CLR_CMAKE_HOST_WIN32 AND CLR_CMAKE_TARGET_ARCH_ARM64)
     set(LIB_UNWINDER unwinder_wks)
 endif (CLR_CMAKE_HOST_WIN32 AND CLR_CMAKE_TARGET_ARCH_ARM64)
 
+if (CLR_CMAKE_TARGET_RINOS AND NOT RINOS_CROSS_COMPONENTS_HOST)
+    set(LIB_UNWINDER unwinder_wks)
+endif (CLR_CMAKE_TARGET_RINOS AND NOT RINOS_CROSS_COMPONENTS_HOST)
+
+# The CoreCLR RLL runs as a RinOS product image. Its POSIX-shaped libc,
+# pthread, allocator, TLS, and C++ ABI entry points come from the same
+# freestanding runtime sources linked into ordinary RinOS applications; they
+# must be present in CoreCLR instead of being left as host-libc imports.
+if(CLR_CMAKE_TARGET_RINOS AND NOT RINOS_CROSS_COMPONENTS_HOST)
+    set(RINOS_RUNTIME_ROOT "${RINOS_REPO_ROOT}")
+    add_library_clr(rinos_coreclr_runtime
+        OBJECT
+        "${RINOS_RUNTIME_ROOT}/libs/rinruntime/rin_runtime.c"
+        "${RINOS_RUNTIME_ROOT}/libs/rinruntime/rin_atexit_registry.c"
+        "${RINOS_RUNTIME_ROOT}/libs/rinruntime/rin_exit_lifecycle.c"
+        "${RINOS_RUNTIME_ROOT}/libs/rinruntime/rin_cxx_abi_extra.cpp"
+        "${RINOS_RUNTIME_ROOT}/libs/rinruntime/rin_coreclr_tls_init.cpp"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/rinruntime/src/service.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/rin_user_allocator.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/malloc.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/environment_runtime.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/locale_object.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/time_zone.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/stdlib_random.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/pthread_runtime.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/timer_thread_runtime.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/pthread_tls.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/semaphore_runtime.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libunicode/locale_adapter.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libcxx/new_runtime.c"
+    )
+    target_include_directories(rinos_coreclr_runtime SYSTEM PRIVATE
+        "${RINOS_RUNTIME_ROOT}/libs/rinruntime"
+        "${RINOS_RUNTIME_ROOT}/libs/rinruntime/include"
+        "${RINOS_RUNTIME_ROOT}/public-base/RinOS-SDK/include"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libc"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libcxx/include"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/rinruntime/include"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/rinicu/include"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libunicode"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libi18n"
+        "${RINOS_RUNTIME_ROOT}/src"
+        "${RINOS_RUNTIME_ROOT}/src/shared"
+    )
+    target_compile_definitions(rinos_coreclr_runtime PRIVATE
+        RIN_ICU_ENABLE_AUTOSTART=1
+    )
+    target_compile_options(rinos_coreclr_runtime PRIVATE
+        -ffreestanding
+        -fno-stack-protector
+        -fPIC
+        -ffunction-sections
+        -fdata-sections
+        -Wno-error
+    )
+    target_sources(coreclr PRIVATE $<TARGET_OBJECTS:rinos_coreclr_runtime>)
+endif()
+
 # IMPORTANT! Please do not rearrange the order of the libraries. The linker on Linux is
 # order dependent and changing the order can result in undefined symbols in the shared
 # library.

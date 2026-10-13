@@ -288,6 +288,8 @@ static uint32_t rinos_gss_map_kerberos_major(
         case 6u:  /* KDC_ERR_C_PRINCIPAL_UNKNOWN */
             return PAL_GSS_S_NO_CRED;
         case 3u:  /* KDC_ERR_BAD_PVNO */
+        case 25u: /* KDC_ERR_PREAUTH_REQUIRED: provider did not turn the
+                   * pre-auth challenge into a continuation token. */
         case 14u: /* KDC_ERR_ETYPE_NOSUPP */
         case 15u: /* KDC_ERR_SUMTYPE_NOSUPP */
         case 16u: /* KDC_ERR_PADATA_TYPE_NOSUPP */

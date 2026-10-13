@@ -792,8 +792,10 @@ namespace System.Net
                             case 0x80000023u: // KRB_AP_ERR_NOT_US
                                 return NegotiateAuthenticationStatusCode.TargetUnknown;
                             case 0x80000006u: // KDC_ERR_C_PRINCIPAL_UNKNOWN
+                            case 0x80000043u: // KRB_AP_ERR_NO_TGT
                                 return NegotiateAuthenticationStatusCode.UnknownCredentials;
                             case 0x80000003u: // KDC_ERR_BAD_PVNO
+                            case 0x80000019u: // KDC_ERR_PREAUTH_REQUIRED
                             case 0x8000000Eu: // KDC_ERR_ETYPE_NOSUPP
                             case 0x8000000Fu: // KDC_ERR_SUMTYPE_NOSUPP
                             case 0x80000010u: // KDC_ERR_PADATA_TYPE_NOSUPP

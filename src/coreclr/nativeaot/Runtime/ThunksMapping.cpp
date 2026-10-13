@@ -847,6 +847,35 @@ FCDECL0(int, RhpGetThunkBlockSize);
 
 static void* g_pThunksTemplateAddress = NULL;
 
+/* Dynamic mappings copied from the image template have no reversible PAL
+ * ownership information.  Keep exact allocations in a native registry so
+ * RhFreeThunksMapping cannot pass a foreign page-aligned address to the PAL.
+ * The image-owned template is deliberately excluded: it lives for the module
+ * lifetime and is not releasable through this API. */
+struct RinOsTemplateThunkMappingOwner
+{
+    void* baseAddress;
+    size_t mappingSize;
+    RinOsTemplateThunkMappingOwner* next;
+};
+
+static RinOsTemplateThunkMappingOwner* g_templateThunkMappingOwners = NULL;
+static volatile int32_t g_templateThunkMappingOwnerLock = 0;
+
+static void LockTemplateThunkMappingOwners()
+{
+    while (PalInterlockedCompareExchange(
+               &g_templateThunkMappingOwnerLock, 1, 0) != 0)
+    {
+        PalSwitchToThread();
+    }
+}
+
+static void UnlockTemplateThunkMappingOwners()
+{
+    VolatileStore<volatile int32_t>(&g_templateThunkMappingOwnerLock, 0);
+}
+
 EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
 {
     if (ppThunksSection == NULL)
@@ -856,6 +885,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     *ppThunksSection = NULL;
 
     void *pThunkMap = NULL;
+    bool usingTemplate = false;
 
     int thunkBlocksPerMapping = RhpGetNumThunkBlocksPerMapping();
     int thunkBlockSize = RhpGetThunkBlockSize();
@@ -865,14 +895,21 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         return E_FAIL;
     }
     size_t templateSize = (size_t)thunkBlocksPerMapping * (size_t)thunkBlockSize;
+    if (templateSize == 0 || OS_PAGE_SIZE == 0 ||
+        templateSize % OS_PAGE_SIZE != 0)
+    {
+        return E_FAIL;
+    }
+
+    LockTemplateThunkMappingOwners();
 
 #ifndef TARGET_APPLE // Apple platforms cannot use the initial template
     if (g_pThunksTemplateAddress == NULL)
     {
         // First, we use the thunks directly from the thunks template sections in the module until all
         // thunks in that template are used up.
-        g_pThunksTemplateAddress = RhpGetThunksBase();
-        pThunkMap = g_pThunksTemplateAddress;
+        pThunkMap = RhpGetThunksBase();
+        usingTemplate = true;
     }
     else
 #endif
@@ -884,6 +921,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         uint8_t* pThunkTemplate = (uint8_t*)RhpGetThunksBase();
         if (pThunkTemplate == NULL)
         {
+            UnlockTemplateThunkMappingOwners();
             return E_FAIL;
         }
         uint8_t* pModuleBase = (uint8_t*)PalGetModuleHandleFromPointer(pThunkTemplate);
@@ -892,12 +930,22 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         if (pModuleBase == NULL || thunkAddress < moduleAddress ||
             thunkAddress - moduleAddress > UINT32_MAX)
         {
+            UnlockTemplateThunkMappingOwners();
             return E_FAIL;
         }
         uint32_t templateRva = (uint32_t)(thunkAddress - moduleAddress);
 
         if (!PalAllocateThunksFromTemplate((HANDLE)pModuleBase, templateRva, templateSize, &pThunkMap))
+        {
+            UnlockTemplateThunkMappingOwners();
             return E_OUTOFMEMORY;
+        }
+    }
+
+    if (pThunkMap == NULL)
+    {
+        UnlockTemplateThunkMappingOwners();
+        return E_FAIL;
     }
 
     if (!PalMarkThunksAsValidCallTargets(
@@ -907,13 +955,37 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         thunkBlockSize,
         thunkBlocksPerMapping))
     {
-        if (pThunkMap != g_pThunksTemplateAddress)
+        if (!usingTemplate)
             PalFreeThunksFromTemplate(pThunkMap, templateSize);
 
+        UnlockTemplateThunkMappingOwners();
         return E_FAIL;
     }
 
+    if (usingTemplate)
+    {
+        // Publish image ownership only after the call-target contract has
+        // succeeded.  A failed first attempt remains retryable.
+        g_pThunksTemplateAddress = pThunkMap;
+    }
+    else
+    {
+        RinOsTemplateThunkMappingOwner* owner =
+            new (nothrow) RinOsTemplateThunkMappingOwner();
+        if (owner == NULL)
+        {
+            PalFreeThunksFromTemplate(pThunkMap, templateSize);
+            UnlockTemplateThunkMappingOwners();
+            return E_OUTOFMEMORY;
+        }
+        owner->baseAddress = pThunkMap;
+        owner->mappingSize = templateSize;
+        owner->next = g_templateThunkMappingOwners;
+        g_templateThunkMappingOwners = owner;
+    }
+
     *ppThunksSection = pThunkMap;
+    UnlockTemplateThunkMappingOwners();
     return S_OK;
 }
 
@@ -940,12 +1012,15 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
         return E_INVALIDARG;
     }
 
+    LockTemplateThunkMappingOwners();
+
     // The image-owned template is the authority that establishes this
     // template-mapping family.  Before the first successful allocation there
     // is no valid family owner, so do not pass an arbitrary page-aligned input
     // to the PAL release operation.
     if (g_pThunksTemplateAddress == NULL)
     {
+        UnlockTemplateThunkMappingOwners();
         return E_INVALIDARG;
     }
 
@@ -954,12 +1029,37 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
     // can use the same PAL release operation as allocation failure cleanup.
     if (pThunksSection == g_pThunksTemplateAddress)
     {
+        UnlockTemplateThunkMappingOwners();
         return E_NOTIMPL;
     }
 
-    return PalFreeThunksFromTemplate(pThunksSection, templateSize)
-               ? S_OK
-               : E_FAIL;
+    RinOsTemplateThunkMappingOwner** ownerLink =
+        &g_templateThunkMappingOwners;
+    while (*ownerLink != NULL &&
+           ((*ownerLink)->baseAddress != pThunksSection ||
+            (*ownerLink)->mappingSize != templateSize))
+    {
+        ownerLink = &(*ownerLink)->next;
+    }
+    if (*ownerLink == NULL)
+    {
+        UnlockTemplateThunkMappingOwners();
+        return E_INVALIDARG;
+    }
+
+    RinOsTemplateThunkMappingOwner* owner = *ownerLink;
+    *ownerLink = owner->next;
+    if (!PalFreeThunksFromTemplate(pThunksSection, templateSize))
+    {
+        owner->next = g_templateThunkMappingOwners;
+        g_templateThunkMappingOwners = owner;
+        UnlockTemplateThunkMappingOwners();
+        return E_FAIL;
+    }
+
+    UnlockTemplateThunkMappingOwners();
+    delete owner;
+    return S_OK;
 }
 
 #endif // FEATURE_RX_THUNKS

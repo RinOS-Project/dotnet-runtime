@@ -79,6 +79,50 @@ static void UnlockRxThunkMappingOwners()
     VolatileStore<volatile int32_t>(&g_rxThunkMappingOwnerLock, 0);
 }
 
+/* The block-address helpers are consumed by managed ThunkPool code, but they
+ * are still native entry points.  Page arithmetic alone is reversible for any
+ * page-aligned process address, so it would also turn a foreign mapping into a
+ * plausible code/data pair.  Require the page to belong to a live mapping
+ * owned by this allocator before exposing the opposite half.  The managed
+ * heap lock still provides the lifetime ordering between this lookup and a
+ * mapping release; this registry check is the native ownership boundary. */
+static bool IsOwnedRxThunkPage(uintptr_t pageAddress, bool dataSection)
+{
+    if (pageAddress == 0 || !IsValidThunkPageGeometry() ||
+        THUNKS_MAP_SIZE > SIZE_MAX / 2)
+    {
+        return false;
+    }
+
+    const size_t mappingSize = THUNKS_MAP_SIZE * 2u;
+    LockRxThunkMappingOwners();
+    bool owned = false;
+    for (RinOsRxThunkMappingOwner* owner = g_rxThunkMappingOwners;
+         owner != NULL;
+         owner = owner->next)
+    {
+        const uintptr_t baseAddress = (uintptr_t)owner->baseAddress;
+        if (baseAddress == 0 || owner->mappingSize != mappingSize ||
+            baseAddress > UINTPTR_MAX - (uintptr_t)owner->mappingSize)
+        {
+            continue;
+        }
+
+        const uintptr_t sectionBase = baseAddress +
+            (dataSection ? (uintptr_t)THUNKS_MAP_SIZE : 0u);
+        const uintptr_t sectionEnd = sectionBase +
+            (uintptr_t)THUNKS_MAP_SIZE;
+        if (pageAddress >= sectionBase && pageAddress < sectionEnd &&
+            ((pageAddress - sectionBase) % (uintptr_t)OS_PAGE_SIZE) == 0)
+        {
+            owned = true;
+            break;
+        }
+    }
+    UnlockRxThunkMappingOwners();
+    return owned;
+}
+
 /*
  * Several thunk encodings place an immediate after a one- or three-byte
  * opcode.  Do not write those fields through a typed pointer: the x64 thunk
@@ -204,6 +248,11 @@ FCIMPL1(void*, RhpGetThunkDataBlockAddress, void* pThunkStubAddress)
         return NULL;
     }
 
+    if (!IsOwnedRxThunkPage(pageAddress, false))
+    {
+        return NULL;
+    }
+
     return (void*)(pageAddress + (uintptr_t)THUNKS_MAP_SIZE);
 }
 FCIMPLEND
@@ -218,6 +267,11 @@ FCIMPL1(void*, RhpGetThunkStubsBlockAddress, void* pThunkDataAddress)
     uintptr_t pageAddress = (uintptr_t)pThunkDataAddress &
         ~((uintptr_t)OS_PAGE_SIZE - 1u);
     if (pageAddress < (uintptr_t)THUNKS_MAP_SIZE)
+    {
+        return NULL;
+    }
+
+    if (!IsOwnedRxThunkPage(pageAddress, true))
     {
         return NULL;
     }

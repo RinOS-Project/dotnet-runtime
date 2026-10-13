@@ -733,6 +733,15 @@ namespace System.Net
                 }
             }
 
+            // The native RinOS operation ABI reserves the sign bit in GSS
+            // minor status for an RFC 4120 KRB-ERROR and carries the
+            // non-negative protocol code in the remaining bits. Keep the
+            // managed projection in lockstep with that ABI; unknown values
+            // remain GenericFailure.
+            private const uint RinOsKerberosProtocolErrorBit = 0x80000000u;
+            private const uint RinOsKerberosErrorCodeMask = 0x7fffffffu;
+            private const uint MitKrb5ServicePrincipalUnknown = 0x96C73A07u;
+
             // https://www.gnu.org/software/gss/reference/gss.pdf (page 25)
             internal static NegotiateAuthenticationStatusCode GetErrorCode(Interop.NetSecurityNative.GssApiException exception)
             {
@@ -772,78 +781,81 @@ namespace System.Net
                     case Interop.NetSecurityNative.Status.GSS_S_UNAVAILABLE:
                         return NegotiateAuthenticationStatusCode.Unsupported;
                     case Interop.NetSecurityNative.Status.GSS_S_FAILURE:
-                        // RFC 4120 KRB-ERROR values are carried by the RinOS
-                        // provider in its private minor namespace.  Preserve
-                        // the upstream MIT/Heimdal com_err value for the one
-                        // status .NET already recognizes, then classify only
-                        // error codes whose GSS meaning is unambiguous.  Do
-                        // not turn an unknown protocol value into a guessed
-                        // success or credential state.
-                        switch ((uint)exception.MinorStatus)
+                    {
+                        // Preserve the upstream MIT/Heimdal com_err value
+                        // for the one status .NET already recognizes. It is
+                        // not a RinOS namespaced value.
+                        uint minorStatus = unchecked((uint)exception.MinorStatus);
+                        if (minorStatus == MitKrb5ServicePrincipalUnknown)
+                            return NegotiateAuthenticationStatusCode.TargetUnknown;
+                        if ((minorStatus & RinOsKerberosProtocolErrorBit) == 0)
+                            return NegotiateAuthenticationStatusCode.GenericFailure;
+
+                        switch (minorStatus & RinOsKerberosErrorCodeMask)
                         {
-                            case 0x80000001u: // KDC_ERR_NAME_EXP
+                            case 1u: // KDC_ERR_NAME_EXP
                                 return NegotiateAuthenticationStatusCode.CredentialsExpired;
-                            case 0x96C73A07u: // KRB5KDC_ERR_S_PRINCIPAL_UNKNOWN
-                            case 0x80000002u: // KDC_ERR_SERVICE_EXP
-                            case 0x80000007u: // KDC_ERR_S_PRINCIPAL_UNKNOWN
-                            case 0x80000008u: // KDC_ERR_PRINCIPAL_NOT_UNIQUE
-                            case 0x80000016u: // KDC_ERR_SERVICE_NOTYET
-                            case 0x8000001Au: // KDC_ERR_SERVER_NOMATCH
-                            case 0x80000023u: // KRB_AP_ERR_NOT_US
+                            case 2u: // KDC_ERR_SERVICE_EXP
+                            case 7u: // KDC_ERR_S_PRINCIPAL_UNKNOWN
+                            case 8u: // KDC_ERR_PRINCIPAL_NOT_UNIQUE
+                            case 22u: // KDC_ERR_SERVICE_NOTYET
+                            case 26u: // KDC_ERR_SERVER_NOMATCH
+                            case 35u: // KRB_AP_ERR_NOT_US
                                 return NegotiateAuthenticationStatusCode.TargetUnknown;
-                            case 0x80000006u: // KDC_ERR_C_PRINCIPAL_UNKNOWN
-                            case 0x80000043u: // KRB_AP_ERR_NO_TGT
+                            case 6u: // KDC_ERR_C_PRINCIPAL_UNKNOWN
+                            case 67u: // KRB_AP_ERR_NO_TGT
                                 return NegotiateAuthenticationStatusCode.UnknownCredentials;
-                            case 0x80000003u: // KDC_ERR_BAD_PVNO
-                            case 0x80000019u: // KDC_ERR_PREAUTH_REQUIRED
-                            case 0x8000000Eu: // KDC_ERR_ETYPE_NOSUPP
-                            case 0x8000000Fu: // KDC_ERR_SUMTYPE_NOSUPP
-                            case 0x80000010u: // KDC_ERR_PADATA_TYPE_NOSUPP
-                            case 0x80000011u: // KDC_ERR_TRTYPE_NOSUPP
-                            case 0x80000041u: // KDC_ERR_DH_KEY_PARAMETERS_NOT_ACCEPTED
-                            case 0x80000027u: // KRB_AP_ERR_BADVERSION
-                            case 0x80000030u: // KRB_AP_ERR_METHOD
-                            case 0x80000045u: // KRB_AP_ERR_USER_TO_USER_REQUIRED
-                            case 0x8000001Bu: // KDC_ERR_MUST_USE_USER2USER
-                            case 0x8000001Cu: // KDC_ERR_PATH_NOT_ACCEPTED
-                            case 0x8000001Du: // KDC_ERR_SVC_UNAVAILABLE
-                            case 0x8000002Du: // KRB_AP_ERR_NOKEY
-                            case 0x80000034u: // KRB_ERR_RESPONSE_TOO_BIG
-                            case 0x80000055u: // KRB_AP_ERR_IAKERB_KDC_NOT_FOUND
-                            case 0x80000056u: // KRB_AP_ERR_IAKERB_KDC_NO_RESPONSE
-                            case 0x8000005Bu: // KDC_ERR_MORE_PREAUTH_DATA_REQUIRED
-                            case 0x8000005Du: // KDC_ERR_UNKNOWN_CRITICAL_FAST_OPTION
-                            case 0x80000064u: // KDC_ERR_NO_ACCEPTABLE_KDF
+                            case 3u: // KDC_ERR_BAD_PVNO
+                            case 25u: // KDC_ERR_PREAUTH_REQUIRED
+                            case 14u: // KDC_ERR_ETYPE_NOSUPP
+                            case 15u: // KDC_ERR_SUMTYPE_NOSUPP
+                            case 16u: // KDC_ERR_PADATA_TYPE_NOSUPP
+                            case 17u: // KDC_ERR_TRTYPE_NOSUPP
+                            case 65u: // KDC_ERR_DH_KEY_PARAMETERS_NOT_ACCEPTED
+                            case 39u: // KRB_AP_ERR_BADVERSION
+                            case 48u: // KRB_AP_ERR_METHOD
+                            case 69u: // KRB_AP_ERR_USER_TO_USER_REQUIRED
+                            case 27u: // KDC_ERR_MUST_USE_USER2USER
+                            case 28u: // KDC_ERR_PATH_NOT_ACCEPTED
+                            case 29u: // KDC_ERR_SVC_UNAVAILABLE
+                            case 45u: // KRB_AP_ERR_NOKEY
+                            case 52u: // KRB_ERR_RESPONSE_TOO_BIG
+                            case 85u: // KRB_AP_ERR_IAKERB_KDC_NOT_FOUND
+                            case 86u: // KRB_AP_ERR_IAKERB_KDC_NO_RESPONSE
+                            case 91u: // KDC_ERR_MORE_PREAUTH_DATA_REQUIRED
+                            case 93u: // KDC_ERR_UNKNOWN_CRITICAL_FAST_OPTION
+                            case 100u: // KDC_ERR_NO_ACCEPTABLE_KDF
                                 return NegotiateAuthenticationStatusCode.Unsupported;
-                            case 0x80000017u: // KDC_ERR_KEY_EXP
-                            case 0x8000005Au: // KDC_ERR_PREAUTH_EXPIRED
-                            case 0x80000020u: // KRB_AP_ERR_TKT_EXPIRED
+                            case 23u: // KDC_ERR_KEY_EXP
+                            case 90u: // KDC_ERR_PREAUTH_EXPIRED
+                            case 32u: // KRB_AP_ERR_TKT_EXPIRED
                                 return NegotiateAuthenticationStatusCode.CredentialsExpired;
-                            case 0x80000025u: // KRB_AP_ERR_SKEW
-                            case 0x80000028u: // KRB_AP_ERR_MSG_TYPE
+                            case 37u: // KRB_AP_ERR_SKEW
+                            case 40u: // KRB_AP_ERR_MSG_TYPE
                                 return NegotiateAuthenticationStatusCode.InvalidToken;
-                            case 0x80000018u: // KDC_ERR_PREAUTH_FAILED
-                            case 0x80000012u: // KDC_ERR_CLIENT_REVOKED
-                            case 0x80000013u: // KDC_ERR_SERVICE_REVOKED
-                            case 0x80000014u: // KDC_ERR_TGT_REVOKED
-                            case 0x80000015u: // KDC_ERR_CLIENT_NOTYET
-                            case 0x80000021u: // KRB_AP_ERR_TKT_NYV
-                            case 0x80000024u: // KRB_AP_ERR_BADMATCH
-                            case 0x8000002Bu: // KRB_AP_ERR_ILL_CR_TKT
-                            case 0x8000002Cu: // KRB_AP_ERR_BADKEYVER
-                            case 0x80000026u: // KRB_AP_ERR_BADADDR
+                            case 24u: // KDC_ERR_PREAUTH_FAILED
+                            case 18u: // KDC_ERR_CLIENT_REVOKED
+                            case 19u: // KDC_ERR_SERVICE_REVOKED
+                            case 20u: // KDC_ERR_TGT_REVOKED
+                            case 21u: // KDC_ERR_CLIENT_NOTYET
+                            case 33u: // KRB_AP_ERR_TKT_NYV
+                            case 36u: // KRB_AP_ERR_BADMATCH
+                            case 43u: // KRB_AP_ERR_ILL_CR_TKT
+                            case 44u: // KRB_AP_ERR_BADKEYVER
+                            case 38u: // KRB_AP_ERR_BADADDR
                                 return NegotiateAuthenticationStatusCode.InvalidCredentials;
-                            case 0x8000001Fu: // KRB_AP_ERR_BAD_INTEGRITY
-                            case 0x80000029u: // KRB_AP_ERR_MODIFIED
-                            case 0x80000032u: // KRB_AP_ERR_INAPP_CKSUM
+                            case 31u: // KRB_AP_ERR_BAD_INTEGRITY
+                            case 41u: // KRB_AP_ERR_MODIFIED
+                            case 50u: // KRB_AP_ERR_INAPP_CKSUM
                                 return NegotiateAuthenticationStatusCode.MessageAltered;
-                            case 0x80000022u: // KRB_AP_ERR_REPEAT
-                            case 0x8000002Au: // KRB_AP_ERR_BADORDER
-                            case 0x80000031u: // KRB_AP_ERR_BADSEQ
+                            case 34u: // KRB_AP_ERR_REPEAT
+                            case 42u: // KRB_AP_ERR_BADORDER
+                            case 49u: // KRB_AP_ERR_BADSEQ
                                 return NegotiateAuthenticationStatusCode.OutOfSequence;
                             default:
                                 return NegotiateAuthenticationStatusCode.GenericFailure;
                         }
+                    }
                     case Interop.NetSecurityNative.Status.GSS_S_NO_CONTEXT:
                     default:
                         return NegotiateAuthenticationStatusCode.GenericFailure;

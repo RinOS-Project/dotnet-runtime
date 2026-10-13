@@ -546,6 +546,7 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
 // This is used by the thunk code to find the stub data for the called thunk slot
 extern "C" uintptr_t g_pThunkStubData;
 uintptr_t g_pThunkStubData = NULL;
+static size_t g_thunkStubDataSize = 0;
 
 FCDECL0(int, RhpGetThunkBlockCount);
 FCDECL0(int, RhpGetNumThunkBlocksPerMapping);
@@ -608,6 +609,15 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         {
             return E_OUTOFMEMORY;
         }
+
+        g_thunkStubDataSize = thunkDataSize;
+    }
+    else if (g_thunkStubDataSize != thunkDataSize)
+    {
+        // The fixed-pool geometry is process-wide.  A provider that changes
+        // its block count or size after reservation cannot safely address the
+        // existing pool with the new layout.
+        return E_FAIL;
     }
 
     size_t blockOffset = thunkDataMappingSize * (size_t)nextThunkDataMapping;
@@ -675,7 +685,8 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
     // passing it to VirtualFree.  This prevents a foreign, page-aligned pair
     // that happens to satisfy the reversible helper relation from becoming a
     // decommit request against unrelated memory.
-    if (g_pThunkStubData == 0 || thunkDataSize == 0)
+    if (g_pThunkStubData == 0 || g_thunkStubDataSize == 0 ||
+        g_thunkStubDataSize != thunkDataSize)
     {
         return E_INVALIDARG;
     }
@@ -683,9 +694,9 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
     const uintptr_t poolBegin = g_pThunkStubData;
     const uintptr_t dataBegin = (uintptr_t)pThunkDataBlock;
     if (dataBegin < poolBegin ||
-        dataBegin - poolBegin >= thunkDataSize ||
+        dataBegin - poolBegin >= g_thunkStubDataSize ||
         (dataBegin - poolBegin) % thunkDataMappingSize != 0 ||
-        thunkDataMappingSize > thunkDataSize - (dataBegin - poolBegin))
+        thunkDataMappingSize > g_thunkStubDataSize - (dataBegin - poolBegin))
     {
         return E_INVALIDARG;
     }

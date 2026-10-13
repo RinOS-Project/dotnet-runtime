@@ -521,12 +521,14 @@ else(CLR_CMAKE_HOST_UNIX)
         set(libunwind_elf_la_SOURCES                ${libunwind_elf64_la_SOURCES})
     endif()
 
+    # CoreCLR uses both the local unwinder from seh-unwind.cpp and the remote
+    # unwinder used by PAL diagnostics.  Include both source sets for RinOS;
+    # omitting the local set leaves _ULx86_64_* as unresolved imports in
+    # coreclr.rll.
     set(LIBUNWIND_SOURCES_BASE
-      # ${libunwind_la_SOURCES}  Local...
+      ${libunwind_la_SOURCES}
       ${libunwind_remote_la_SOURCES}
-      # Commented out above for LOCAL + REMOTE runtime build
-      mi/Gget_accessors.c
-      # ${libunwind_dwarf_local_la_SOURCES}
+      ${libunwind_dwarf_local_la_SOURCES}
       ${libunwind_dwarf_common_la_SOURCES}
       ${libunwind_dwarf_generic_la_SOURCES}
       ${libunwind_elf_la_SOURCES}

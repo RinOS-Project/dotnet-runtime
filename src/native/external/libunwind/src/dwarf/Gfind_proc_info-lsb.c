@@ -64,7 +64,7 @@ dwarf_search_unwind_table_int (unw_addr_space_t as,
 static int
 linear_search (unw_addr_space_t as, unw_word_t ip,
                unw_word_t eh_frame_start, unw_word_t eh_frame_end,
-               unw_word_t fde_count,
+               unw_word_t fde_count, int is_debug_frame,
                unw_proc_info_t *pi, int need_unwind_info, void *arg)
 {
   unw_accessors_t *a = unw_get_accessors_int (unw_local_addr_space);
@@ -76,7 +76,7 @@ linear_search (unw_addr_space_t as, unw_word_t ip,
       fde_addr = addr;
       if ((ret = dwarf_extract_proc_info_from_fde (as, a, &addr, pi,
                                                    eh_frame_start,
-                                                   0, 0, arg)) < 0)
+                                                   0, is_debug_frame, arg)) < 0)
         return ret;
 
       if (ip >= pi->start_ip && ip < pi->end_ip)
@@ -86,7 +86,8 @@ linear_search (unw_addr_space_t as, unw_word_t ip,
           addr = fde_addr;
           if ((ret = dwarf_extract_proc_info_from_fde (as, a, &addr, pi,
                                                        eh_frame_start,
-                                                       need_unwind_info, 0,
+                                                       need_unwind_info,
+                                                       is_debug_frame,
                                                        arg))
               < 0)
             return ret;
@@ -96,7 +97,7 @@ linear_search (unw_addr_space_t as, unw_word_t ip,
   return -UNW_ENOINFO;
 }
 
-/* RIN v3 publishes the authenticated .eh_frame bytes as a mapped section,
+/* RIN v3 publishes the authenticated .debug_frame bytes as a mapped section,
    without manufacturing an ELF PT_GNU_EH_FRAME/program-header table.  Keep
    the upstream FDE parser and expose only this bounded linear-search adapter
    to the RIN image hook. */
@@ -105,6 +106,7 @@ dwarf_search_unwind_table_linear (unw_addr_space_t as, unw_word_t ip,
                                   unw_word_t start_ip, unw_word_t end_ip,
                                   unw_word_t eh_frame_start,
                                   unw_word_t eh_frame_end,
+                                  int is_debug_frame,
                                   unw_proc_info_t *pi,
                                   int need_unwind_info, void *arg)
 {
@@ -112,7 +114,8 @@ dwarf_search_unwind_table_linear (unw_addr_space_t as, unw_word_t ip,
       eh_frame_start >= eh_frame_end)
     return -UNW_EINVAL;
   return linear_search(as, ip, eh_frame_start, eh_frame_end,
-                       ~((unw_word_t)0), pi, need_unwind_info, arg);
+                       ~((unw_word_t)0), is_debug_frame, pi,
+                       need_unwind_info, arg);
 }
 #endif /* !UNW_REMOTE_ONLY */
 

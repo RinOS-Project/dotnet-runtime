@@ -193,9 +193,11 @@ rinos_unwind_fetch(uint32_t index, RinDlInventoryUnwindRecordV1 *record)
       record->reserved[0] != 0u)
     return -UNW_ENOINFO;
   if ((record->flags & RIN_DLINVENTORY_UNWIND_V1_FLAG_PRESENT) == 0u) {
-    if (record->unwind_address != 0u || record->unwind_size != 0u)
+    if (record->unwind_address != 0u || record->unwind_size != 0u ||
+        (record->flags & RIN_DLINVENTORY_UNWIND_V1_FLAG_DWARF_DEBUG_FRAME) != 0u)
       return -UNW_ENOINFO;
-  } else if (record->unwind_address == 0u || record->unwind_size == 0u ||
+  } else if ((record->flags & RIN_DLINVENTORY_UNWIND_V1_FLAG_DWARF_DEBUG_FRAME) == 0u ||
+             record->unwind_address == 0u || record->unwind_size == 0u ||
              record->unwind_address < record->load_address ||
              record->unwind_address > UINT64_MAX - record->unwind_size ||
              record->unwind_address + record->unwind_size >
@@ -207,7 +209,8 @@ rinos_unwind_fetch(uint32_t index, RinDlInventoryUnwindRecordV1 *record)
 
 /* RIN v3's dynamic image graph is authenticated and generation-published by
  * the kernel, but it intentionally has no ELF program headers.  Walk the
- * graph through the two native records and feed the authenticated .eh_frame
+ * graph through the two native records and feed the authenticated
+ * .debug_frame range
  * range into libunwind's upstream FDE parser. */
 int
 rinos_find_proc_info(unw_addr_space_t as, unw_word_t ip,
@@ -260,8 +263,9 @@ rinos_find_proc_info(unw_addr_space_t as, unw_word_t ip,
           as, ip, (unw_word_t)image.load_address,
           (unw_word_t)(image.load_address + image.mapped_size),
           (unw_word_t)unwind.unwind_address,
-          (unw_word_t)(unwind.unwind_address + unwind.unwind_size), pi,
-          need_unwind_info, arg);
+          (unw_word_t)(unwind.unwind_address + unwind.unwind_size),
+          (unwind.flags & RIN_DLINVENTORY_UNWIND_V1_FLAG_DWARF_DEBUG_FRAME) != 0u,
+          pi, need_unwind_info, arg);
     }
     if (index + 1u == expected_count)
       break;

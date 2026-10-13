@@ -424,7 +424,7 @@ extern int dwarf_search_unwind_table (unw_addr_space_t as,
 extern int dwarf_search_unwind_table_linear(
     unw_addr_space_t as, unw_word_t ip, unw_word_t start_ip,
     unw_word_t end_ip, unw_word_t eh_frame_start, unw_word_t eh_frame_end,
-    unw_proc_info_t *pi, int need_unwind_info, void *arg);
+    int is_debug_frame, unw_proc_info_t *pi, int need_unwind_info, void *arg);
 #endif
 
 extern int dwarf_find_unwind_table (struct elf_dyn_info *edi, unw_addr_space_t as,

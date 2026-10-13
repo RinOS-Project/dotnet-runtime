@@ -417,7 +417,11 @@ set(libunwind_ppc64le_la_SOURCES_ppc64le
     ppc/Gis_signal_frame.c ppc64/Gstep.c
 )
 
-if(CLR_CMAKE_HOST_UNIX AND NOT CLR_CMAKE_TARGET_RINOS)
+# A cross-components build keeps TARGET_RINOS set while compiling the host JIT.
+# For a Unix host, use the host's full local+remote source graph in that pass;
+# the RinOS-only branch below intentionally omits local entry points such as
+# _ULx86_64_get_reg and is only correct for target runtime binaries.
+if(CLR_CMAKE_HOST_UNIX AND (NOT CLR_CMAKE_TARGET_RINOS OR RINOS_CROSS_COMPONENTS_HOST))
     if(CLR_CMAKE_HOST_ARCH_ARM64)
         set(libunwind_la_SOURCES                    ${libunwind_la_SOURCES_aarch64})
         set(libunwind_remote_la_SOURCES             ${libunwind_aarch64_la_SOURCES_aarch64})

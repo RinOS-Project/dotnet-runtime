@@ -75,6 +75,17 @@ tdep_get_elf_image(struct elf_image *ei, pid_t pid, unw_word_t ip,
                    unsigned long *segbase, unsigned long *mapoff,
                    char *path, size_t pathlen)
 {
+  /* A failed image lookup must not leave caller-visible metadata from an
+   * earlier frame.  The RinOS process-image ABI currently exposes only the
+   * authenticated executable path, not an IP-to-image map, so fail closed
+   * after clearing every optional output. */
+  if (segbase != NULL)
+    *segbase = 0;
+  if (mapoff != NULL)
+    *mapoff = 0;
+  if (path != NULL && pathlen != 0)
+    path[0] = '\0';
+
   /* RinOS does not expose process memory maps to libunwind. The generic ELF
    * helpers are shared with other targets, so provide the platform hook and
    * report that process-image lookup is unavailable. */

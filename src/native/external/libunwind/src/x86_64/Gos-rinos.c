@@ -14,8 +14,10 @@
 #include "libunwind_i.h"
 #include "unwind_i.h"
 #include "ucontext_i.h"
+#include "dwarf.h"
 
 #include <rin/dynlink/inventory_abi.h>
+#include <rin/dynlink/unwind_abi.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -169,6 +171,103 @@ rinos_inventory_copy_path(const RinDlInventoryRecordV1 *record,
   path[length] = '\0';
   return 0;
 }
+
+static int
+rinos_unwind_fetch(uint32_t index, RinDlInventoryUnwindRecordV1 *record)
+{
+  intptr_t result;
+  if (record == NULL)
+    return -UNW_EINVAL;
+  memset(record, 0, sizeof(*record));
+  result = _syscall2((uintptr_t)SYS_DLINVENTORY_UNWIND, (uintptr_t)index,
+                     (uintptr_t)record);
+  if (result != 0)
+    return -UNW_ENOINFO;
+  if (record->abi_version != RIN_DLINVENTORY_UNWIND_V1_ABI_VERSION ||
+      (record->flags & ~RIN_DLINVENTORY_UNWIND_V1_KNOWN_FLAGS) != 0u ||
+      record->record_index != index || record->record_count == 0u ||
+      record->record_count > RIN_DLINVENTORY_V1_MAX_RECORDS ||
+      record->launch_generation == 0u || record->load_address == 0u ||
+      record->mapped_size == 0u ||
+      record->load_address > UINT64_MAX - record->mapped_size ||
+      record->reserved[0] != 0u)
+    return -UNW_ENOINFO;
+  if ((record->flags & RIN_DLINVENTORY_UNWIND_V1_FLAG_PRESENT) == 0u) {
+    if (record->unwind_address != 0u || record->unwind_size != 0u)
+      return -UNW_ENOINFO;
+  } else if (record->unwind_address == 0u || record->unwind_size == 0u ||
+             record->unwind_address < record->load_address ||
+             record->unwind_address > UINT64_MAX - record->unwind_size ||
+             record->unwind_address + record->unwind_size >
+                 record->load_address + record->mapped_size) {
+    return -UNW_ENOINFO;
+  }
+  return 0;
+}
+
+/* RIN v3's dynamic image graph is authenticated and generation-published by
+ * the kernel, but it intentionally has no ELF program headers.  Walk the
+ * graph through the two native records and feed the authenticated .eh_frame
+ * range into libunwind's upstream FDE parser. */
+int
+rinos_find_proc_info(unw_addr_space_t as, unw_word_t ip,
+                     unw_proc_info_t *pi, int need_unwind_info, void *arg)
+{
+  RinDlInventoryRecordV1 image;
+  RinDlInventoryUnwindRecordV1 unwind;
+  uint32_t index;
+  uint32_t expected_count = 0u;
+  uint64_t expected_generation = 0u;
+  uint64_t expected_adds = 0u;
+  uint64_t expected_subs = 0u;
+  uint32_t expected_flags = 0u;
+  int fetch_result;
+
+  if (as != unw_local_addr_space || pi == NULL)
+    return -UNW_ENOINFO;
+  memset(pi, 0, sizeof(*pi));
+  for (index = 0u; index < RIN_DLINVENTORY_V1_MAX_RECORDS; ++index) {
+    fetch_result = rinos_inventory_fetch(index, &image);
+    if (fetch_result == 1)
+      return -UNW_ENOINFO;
+    if (fetch_result != 0)
+      return fetch_result;
+    if (index == 0u) {
+      expected_count = image.record_count;
+      expected_generation = image.launch_generation;
+      expected_adds = image.add_count;
+      expected_subs = image.sub_count;
+      expected_flags = image.flags & RIN_DLINVENTORY_V1_FLAG_LEGACY_RLL;
+    } else if (image.record_count != expected_count ||
+               image.launch_generation != expected_generation ||
+               image.add_count != expected_adds ||
+               image.sub_count != expected_subs ||
+               (image.flags & RIN_DLINVENTORY_V1_FLAG_LEGACY_RLL) !=
+                   expected_flags) {
+      return -UNW_ENOINFO;
+    }
+    if (ip >= (unw_word_t)image.load_address &&
+        ip - (unw_word_t)image.load_address <
+            (unw_word_t)image.mapped_size) {
+      if (rinos_unwind_fetch(index, &unwind) != 0 ||
+          unwind.record_count != image.record_count ||
+          unwind.launch_generation != image.launch_generation ||
+          unwind.load_address != image.load_address ||
+          unwind.mapped_size != image.mapped_size ||
+          (unwind.flags & RIN_DLINVENTORY_UNWIND_V1_FLAG_PRESENT) == 0u)
+        return -UNW_ENOINFO;
+      return dwarf_search_unwind_table_linear(
+          as, ip, (unw_word_t)image.load_address,
+          (unw_word_t)(image.load_address + image.mapped_size),
+          (unw_word_t)unwind.unwind_address,
+          (unw_word_t)(unwind.unwind_address + unwind.unwind_size), pi,
+          need_unwind_info, arg);
+    }
+    if (index + 1u == expected_count)
+      break;
+  }
+  return -UNW_ENOINFO;
+}
 #endif
 
 int
@@ -246,9 +345,10 @@ tdep_get_elf_image(struct elf_image *ei, pid_t pid, unw_word_t ip,
       if (fetch_result != 0)
         return fetch_result;
 
-      /* The formal inventory describes RIN mappings, not ELF images.  Keep
-       * the generic ELF path fail-closed until a native RIN unwind-table
-       * adapter is defined; never cast a code mapping into elf_image. */
+      /* The generic ELF image path remains fail-closed for RIN mappings;
+       * local proc-info lookup uses rinos_find_proc_info() and the dedicated
+       * UNWIND range publication instead.  Never cast a code mapping into an
+       * elf_image. */
       if (ei != NULL)
         return -UNW_ENOINFO;
       return 0;

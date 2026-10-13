@@ -95,6 +95,25 @@ linear_search (unw_addr_space_t as, unw_word_t ip,
     }
   return -UNW_ENOINFO;
 }
+
+/* RIN v3 publishes the authenticated .eh_frame bytes as a mapped section,
+   without manufacturing an ELF PT_GNU_EH_FRAME/program-header table.  Keep
+   the upstream FDE parser and expose only this bounded linear-search adapter
+   to the RIN image hook. */
+int
+dwarf_search_unwind_table_linear (unw_addr_space_t as, unw_word_t ip,
+                                  unw_word_t start_ip, unw_word_t end_ip,
+                                  unw_word_t eh_frame_start,
+                                  unw_word_t eh_frame_end,
+                                  unw_proc_info_t *pi,
+                                  int need_unwind_info, void *arg)
+{
+  if (pi == NULL || start_ip >= end_ip || ip < start_ip || ip >= end_ip ||
+      eh_frame_start >= eh_frame_end)
+    return -UNW_EINVAL;
+  return linear_search(as, ip, eh_frame_start, eh_frame_end,
+                       ~((unw_word_t)0), pi, need_unwind_info, arg);
+}
 #endif /* !UNW_REMOTE_ONLY */
 
 #ifdef CONFIG_DEBUG_FRAME

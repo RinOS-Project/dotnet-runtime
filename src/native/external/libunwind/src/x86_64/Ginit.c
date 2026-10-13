@@ -42,6 +42,12 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
 #include "unwind_i.h"
 
+#if defined(__rinos__)
+extern int rinos_find_proc_info(unw_addr_space_t as, unw_word_t ip,
+                                unw_proc_info_t *pi, int need_unwind_info,
+                                void *arg);
+#endif
+
 #ifdef UNW_REMOTE_ONLY
 
 /* unw_local_addr_space is a NULL pointer in this case.  */
@@ -186,7 +192,11 @@ x86_64_local_addr_space_init (void)
 # endif
 #endif
   local_addr_space.caching_policy = UNWI_DEFAULT_CACHING_POLICY;
+#if defined(__rinos__)
+  local_addr_space.acc.find_proc_info = rinos_find_proc_info;
+#else
   local_addr_space.acc.find_proc_info = dwarf_find_proc_info;
+#endif
   local_addr_space.acc.put_unwind_info = put_unwind_info;
   local_addr_space.acc.get_dyn_info_list_addr = get_dyn_info_list_addr;
   local_addr_space.acc.access_mem = access_mem;

@@ -105,7 +105,7 @@ namespace System.Security.Cryptography.X509Certificates
                     RinOSCertificatePal currentPal = GetRinOSPal(current);
                     AddTimeStatus(current, elementStatuses[^1], verificationUtc);
 
-                    if (current.SubjectName.RawData.Span.SequenceEqual(current.IssuerName.RawData.Span))
+                    if (current.SubjectName.RawData.AsSpan().SequenceEqual(current.IssuerName.RawData.AsSpan()))
                     {
                         if (!ContainsCertificate(trustRoots, current))
                         {
@@ -123,7 +123,7 @@ namespace System.Security.Cryptography.X509Certificates
                     foreach (X509Certificate2 candidate in candidates)
                     {
                         if (ContainsCertificate(chainCertificates, candidate) ||
-                            !candidate.SubjectName.RawData.Span.SequenceEqual(current.IssuerName.RawData.Span))
+                            !candidate.SubjectName.RawData.AsSpan().SequenceEqual(current.IssuerName.RawData.AsSpan()))
                         {
                             continue;
                         }
@@ -338,8 +338,8 @@ namespace System.Security.Cryptography.X509Certificates
                     X509RevocationFlag.EndCertificateOnly => index == 0,
                     X509RevocationFlag.ExcludeRoot =>
                         index != lastIndex ||
-                        !chainCertificates[index].SubjectName.RawData.Span.SequenceEqual(
-                            chainCertificates[index].IssuerName.RawData.Span),
+                        !chainCertificates[index].SubjectName.RawData.AsSpan().SequenceEqual(
+                            chainCertificates[index].IssuerName.RawData.AsSpan()),
                     X509RevocationFlag.EntireChain => true,
                     _ => throw new ArgumentOutOfRangeException(nameof(revocationFlag)),
                 };
@@ -360,7 +360,7 @@ namespace System.Security.Cryptography.X509Certificates
             OidCollection? applicationPolicy,
             OidCollection? certificatePolicy)
         {
-            CertificatePolicyChain.ErrorVector encodingErrors;
+            CertificatePolicyChain.ErrorVector encodingErrors = default;
             CertificatePolicyChain.ErrorVector usageErrors = default;
             bool hasPolicy = applicationPolicy is { Count: > 0 } ||
                 certificatePolicy is { Count: > 0 };

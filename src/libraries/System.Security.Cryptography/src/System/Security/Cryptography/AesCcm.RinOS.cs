@@ -7,7 +7,7 @@ namespace System.Security.Cryptography
 {
     public sealed partial class AesCcm
     {
-        private FixedMemoryKeyBox _keyBox;
+        private FixedMemoryKeyBox _keyBox = null!;
 
         public static bool IsSupported => true;
 

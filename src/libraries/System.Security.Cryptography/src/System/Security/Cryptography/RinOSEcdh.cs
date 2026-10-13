@@ -3,6 +3,7 @@
 
 #if TARGET_RINOS
 
+using System;
 using System.Runtime.InteropServices;
 
 namespace System.Security.Cryptography
@@ -256,8 +257,7 @@ namespace System.Security.Cryptography
 
         private void ThrowIfDisposed()
         {
-            if (_context == IntPtr.Zero)
-                throw new ObjectDisposedException(nameof(RinOSEcdh));
+            ObjectDisposedException.ThrowIf(_context == IntPtr.Zero, this);
         }
 
         private static bool IsP256(ECCurve curve)
@@ -326,8 +326,7 @@ namespace System.Security.Cryptography
 
         private void ThrowIfDisposed()
         {
-            if (_disposed)
-                throw new ObjectDisposedException(nameof(RinOSEcdhPublicKey));
+            ObjectDisposedException.ThrowIf(_disposed, this);
         }
     }
 }

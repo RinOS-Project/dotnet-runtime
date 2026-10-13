@@ -46,6 +46,7 @@ namespace System.Security.Cryptography.X509Certificates
             X509KeyStorageFlags keyStorageFlags)
         {
             ArgumentNullException.ThrowIfNull(password);
+            X509Certificate.ValidateKeyStorageFlags(keyStorageFlags);
 
             if (!password.DangerousGetSpan().IsEmpty)
             {
@@ -366,13 +367,10 @@ namespace System.Security.Cryptography.X509Certificates
 
         private void ThrowIfDisposed()
         {
-            if (_disposed)
-            {
-                throw new ObjectDisposedException(nameof(RinOSCertificatePal));
-            }
+            ObjectDisposedException.ThrowIf(_disposed, this);
         }
 
-        private ICertificatePal CopyWithPrivateKeyCore(AsymmetricAlgorithm privateKey)
+        private RinOSCertificatePal CopyWithPrivateKeyCore(AsymmetricAlgorithm privateKey)
         {
             ThrowIfDisposed();
             ArgumentNullException.ThrowIfNull(privateKey);

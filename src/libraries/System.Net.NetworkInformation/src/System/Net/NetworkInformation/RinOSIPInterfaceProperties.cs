@@ -12,7 +12,6 @@ namespace System.Net.NetworkInformation
         private readonly RinOSIPv4InterfaceProperties _ipv4Properties;
         private readonly RinOSIPv6InterfaceProperties _ipv6Properties;
         private readonly GatewayIPAddressInformationCollection _gatewayAddresses;
-        private readonly InternalIPAddressCollection _dnsAddresses;
 
         internal RinOSIPInterfaceProperties(
             RinOSNetworkInterface networkInterface,
@@ -41,8 +40,6 @@ namespace System.Net.NetworkInformation
 
         public override bool IsDnsEnabled => _dnsAddresses.Count != 0;
 
-        public override IPAddressCollection DnsAddresses => _dnsAddresses;
-
         public override IPv4InterfaceProperties GetIPv4Properties() => _ipv4Properties;
 
         public override IPv6InterfaceProperties GetIPv6Properties() => _ipv6Properties;
@@ -66,17 +63,17 @@ namespace System.Net.NetworkInformation
         private static GatewayIPAddressInformationCollection CreateGatewayAddresses(
             Interop.Sys.RinOSNetworkPrimaryInfo? primaryInfo)
         {
-            InternalIPAddressCollection gatewayAddresses = new InternalIPAddressCollection();
+            GatewayIPAddressInformationCollection gatewayAddresses = new GatewayIPAddressInformationCollection();
             if (primaryInfo.HasValue)
             {
                 IPAddress? gateway = ToConfiguredAddress(primaryInfo.Value.GatewayBytes);
                 if (gateway is not null)
                 {
-                    gatewayAddresses.InternalAdd(gateway);
+                    gatewayAddresses.InternalAdd(new SimpleGatewayIPAddressInformation(gateway));
                 }
             }
 
-            return SystemGatewayIPAddressInformation.ToGatewayIpAddressInformationCollection(gatewayAddresses);
+            return gatewayAddresses;
         }
 
         private static InternalIPAddressCollection CreateDnsAddresses(

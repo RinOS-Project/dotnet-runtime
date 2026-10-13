@@ -216,6 +216,7 @@
     <Compile Include="System\Net\NetworkInformation\RinOSIPv6InterfaceProperties.cs" />
     <Compile Include="System\Net\NetworkInformation\RinOSNetworkInterface.cs" />
     <Compile Include="System\Net\NetworkInformation\RinOSNetworkStatistics.cs" />
+    <ProjectReference Include="$(LibrariesProjectRoot)System.Text.Encoding.Extensions\src\System.Text.Encoding.Extensions.csproj" />
   </ItemGroup>
 
   <!-- Unknown Unix -->

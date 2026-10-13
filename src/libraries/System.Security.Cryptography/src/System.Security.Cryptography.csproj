@@ -903,12 +903,16 @@
     <Compile Include="System\Security\Cryptography\TripleDesImplementation.NotSupported.cs" />
     <Compile Include="System\Security\Cryptography\X25519DiffieHellmanOpenSsl.NotSupported.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\CertificatePal.RinOS.cs" />
+    <Compile Include="System\Security\Cryptography\X509Certificates\CertificateData.ManagedDecode.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\ChainPal.RinOS.cs" />
+    <Compile Include="System\Security\Cryptography\X509Certificates\CertificatePolicy.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\FindPal.NotSupported.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\LegacyBasicConstraintsDecoder.NotSupported.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\StorePal.RinOS.cs" />
+    <Compile Include="System\Security\Cryptography\X509Certificates\UnixChainVerifier.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\X509CertificateLoader.RinOS.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\X509Pal.RinOS.cs" />
+    <Compile Include="System\Security\Cryptography\Interop.RinOS.X509.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'browser'">

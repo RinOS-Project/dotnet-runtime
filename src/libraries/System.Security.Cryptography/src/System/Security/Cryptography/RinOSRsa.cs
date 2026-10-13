@@ -3,6 +3,7 @@
 
 #if TARGET_RINOS
 
+using System;
 using System.Runtime.InteropServices;
 
 namespace System.Security.Cryptography
@@ -55,7 +56,7 @@ namespace System.Security.Cryptography
             set
             {
                 ThrowIfDisposed();
-                if (!value.IsLegalSize(LegalKeySizesValue))
+                if (!value.IsLegalSize(LegalKeySizesValue!))
                 {
                     throw new CryptographicException(SR.Cryptography_InvalidKeySize);
                 }
@@ -181,13 +182,18 @@ namespace System.Security.Cryptography
             ArgumentNullException.ThrowIfNull(padding);
             ThrowIfDisposed();
             int mode = GetEncryptionMode(padding, out int hashAlgorithm);
+            int written = 0;
+            bool success;
             fixed (byte* pData = data)
             fixed (byte* pDestination = destination)
             {
-                return Interop.Crypto.RinOSRsaEncrypt(
+                success = Interop.Crypto.RinOSRsaEncrypt(
                            _context, mode, hashAlgorithm, pData, data.Length,
-                           pDestination, destination.Length, &bytesWritten) != 0;
+                           pDestination, destination.Length, &written) != 0;
             }
+
+            bytesWritten = written;
+            return success;
         }
 
         public override byte[] Decrypt(byte[] data, RSAEncryptionPadding padding)
@@ -209,13 +215,18 @@ namespace System.Security.Cryptography
             ArgumentNullException.ThrowIfNull(padding);
             ThrowIfDisposed();
             int mode = GetEncryptionMode(padding, out int hashAlgorithm);
+            int written = 0;
+            bool success;
             fixed (byte* pData = data)
             fixed (byte* pDestination = destination)
             {
-                return Interop.Crypto.RinOSRsaDecrypt(
+                success = Interop.Crypto.RinOSRsaDecrypt(
                            _context, mode, hashAlgorithm, pData, data.Length,
-                           pDestination, destination.Length, &bytesWritten) != 0;
+                           pDestination, destination.Length, &written) != 0;
             }
+
+            bytesWritten = written;
+            return success;
         }
 
         public override byte[] SignHash(byte[] hash, HashAlgorithmName hashAlgorithm,
@@ -246,14 +257,19 @@ namespace System.Security.Cryptography
                 _ => throw new CryptographicException("RinOS RSA signature padding is unsupported."),
             };
             int saltLength = mode == RsaSignaturePss ? hashSize : 0;
+            int written = 0;
+            bool success;
             fixed (byte* pHash = hash)
             fixed (byte* pDestination = destination)
             {
-                return Interop.Crypto.RinOSRsaSignHash(
+                success = Interop.Crypto.RinOSRsaSignHash(
                            _context, mode, hashId, pHash, hash.Length, saltLength,
                            pDestination, Math.Min(destination.Length, GetMaxOutputSize()),
-                           &bytesWritten) != 0;
+                           &written) != 0;
             }
+
+            bytesWritten = written;
+            return success;
         }
 
         public override bool VerifyHash(ReadOnlySpan<byte> hash, ReadOnlySpan<byte> signature,
@@ -292,10 +308,7 @@ namespace System.Security.Cryptography
 
         private void ThrowIfDisposed()
         {
-            if (_context == IntPtr.Zero)
-            {
-                throw new ObjectDisposedException(nameof(RinOSRsa));
-            }
+            ObjectDisposedException.ThrowIf(_context == IntPtr.Zero, this);
         }
 
         private static byte[] TrimToLength(byte[] source, int length)

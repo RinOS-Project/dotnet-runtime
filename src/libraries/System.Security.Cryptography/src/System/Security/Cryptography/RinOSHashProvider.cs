@@ -79,10 +79,10 @@ namespace System.Security.Cryptography
                 };
             }
 
-            private static Exception Unsupported(string id) =>
+            private static PlatformNotSupportedException Unsupported(string id) =>
                 new PlatformNotSupportedException($"RinOS does not provide the {id} cryptographic provider.");
 
-            private static Exception Unknown(string id) =>
+            private static CryptographicException Unknown(string id) =>
                 new CryptographicException(SR.Format(SR.Cryptography_UnknownHashAlgorithm, id));
         }
 

@@ -3,13 +3,13 @@
 
 #if TARGET_RINOS
 
+using System;
 using System.Runtime.InteropServices;
 
 namespace System.Security.Cryptography
 {
     internal sealed unsafe class RinOSEcdsa : ECDsa
     {
-        private const int CurveP256 = 23;
         private const string P256Oid = "1.2.840.10045.3.1.7";
         private const int PrivateKeySize = 32;
         private const int PublicKeySize = 65;
@@ -207,8 +207,7 @@ namespace System.Security.Cryptography
 
         private void ThrowIfDisposed()
         {
-            if (_context == IntPtr.Zero)
-                throw new ObjectDisposedException(nameof(RinOSEcdsa));
+            ObjectDisposedException.ThrowIf(_context == IntPtr.Zero, this);
         }
 
         private static bool IsP256(ECCurve curve)

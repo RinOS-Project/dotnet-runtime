@@ -32,7 +32,7 @@ namespace System.Security.Cryptography
             return UniversalCryptoTransform.Create(paddingMode, cipher, encrypting);
         }
 
-        private static ILiteSymmetricCipher CreateLiteCipher(
+        private static RinOSAesCipher CreateLiteCipher(
             CipherMode cipherMode,
             ReadOnlySpan<byte> key,
             ReadOnlySpan<byte> iv,

@@ -18,6 +18,18 @@ namespace System.Security.Cryptography.X509Certificates
                 path,
                 Microsoft.Win32.SafeHandles.SafePasswordHandle.InvalidHandle,
                 X509KeyStorageFlags.EphemeralKeySet);
+
+        private static partial Pkcs12Return LoadPkcs12(
+            ref BagState bagState,
+            ReadOnlySpan<char> password,
+            X509KeyStorageFlags keyStorageFlags) =>
+            throw new PlatformNotSupportedException(SR.SystemSecurityCryptographyX509Certificates_PlatformNotSupported);
+
+        private static partial X509Certificate2Collection LoadPkcs12Collection(
+            ref BagState bagState,
+            ReadOnlySpan<char> password,
+            X509KeyStorageFlags keyStorageFlags) =>
+            throw new PlatformNotSupportedException(SR.SystemSecurityCryptographyX509Certificates_PlatformNotSupported);
     }
 }
 

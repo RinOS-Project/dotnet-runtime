@@ -40,7 +40,7 @@ namespace System.Net.Security
         }
 
         public static SecurityStatusPal SelectApplicationProtocol(
-            SafeFreeCredentials? _, SafeDeleteSslContext? _,
+            SafeFreeCredentials? _, SafeDeleteSslContext? __,
             SslAuthenticationOptions sslAuthenticationOptions,
             ReadOnlySpan<byte> clientProtocols)
         {
@@ -197,7 +197,7 @@ namespace System.Net.Security
             SafeDeleteContext? _, out StreamSizes streamSizes)
         {
             // RinTLS emits at most one 16 KiB TLS record per send operation.
-            streamSizes = new StreamSizes { MaximumMessage = 16 * 1024 };
+            streamSizes = StreamSizes.Default;
         }
 
         public static void QueryContextConnectionInfo(

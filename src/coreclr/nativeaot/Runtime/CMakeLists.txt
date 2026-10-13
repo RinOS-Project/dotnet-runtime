@@ -291,17 +291,23 @@ if (CLR_CMAKE_TARGET_ARCH_ARM64 OR CLR_CMAKE_TARGET_ARCH_AMD64)
   )
 endif (CLR_CMAKE_TARGET_ARCH_ARM64 OR CLR_CMAKE_TARGET_ARCH_AMD64)
 
-list(APPEND RUNTIME_SOURCES_ARCH_ASM
-  ${RUNTIME_DIR}/${ARCH_SOURCES_DIR}/AllocFast.${ASM_SUFFIX}
-  ${ARCH_SOURCES_DIR}/DispatchResolve.${ASM_SUFFIX}
-  ${ARCH_SOURCES_DIR}/ExceptionHandling.${ASM_SUFFIX}
-  ${ARCH_SOURCES_DIR}/GcProbe.${ASM_SUFFIX}
-  ${ARCH_SOURCES_DIR}/MiscStubs.${ASM_SUFFIX}
-  ${ARCH_SOURCES_DIR}/PInvoke.${ASM_SUFFIX}
-  ${RUNTIME_DIR}/${ARCH_SOURCES_DIR}/StubDispatch.${ASM_SUFFIX}
-  ${ARCH_SOURCES_DIR}/UniversalTransition.${ASM_SUFFIX}
-  ${RUNTIME_DIR}/${ARCH_SOURCES_DIR}/WriteBarriers.${ASM_SUFFIX}
-)
+# PortableRuntime is intentionally pure C/C++ and does not consume this
+# architecture-helper list.  Keep the list out of the WASM configure graph so
+# a portable configure cannot accidentally resolve or validate the x64/Unix
+# UniversalTransition and thunk assembly path.
+if(NOT CLR_CMAKE_TARGET_ARCH_WASM)
+  list(APPEND RUNTIME_SOURCES_ARCH_ASM
+    ${RUNTIME_DIR}/${ARCH_SOURCES_DIR}/AllocFast.${ASM_SUFFIX}
+    ${ARCH_SOURCES_DIR}/DispatchResolve.${ASM_SUFFIX}
+    ${ARCH_SOURCES_DIR}/ExceptionHandling.${ASM_SUFFIX}
+    ${ARCH_SOURCES_DIR}/GcProbe.${ASM_SUFFIX}
+    ${ARCH_SOURCES_DIR}/MiscStubs.${ASM_SUFFIX}
+    ${ARCH_SOURCES_DIR}/PInvoke.${ASM_SUFFIX}
+    ${RUNTIME_DIR}/${ARCH_SOURCES_DIR}/StubDispatch.${ASM_SUFFIX}
+    ${ARCH_SOURCES_DIR}/UniversalTransition.${ASM_SUFFIX}
+    ${RUNTIME_DIR}/${ARCH_SOURCES_DIR}/WriteBarriers.${ASM_SUFFIX}
+  )
+endif()
 
 # Add architecture specific folder for looking up headers.
 convert_to_absolute_path(ARCH_SOURCES_DIR ${ARCH_SOURCES_DIR})

@@ -34,10 +34,6 @@
 #define RINOS_KERBEROS_CONTEXT_NEGOTIATING UINT32_C(1)
 #define RINOS_KERBEROS_CONTEXT_ESTABLISHED UINT32_C(2)
 #define RINOS_KERBEROS_MAX_MECH_LIST_SIZE UINT32_C(4096)
-/* Keep a peer-supplied RFC 4120 error code distinguishable from local
- * provider diagnostics while preserving every non-negative Int32 code. */
-#define RINOS_KERBEROS_MINOR_PROTOCOL_ERROR UINT32_C(0x80000000)
-
 #if defined(RINOS_KERBEROS_OWNER_LINKED)
 extern const RinKerberosCredentialOwnerV1*
 rin_kerberos_credential_owner_get_v1(void);
@@ -1822,7 +1818,8 @@ static uint32_t provider_operation(
             return provider_unavailable(minor_status);
         }
         if (minor_status != NULL)
-            *minor_status = RINOS_KERBEROS_MINOR_PROTOCOL_ERROR | error_code;
+            *minor_status = RIN_KERBEROS_OPERATION_MINOR_PROTOCOL_ERROR |
+                            error_code;
     }
     if (provider_context != NULL) {
         if (request->operation != RIN_KERBEROS_OPERATION_DELETE_SEC_CONTEXT &&
@@ -1980,7 +1977,7 @@ static uint32_t provider_init_sec_context(
         if (received_error < 0) return provider_defective_token(minor_status);
         if (received_error > 0) {
             if (minor_status != NULL)
-                *minor_status = RINOS_KERBEROS_MINOR_PROTOCOL_ERROR |
+                *minor_status = RIN_KERBEROS_OPERATION_MINOR_PROTOCOL_ERROR |
                                 received_error_code;
             return RIN_AUTH_PROVIDER_KRB_ERROR;
         }
@@ -2314,7 +2311,7 @@ static uint32_t provider_init_sec_context_ex(
         if (received_error < 0) return provider_defective_token(minor_status);
         if (received_error > 0) {
             if (minor_status != NULL)
-                *minor_status = RINOS_KERBEROS_MINOR_PROTOCOL_ERROR |
+                *minor_status = RIN_KERBEROS_OPERATION_MINOR_PROTOCOL_ERROR |
                                 received_error_code;
             return RIN_AUTH_PROVIDER_KRB_ERROR;
         }
@@ -3192,12 +3189,13 @@ static uint32_t provider_display_status_value(
         length = strlen(message);
         memcpy(formatted, message, length);
     } else if (is_minor &&
-               (status_value & RINOS_KERBEROS_MINOR_PROTOCOL_ERROR) != 0u) {
+               (status_value & RIN_KERBEROS_OPERATION_MINOR_PROTOCOL_ERROR) != 0u) {
         static const char prefix_text[] = "Kerberos protocol error ";
         static const char name_separator[] = " (";
         static const char name_suffix[] = ")";
         char digits[10];
-        uint32_t value = status_value & ~RINOS_KERBEROS_MINOR_PROTOCOL_ERROR;
+        uint32_t value = status_value &
+                         RIN_KERBEROS_OPERATION_MINOR_ERROR_CODE_MASK;
         const char* name = provider_kerberos_error_name(value);
         size_t digit_count = 0u;
         memcpy(formatted, prefix_text, sizeof(prefix_text) - 1u);

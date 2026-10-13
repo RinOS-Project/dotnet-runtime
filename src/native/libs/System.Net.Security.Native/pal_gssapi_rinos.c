@@ -233,7 +233,8 @@ static uint32_t rinos_gss_map_kerberos_supplementary(
     uint32_t providerStatus, const uint32_t* minorStatus,
     int initiator_context)
 {
-    const uint32_t protocolErrorBit = UINT32_C(0x80000000);
+    const uint32_t protocolErrorBit =
+        RIN_KERBEROS_OPERATION_MINOR_PROTOCOL_ERROR;
     const uint32_t krbApErrRepeat = UINT32_C(34);
     const uint32_t krbApErrBadOrder = UINT32_C(42);
     const uint32_t krbApErrBadSeq = UINT32_C(49);
@@ -243,7 +244,8 @@ static uint32_t rinos_gss_map_kerberos_supplementary(
         providerStatus != RIN_AUTH_PROVIDER_KRB_ERROR ||
         minorStatus == NULL || (*minorStatus & protocolErrorBit) == 0u)
         return 0u;
-    errorCode = *minorStatus & ~protocolErrorBit;
+    errorCode = *minorStatus &
+                RIN_KERBEROS_OPERATION_MINOR_ERROR_CODE_MASK;
     if (errorCode == krbApErrRepeat)
         return PAL_GSS_S_DUPLICATE_TOKEN;
     /* RFC 4120 calls these out-of-order or bad-sequence messages.  RFC 2743
@@ -272,14 +274,16 @@ static uint32_t rinos_gss_map_kerberos_major(
     uint32_t providerStatus, const uint32_t* minorStatus,
     int initiator_context)
 {
-    const uint32_t protocolErrorBit = UINT32_C(0x80000000);
+    const uint32_t protocolErrorBit =
+        RIN_KERBEROS_OPERATION_MINOR_PROTOCOL_ERROR;
     uint32_t errorCode;
 
     if (providerStatus != RIN_AUTH_PROVIDER_KRB_ERROR ||
         minorStatus == NULL || (*minorStatus & protocolErrorBit) == 0u)
         return rinos_gss_map_provider_status(providerStatus);
 
-    errorCode = *minorStatus & ~protocolErrorBit;
+    errorCode = *minorStatus &
+                RIN_KERBEROS_OPERATION_MINOR_ERROR_CODE_MASK;
     switch (errorCode)
     {
         case 1u:  /* KDC_ERR_NAME_EXP */

@@ -417,7 +417,7 @@ set(libunwind_ppc64le_la_SOURCES_ppc64le
     ppc/Gis_signal_frame.c ppc64/Gstep.c
 )
 
-if(CLR_CMAKE_HOST_UNIX)
+if(CLR_CMAKE_HOST_UNIX AND NOT CLR_CMAKE_TARGET_RINOS)
     if(CLR_CMAKE_HOST_ARCH_ARM64)
         set(libunwind_la_SOURCES                    ${libunwind_la_SOURCES_aarch64})
         set(libunwind_remote_la_SOURCES             ${libunwind_aarch64_la_SOURCES_aarch64})
@@ -530,6 +530,6 @@ else(CLR_CMAKE_HOST_UNIX)
     if(NOT CLR_CMAKE_TARGET_RINOS)
       list(PREPEND LIBUNWIND_SOURCES_BASE remote/win/missing-functions.c)
     endif()
-endif(CLR_CMAKE_HOST_UNIX)
+endif()
 
 addprefix(LIBUNWIND_SOURCES "${CMAKE_CURRENT_LIST_DIR}/libunwind/src" "${LIBUNWIND_SOURCES_BASE}")

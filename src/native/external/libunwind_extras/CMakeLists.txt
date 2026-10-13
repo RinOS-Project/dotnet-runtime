@@ -88,7 +88,7 @@ if(CLR_CMAKE_HOST_UNIX)
         set(HAVE_ENDIAN_H 1)
     endif(CLR_CMAKE_HOST_APPLE)
 
-endif(CLR_CMAKE_HOST_UNIX)
+endif()
 
 if(CLR_CMAKE_HOST_WIN32)
     if (CLR_CMAKE_TARGET_ARCH_AMD64)
@@ -178,13 +178,13 @@ if(CLR_CMAKE_TARGET_ANDROID)
     add_compile_options(-Wno-error)
 endif()
 
-if(CLR_CMAKE_HOST_UNIX)
+if(CLR_CMAKE_HOST_UNIX AND NOT CLR_CMAKE_TARGET_RINOS)
     if(CLR_CMAKE_HOST_APPLE)
         add_library(libunwind_dac OBJECT ${LIBUNWIND_SOURCES})
     else()
         add_library(libunwind OBJECT ${LIBUNWIND_SOURCES})
     endif(CLR_CMAKE_HOST_APPLE)
-else(CLR_CMAKE_HOST_UNIX)
+else()
     if(CLR_CMAKE_TARGET_RINOS)
         # remote-unwind.cpp is added from this external project and otherwise
         # misses the PAL-generated config.h, so it would silently select the
@@ -199,4 +199,4 @@ else(CLR_CMAKE_HOST_UNIX)
     add_library(libunwind_xdac OBJECT
       ${CLR_DIR}/pal/src/exception/remote-unwind.cpp
       ${LIBUNWIND_SOURCES})
-endif(CLR_CMAKE_HOST_UNIX)
+endif()

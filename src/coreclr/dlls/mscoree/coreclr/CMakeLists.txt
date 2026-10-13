@@ -91,6 +91,7 @@ if(CLR_CMAKE_TARGET_RINOS AND NOT RINOS_CROSS_COMPONENTS_HOST)
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/locale_object.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/time_zone.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/stdlib_random.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/pthread_cancel_runtime.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/pthread_runtime.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/timer_thread_runtime.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/pthread_tls.c"
@@ -123,6 +124,15 @@ if(CLR_CMAKE_TARGET_RINOS AND NOT RINOS_CROSS_COMPONENTS_HOST)
         -Wno-error
     )
     target_sources(coreclr PRIVATE $<TARGET_OBJECTS:rinos_coreclr_runtime>)
+
+    # The product ELF cannot depend on the host toolchain's C++ unwinder.
+    # Compile the runtime's bundled Itanium ABI unwinder into CoreCLR so
+    # compiler-generated cleanup paths resolve inside the signed RLL.
+    include(${CLR_SRC_NATIVE_DIR}/external/llvm-libunwind.cmake)
+    target_sources(coreclr PRIVATE
+        ${LLVM_LIBUNWIND_SOURCES}
+        ${LLVM_LIBUNWIND_ASM_SOURCES}
+    )
 endif()
 
 # IMPORTANT! Please do not rearrange the order of the libraries. The linker on Linux is

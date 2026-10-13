@@ -12,6 +12,7 @@
 #include "rhassert.h"
 
 #include <limits.h>
+#include <new>
 #include <string.h>
 
 
@@ -46,6 +47,36 @@ static bool IsValidThunkPageGeometry()
     return pageSize != 0 && (pageSize & (pageSize - 1)) == 0 &&
         mappingSize != 0 && mappingSize % pageSize == 0 &&
         mappingSize <= (size_t)UINTPTR_MAX;
+}
+
+// NativeAOT normally serializes mapping allocation/release through the
+// managed ThunkBlocks lock.  Keep an independent native owner registry as a
+// defense-in-depth boundary: a page-aligned foreign pointer or a duplicate
+// release must not reach the PAL merely because it satisfies the reversible
+// address geometry.  The registry is also retained when PAL release fails so
+// the caller can retry without losing the owner capability.
+struct RinOsRxThunkMappingOwner
+{
+    void* baseAddress;
+    size_t mappingSize;
+    RinOsRxThunkMappingOwner* next;
+};
+
+static RinOsRxThunkMappingOwner* g_rxThunkMappingOwners = NULL;
+static volatile int32_t g_rxThunkMappingOwnerLock = 0;
+
+static void LockRxThunkMappingOwners()
+{
+    while (PalInterlockedCompareExchange(
+               &g_rxThunkMappingOwnerLock, 1, 0) != 0)
+    {
+        PalSwitchToThread();
+    }
+}
+
+static void UnlockRxThunkMappingOwners()
+{
+    VolatileStore(&g_rxThunkMappingOwnerLock, 0);
 }
 
 /*
@@ -524,6 +555,21 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
 
     PalFlushInstructionCache(pThunksSection, thunksMapSize);
 
+    RinOsRxThunkMappingOwner* owner =
+        new (nothrow) RinOsRxThunkMappingOwner();
+    if (owner == NULL)
+    {
+        PalVirtualFree(pNewMapping, mappingSize);
+        return E_OUTOFMEMORY;
+    }
+    owner->baseAddress = pThunksSection;
+    owner->mappingSize = mappingSize;
+
+    LockRxThunkMappingOwners();
+    owner->next = g_rxThunkMappingOwners;
+    g_rxThunkMappingOwners = owner;
+    UnlockRxThunkMappingOwners();
+
     *ppThunksSection = pThunksSection;
     return S_OK;
 }
@@ -537,8 +583,35 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
         return E_INVALIDARG;
     }
 
-    return PalVirtualFreeChecked(
-        pThunksSection, (uintptr_t)THUNKS_MAP_SIZE * 2u) ? S_OK : E_FAIL;
+    const size_t mappingSize = THUNKS_MAP_SIZE * 2u;
+    LockRxThunkMappingOwners();
+    RinOsRxThunkMappingOwner** ownerLink = &g_rxThunkMappingOwners;
+    while (*ownerLink != NULL &&
+           ((*ownerLink)->baseAddress != pThunksSection ||
+            (*ownerLink)->mappingSize != mappingSize))
+    {
+        ownerLink = &(*ownerLink)->next;
+    }
+
+    if (*ownerLink == NULL)
+    {
+        UnlockRxThunkMappingOwners();
+        return E_INVALIDARG;
+    }
+
+    RinOsRxThunkMappingOwner* owner = *ownerLink;
+    *ownerLink = owner->next;
+    if (!PalVirtualFreeChecked(pThunksSection, (uintptr_t)mappingSize))
+    {
+        owner->next = g_rxThunkMappingOwners;
+        g_rxThunkMappingOwners = owner;
+        UnlockRxThunkMappingOwners();
+        return E_FAIL;
+    }
+
+    UnlockRxThunkMappingOwners();
+    delete owner;
+    return S_OK;
 }
 
 // FEATURE_RX_THUNKS

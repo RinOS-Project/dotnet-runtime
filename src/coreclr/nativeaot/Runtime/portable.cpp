@@ -56,8 +56,8 @@ static const RinNativeAotThunkProviderV1* GetRinNativeAotThunkProvider()
         provider->abi_version != RIN_NATIVEAOT_THUNK_ABI_VERSION ||
         provider->reserved0 != 0 ||
         (provider->capability_mask & ~RIN_NATIVEAOT_THUNK_KNOWN_CAPABILITIES) != 0 ||
-        (provider->capability_mask & RIN_NATIVEAOT_THUNK_KNOWN_CAPABILITIES) !=
-            RIN_NATIVEAOT_THUNK_KNOWN_CAPABILITIES ||
+        (provider->capability_mask & RIN_NATIVEAOT_THUNK_REQUIRED_CAPABILITIES) !=
+            RIN_NATIVEAOT_THUNK_REQUIRED_CAPABILITIES ||
         provider->allocate_thunks_mapping == nullptr ||
         provider->get_thunks_base == nullptr ||
         provider->get_num_thunk_blocks_per_mapping == nullptr ||

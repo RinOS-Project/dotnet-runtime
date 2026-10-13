@@ -208,46 +208,68 @@ rinos_unwind_fetch(uint32_t index, RinDlInventoryUnwindRecordV1 *record)
 }
 
 /* RIN v3's dynamic image graph is authenticated and generation-published by
- * the kernel, but it intentionally has no ELF program headers.  Walk the
- * graph through the two native records and feed the authenticated
- * .debug_frame range
- * range into libunwind's upstream FDE parser. */
+ * the kernel, but it intentionally has no ELF program headers.  Hold the
+ * formal read-side lease for the complete inventory walk and FDE parse: a
+ * generation comparison alone cannot prevent a concurrent graph detach from
+ * reclaiming the bytes after the last syscall. */
 int
 rinos_find_proc_info(unw_addr_space_t as, unw_word_t ip,
                      unw_proc_info_t *pi, int need_unwind_info, void *arg)
 {
   RinDlInventoryRecordV1 image;
   RinDlInventoryUnwindRecordV1 unwind;
+  RinDlInventoryUnwindLeaseV1 lease;
   uint32_t index;
   uint32_t expected_count = 0u;
   uint64_t expected_generation = 0u;
   uint64_t expected_adds = 0u;
   uint64_t expected_subs = 0u;
   uint32_t expected_flags = 0u;
+  intptr_t lease_result;
+  int result = -UNW_ENOINFO;
   int fetch_result;
 
   if (as != unw_local_addr_space || pi == NULL)
     return -UNW_ENOINFO;
   memset(pi, 0, sizeof(*pi));
+  memset(&lease, 0, sizeof(lease));
+  lease_result = _syscall1((uintptr_t)SYS_DLINVENTORY_UNWIND_LEASE_BEGIN,
+                           (uintptr_t)&lease);
+  if (lease_result != 0 ||
+      lease.abi_version != RIN_DLINVENTORY_UNWIND_LEASE_V1_ABI_VERSION ||
+      (lease.flags & ~RIN_DLINVENTORY_UNWIND_LEASE_V1_KNOWN_FLAGS) != 0u ||
+      lease.flags != RIN_DLINVENTORY_UNWIND_LEASE_V1_FLAG_EXCLUSIVE_LOADER ||
+      lease.token == 0u || lease.launch_generation == 0u ||
+      lease.reserved[0] != 0u)
+    return -UNW_ENOINFO;
   for (index = 0u; index < RIN_DLINVENTORY_V1_MAX_RECORDS; ++index) {
     fetch_result = rinos_inventory_fetch(index, &image);
-    if (fetch_result == 1)
-      return -UNW_ENOINFO;
-    if (fetch_result != 0)
-      return fetch_result;
+    if (fetch_result == 1) {
+      result = -UNW_ENOINFO;
+      goto release_lease;
+    }
+    if (fetch_result != 0) {
+      result = fetch_result;
+      goto release_lease;
+    }
     if (index == 0u) {
       expected_count = image.record_count;
       expected_generation = image.launch_generation;
       expected_adds = image.add_count;
       expected_subs = image.sub_count;
       expected_flags = image.flags & RIN_DLINVENTORY_V1_FLAG_LEGACY_RLL;
+      if (expected_generation != lease.launch_generation) {
+        result = -UNW_ENOINFO;
+        goto release_lease;
+      }
     } else if (image.record_count != expected_count ||
                image.launch_generation != expected_generation ||
                image.add_count != expected_adds ||
                image.sub_count != expected_subs ||
                (image.flags & RIN_DLINVENTORY_V1_FLAG_LEGACY_RLL) !=
                    expected_flags) {
-      return -UNW_ENOINFO;
+      result = -UNW_ENOINFO;
+      goto release_lease;
     }
     if (ip >= (unw_word_t)image.load_address &&
         ip - (unw_word_t)image.load_address <
@@ -257,20 +279,29 @@ rinos_find_proc_info(unw_addr_space_t as, unw_word_t ip,
           unwind.launch_generation != image.launch_generation ||
           unwind.load_address != image.load_address ||
           unwind.mapped_size != image.mapped_size ||
-          (unwind.flags & RIN_DLINVENTORY_UNWIND_V1_FLAG_PRESENT) == 0u)
-        return -UNW_ENOINFO;
-      return dwarf_search_unwind_table_linear(
+          (unwind.flags & RIN_DLINVENTORY_UNWIND_V1_FLAG_PRESENT) == 0u) {
+        result = -UNW_ENOINFO;
+        goto release_lease;
+      }
+      result = dwarf_search_unwind_table_linear(
           as, ip, (unw_word_t)image.load_address,
           (unw_word_t)(image.load_address + image.mapped_size),
           (unw_word_t)unwind.unwind_address,
           (unw_word_t)(unwind.unwind_address + unwind.unwind_size),
           (unwind.flags & RIN_DLINVENTORY_UNWIND_V1_FLAG_DWARF_DEBUG_FRAME) != 0u,
           pi, need_unwind_info, arg);
+      goto release_lease;
     }
     if (index + 1u == expected_count)
       break;
   }
-  return -UNW_ENOINFO;
+release_lease:
+  /* A failed release is itself a contract failure.  Do not report parser
+   * success while the kernel still owns the loader exclusion. */
+  if (_syscall1((uintptr_t)SYS_DLINVENTORY_UNWIND_LEASE_END,
+                (uintptr_t)&lease) != 0)
+    return -UNW_EINVAL;
+  return result;
 }
 #endif
 

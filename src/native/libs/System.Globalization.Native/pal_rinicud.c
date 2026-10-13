@@ -1375,6 +1375,12 @@ static int product_numbering_system_override(const char* locale_name,
 static ProductDigitSet product_default_digit_set(const RinIcuDataLocaleRecord* record)
 {
     if (!record) return ProductDigitsLatin;
+    if (rin_icu_data_numbering_system_present(record->week_data)) {
+        uint32_t numbering_system = rin_icu_data_numbering_system(record->week_data);
+        if (numbering_system <= RIN_ICU_DATA_NUMBERING_SYSTEM_MAX)
+            return (ProductDigitSet)numbering_system;
+        return ProductDigitsLatin;
+    }
     if (strcmp(record->language, "fa") == 0) return ProductDigitsArabicExtended;
     if (strcmp(record->script, "Arab") == 0) return ProductDigitsArabic;
     if (strcmp(record->script, "Deva") == 0) return ProductDigitsDevanagari;

@@ -601,12 +601,12 @@ _Unwind_GetGR(struct _Unwind_Context *context, int index) {
 
 /// Called by personality handler during phase 2 to alter register values.
 _LIBUNWIND_EXPORT void _Unwind_SetGR(struct _Unwind_Context *context, int index,
-                                     uintptr_t value) {
+                                     uintptr_t value, uintptr_t *pos) {
   _LIBUNWIND_TRACE_API("_Unwind_SetGR(context=%p, reg=%d, value=0x%0" PRIxPTR
                        ")",
                        (void *)context, index, value);
   unw_cursor_t *cursor = (unw_cursor_t *)context;
-  __unw_set_reg(cursor, index, value);
+  __unw_set_reg(cursor, index, value, (unw_word_t *)pos);
 }
 
 /// Called by personality handler during phase 2 to get instruction pointer.
@@ -639,7 +639,7 @@ _LIBUNWIND_EXPORT void _Unwind_SetIP(struct _Unwind_Context *context,
   _LIBUNWIND_TRACE_API("_Unwind_SetIP(context=%p, value=0x%0" PRIxPTR ")",
                        (void *)context, value);
   unw_cursor_t *cursor = (unw_cursor_t *)context;
-  __unw_set_reg(cursor, UNW_REG_IP, value);
+  __unw_set_reg(cursor, UNW_REG_IP, value, NULL);
 }
 
 #endif // !defined(_LIBUNWIND_ARM_EHABI) && !defined(__USING_SJLJ_EXCEPTIONS__)

@@ -426,12 +426,13 @@ _LIBUNWIND_EXPORT uintptr_t _Unwind_GetGR(struct _Unwind_Context *context,
 
 /// Called by personality handler during phase 2 to alter register values.
 _LIBUNWIND_EXPORT void _Unwind_SetGR(struct _Unwind_Context *context, int index,
-                                     uintptr_t new_value) {
+                                     uintptr_t new_value, uintptr_t *pos) {
   _LIBUNWIND_TRACE_API("_Unwind_SetGR(context=%p, reg=%d, value=0x%" PRIxPTR
                        ")",
                        (void *)context, index, new_value);
   _Unwind_FunctionContext_t ufc = (_Unwind_FunctionContext_t) context;
   ufc->resumeParameters[index] = new_value;
+  (void)pos;
 }
 
 

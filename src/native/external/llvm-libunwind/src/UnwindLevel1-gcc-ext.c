@@ -119,7 +119,7 @@ _LIBUNWIND_EXPORT void *_Unwind_FindEnclosingFunction(void *pc) {
   unw_proc_info_t info;
   __unw_getcontext(&uc);
   __unw_init_local(&cursor, &uc);
-  __unw_set_reg(&cursor, UNW_REG_IP, (unw_word_t)(intptr_t)pc);
+  __unw_set_reg(&cursor, UNW_REG_IP, (unw_word_t)(intptr_t)pc, NULL);
   if (__unw_get_proc_info(&cursor, &info) == UNW_ESUCCESS)
     return (void *)(intptr_t) info.start_ip;
   else
@@ -218,7 +218,7 @@ _LIBUNWIND_EXPORT const void *_Unwind_Find_FDE(const void *pc,
   unw_proc_info_t info;
   __unw_getcontext(&uc);
   __unw_init_local(&cursor, &uc);
-  __unw_set_reg(&cursor, UNW_REG_IP, (unw_word_t)(intptr_t)pc);
+  __unw_set_reg(&cursor, UNW_REG_IP, (unw_word_t)(intptr_t)pc, NULL);
   __unw_get_proc_info(&cursor, &info);
   bases->tbase = (uintptr_t)info.extra;
   bases->dbase = 0; // dbase not used on Mac OS X

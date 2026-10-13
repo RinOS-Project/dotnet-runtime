@@ -130,7 +130,7 @@ _GCC_specific_handler(PEXCEPTION_RECORD ms_exc, PVOID frame, PCONTEXT ms_ctx,
   if (!ctx) {
     __unw_init_seh(&cursor, disp->ContextRecord);
     __unw_seh_set_disp_ctx(&cursor, disp);
-    __unw_set_reg(&cursor, UNW_REG_IP, disp->ControlPc);
+    __unw_set_reg(&cursor, UNW_REG_IP, disp->ControlPc, nullptr);
     ctx = (struct _Unwind_Context *)&cursor;
 
     if (!IS_UNWINDING(ms_exc->ExceptionFlags)) {

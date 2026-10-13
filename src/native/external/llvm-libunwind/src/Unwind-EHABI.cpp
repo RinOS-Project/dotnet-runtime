@@ -945,7 +945,7 @@ _Unwind_VRS_Set(_Unwind_Context *context, _Unwind_VRS_RegClass regclass,
       if (representation != _UVRSD_UINT32 || regno > 3)
         return _UVRSR_FAILED;
       return __unw_set_reg(cursor, (unw_regnum_t)(UNW_ARM_WC0 + regno),
-                           *(unw_word_t *)valuep) == UNW_ESUCCESS
+                           *(unw_word_t *)valuep, pos) == UNW_ESUCCESS
                  ? _UVRSR_OK
                  : _UVRSR_FAILED;
     case _UVRSC_WMMXD:

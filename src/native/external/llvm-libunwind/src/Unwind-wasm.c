@@ -81,13 +81,14 @@ _Unwind_DeleteException(_Unwind_Exception *exception_object) {
 
 /// Called by personality handler to alter register values.
 _LIBUNWIND_EXPORT void _Unwind_SetGR(struct _Unwind_Context *context, int index,
-                                     uintptr_t value) {
+                                     uintptr_t value, uintptr_t *pos) {
   _LIBUNWIND_TRACE_API("_Unwind_SetGR(context=%p, index=%d, value=%lu)",
                        (void *)context, index, value);
   // We only use this function to set __wasm_lpad_context.selector field, which
   // is index 1 in the personality function.
   if (index == 1)
     ((struct _Unwind_LandingPadContext *)context)->selector = value;
+  (void)pos;
 }
 
 /// Called by personality handler to get instruction pointer.

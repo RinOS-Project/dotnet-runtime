@@ -79,7 +79,7 @@ void test_no_info() {
     abort();
 
   // Set the IP to an address clearly outside any function.
-  unw_set_reg(&cursor, UNW_REG_IP, (unw_word_t)0);
+  unw_set_reg(&cursor, UNW_REG_IP, (unw_word_t)0, nullptr);
 
   ret = unw_get_proc_info(&cursor, &info);
   if (ret != UNW_ENOINFO)
@@ -121,7 +121,7 @@ void test_reg_get_set() {
 
   for (int i = 0; i < 17; ++i) {
     const unw_word_t set_value = 7;
-    if (unw_set_reg(&cursor, i, set_value) != UNW_ESUCCESS)
+    if (unw_set_reg(&cursor, i, set_value, nullptr) != UNW_ESUCCESS)
       abort();
 
     unw_word_t get_value = 0;

@@ -751,7 +751,7 @@ dwarf_callback (struct dl_phdr_info *info, size_t size, void *ptr)
              .debug_frame, so we could do that here too.  */
           found = linear_search (unw_local_addr_space, ip,
                                  eh_frame_start, eh_frame_end, fde_count,
-                                 pi, need_unwind_info, NULL);
+                                 0, pi, need_unwind_info, NULL);
           if (found != 1)
             found = 0;
 	  else

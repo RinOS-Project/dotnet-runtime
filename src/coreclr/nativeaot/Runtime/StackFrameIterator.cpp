@@ -1685,6 +1685,27 @@ static_assert(sizeof(UniversalTransitionStackFrame) == 0xA8,
 
 typedef DPTR(UniversalTransitionStackFrame) PTR_UniversalTransitionStackFrame;
 
+// UniversalTransitionStackFrame is materialized from the current SP rather
+// than from a managed frame descriptor.  Validate every address that will be
+// dereferenced against the owning thread's registered stack reservation before
+// reading it.  This uses the NativeAOT Thread contract (the same reservation
+// used by conservative GC scanning) and does not invent a second RinOS stack
+// ABI.  Endpoint checks are sufficient because the reservation is contiguous;
+// the overflow check prevents a wrapped endpoint from passing the test.
+static bool IsUniversalTransitionStackRangeValid(
+    Thread* thread, uintptr_t address, size_t size)
+{
+    if (thread == NULL || address == 0 || size == 0 ||
+        size - 1 > UINTPTR_MAX - address)
+    {
+        return false;
+    }
+
+    uintptr_t end = address + size - 1;
+    return thread->IsWithinStackBounds((PTR_VOID)address) &&
+        thread->IsWithinStackBounds((PTR_VOID)end);
+}
+
 // NOTE: This function always publishes a non-NULL conservative stack range lower bound.
 //
 // NOTE: In x86 cases, the unwound callsite often uses a calling convention that expects some amount
@@ -1709,14 +1730,34 @@ void StackFrameIterator::UnwindUniversalTransitionThunk()
 
     // The current PC is within RhpUniversalTransition, so establish a view of the surrounding stack frame.
     // NOTE: In DAC builds, the pointer will refer to a newly constructed object in the DAC host.
+    FAILFAST_OR_DAC_FAIL(IsUniversalTransitionStackRangeValid(
+        m_pThread, m_RegDisplay.SP, sizeof(UniversalTransitionStackFrame)));
     UniversalTransitionStackFrame * stackFrame = (PTR_UniversalTransitionStackFrame)m_RegDisplay.SP;
+
+    PTR_uintptr_t addressOfPushedCallerIP = stackFrame->get_AddressOfPushedCallerIP();
+    PTR_uintptr_t callerSPAddress = stackFrame->get_CallerSP();
+    PTR_uintptr_t pLowerBound = stackFrame->get_LowerBoundForConservativeReporting();
+    const uintptr_t addressOfPushedCallerIPValue =
+        (uintptr_t)dac_cast<TADDR>(addressOfPushedCallerIP);
+    const uintptr_t callerSPAddressValue =
+        (uintptr_t)dac_cast<TADDR>(callerSPAddress);
+    const uintptr_t lowerBoundValue =
+        (uintptr_t)dac_cast<TADDR>(pLowerBound);
+
+    FAILFAST_OR_DAC_FAIL(IsUniversalTransitionStackRangeValid(
+        m_pThread, addressOfPushedCallerIPValue, sizeof(uintptr_t)));
+    FAILFAST_OR_DAC_FAIL(IsUniversalTransitionStackRangeValid(
+        m_pThread, callerSPAddressValue, sizeof(uintptr_t)));
+    FAILFAST_OR_DAC_FAIL(IsUniversalTransitionStackRangeValid(
+        m_pThread, lowerBoundValue, sizeof(uintptr_t)));
+    FAILFAST_OR_DAC_FAIL(callerSPAddressValue > m_RegDisplay.SP);
+    FAILFAST_OR_DAC_FAIL(lowerBoundValue < callerSPAddressValue);
 
     stackFrame->UnwindNonVolatileRegisters(&m_RegDisplay);
     stackFrame->UnwindVolatileArgRegisters(&m_RegDisplay);
 
-    PTR_uintptr_t addressOfPushedCallerIP = stackFrame->get_AddressOfPushedCallerIP();
     m_RegDisplay.SetIP(ReturnAddressToCanonicalPC(*addressOfPushedCallerIP));
-    m_RegDisplay.SetSP((uintptr_t)dac_cast<TADDR>(stackFrame->get_CallerSP()));
+    m_RegDisplay.SetSP(callerSPAddressValue);
     SetControlPC(dac_cast<PTR_VOID>(m_RegDisplay.GetIP()));
 #if defined(TARGET_AMD64) && defined(TARGET_WINDOWS)
     if (m_RegDisplay.SSP)
@@ -1728,7 +1769,6 @@ void StackFrameIterator::UnwindUniversalTransitionThunk()
     // All universal transition cases rely on conservative GC reporting being applied to the
     // full argument set that flowed into the call.  Report the lower bound of this range (the
     // caller will compute the upper bound).
-    PTR_uintptr_t pLowerBound = stackFrame->get_LowerBoundForConservativeReporting();
     ASSERT(pLowerBound != NULL);
     ASSERT(m_pConservativeStackRangeLowerBound == NULL);
     m_pConservativeStackRangeLowerBound = pLowerBound;

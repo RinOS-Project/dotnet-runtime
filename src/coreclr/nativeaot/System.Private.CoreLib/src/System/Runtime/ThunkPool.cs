@@ -728,7 +728,7 @@ namespace System.Runtime
             if (mapping == null || !mapping._releaseRetryQueued)
                 return;
 
-            ThunkMapping previous = null;
+            ThunkMapping? previous = null;
             ThunkMapping current = s_releaseRetryHead;
             while (current != null && !ReferenceEquals(current, mapping))
             {

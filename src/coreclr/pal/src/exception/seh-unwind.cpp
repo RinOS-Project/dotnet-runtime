@@ -279,39 +279,39 @@ static void WinContextToUnwindContext(CONTEXT *winContext, unw_context_t *unwCon
 static void WinContextToUnwindCursor(CONTEXT *winContext, unw_cursor_t *cursor)
 {
 #if (defined(HOST_UNIX) && defined(HOST_AMD64)) || (defined(HOST_WINDOWS) && defined(TARGET_AMD64))
-    unw_set_reg(cursor, UNW_REG_IP, winContext->Rip, nullptr);
-    unw_set_reg(cursor, UNW_REG_SP, winContext->Rsp, nullptr);
-    unw_set_reg(cursor, UNW_X86_64_RBP, winContext->Rbp, nullptr);
-    unw_set_reg(cursor, UNW_X86_64_RBX, winContext->Rbx, nullptr);
-    unw_set_reg(cursor, UNW_X86_64_R12, winContext->R12, nullptr);
-    unw_set_reg(cursor, UNW_X86_64_R13, winContext->R13, nullptr);
-    unw_set_reg(cursor, UNW_X86_64_R14, winContext->R14, nullptr);
-    unw_set_reg(cursor, UNW_X86_64_R15, winContext->R15, nullptr);
+    unw_set_reg(cursor, UNW_REG_IP, winContext->Rip);
+    unw_set_reg(cursor, UNW_REG_SP, winContext->Rsp);
+    unw_set_reg(cursor, UNW_X86_64_RBP, winContext->Rbp);
+    unw_set_reg(cursor, UNW_X86_64_RBX, winContext->Rbx);
+    unw_set_reg(cursor, UNW_X86_64_R12, winContext->R12);
+    unw_set_reg(cursor, UNW_X86_64_R13, winContext->R13);
+    unw_set_reg(cursor, UNW_X86_64_R14, winContext->R14);
+    unw_set_reg(cursor, UNW_X86_64_R15, winContext->R15);
 #elif (defined(HOST_UNIX) && defined(HOST_X86)) || (defined(HOST_WINDOWS) && defined(TARGET_X86))
-    unw_set_reg(cursor, UNW_REG_IP, winContext->Eip, nullptr);
-    unw_set_reg(cursor, UNW_REG_SP, winContext->Esp, nullptr);
-    unw_set_reg(cursor, UNW_X86_EBP, winContext->Ebp, nullptr);
-    unw_set_reg(cursor, UNW_X86_EBX, winContext->Ebx, nullptr);
-    unw_set_reg(cursor, UNW_X86_ESI, winContext->Esi, nullptr);
-    unw_set_reg(cursor, UNW_X86_EDI, winContext->Edi, nullptr);
+    unw_set_reg(cursor, UNW_REG_IP, winContext->Eip);
+    unw_set_reg(cursor, UNW_REG_SP, winContext->Esp);
+    unw_set_reg(cursor, UNW_X86_EBP, winContext->Ebp);
+    unw_set_reg(cursor, UNW_X86_EBX, winContext->Ebx);
+    unw_set_reg(cursor, UNW_X86_ESI, winContext->Esi);
+    unw_set_reg(cursor, UNW_X86_EDI, winContext->Edi);
 #elif defined(HOST_ARM64) && defined(__APPLE__)
     // unw_cursor_t is an opaque data structure on macOS
     // As noted in WinContextToUnwindContext this didn't work for Linux
     // TBD whether this will work for macOS.
-    unw_set_reg(cursor, UNW_REG_IP, winContext->Pc, nullptr);
-    unw_set_reg(cursor, UNW_REG_SP, winContext->Sp, nullptr);
-    unw_set_reg(cursor, UNW_AARCH64_X29, winContext->Fp, nullptr);
-    unw_set_reg(cursor, UNW_AARCH64_X30, winContext->Lr, nullptr);
-    unw_set_reg(cursor, UNW_AARCH64_X19, winContext->X19, nullptr);
-    unw_set_reg(cursor, UNW_AARCH64_X20, winContext->X20, nullptr);
-    unw_set_reg(cursor, UNW_AARCH64_X21, winContext->X21, nullptr);
-    unw_set_reg(cursor, UNW_AARCH64_X22, winContext->X22, nullptr);
-    unw_set_reg(cursor, UNW_AARCH64_X23, winContext->X23, nullptr);
-    unw_set_reg(cursor, UNW_AARCH64_X24, winContext->X24, nullptr);
-    unw_set_reg(cursor, UNW_AARCH64_X25, winContext->X25, nullptr);
-    unw_set_reg(cursor, UNW_AARCH64_X26, winContext->X26, nullptr);
-    unw_set_reg(cursor, UNW_AARCH64_X27, winContext->X27, nullptr);
-    unw_set_reg(cursor, UNW_AARCH64_X28, winContext->X28, nullptr);
+    unw_set_reg(cursor, UNW_REG_IP, winContext->Pc);
+    unw_set_reg(cursor, UNW_REG_SP, winContext->Sp);
+    unw_set_reg(cursor, UNW_AARCH64_X29, winContext->Fp);
+    unw_set_reg(cursor, UNW_AARCH64_X30, winContext->Lr);
+    unw_set_reg(cursor, UNW_AARCH64_X19, winContext->X19);
+    unw_set_reg(cursor, UNW_AARCH64_X20, winContext->X20);
+    unw_set_reg(cursor, UNW_AARCH64_X21, winContext->X21);
+    unw_set_reg(cursor, UNW_AARCH64_X22, winContext->X22);
+    unw_set_reg(cursor, UNW_AARCH64_X23, winContext->X23);
+    unw_set_reg(cursor, UNW_AARCH64_X24, winContext->X24);
+    unw_set_reg(cursor, UNW_AARCH64_X25, winContext->X25);
+    unw_set_reg(cursor, UNW_AARCH64_X26, winContext->X26);
+    unw_set_reg(cursor, UNW_AARCH64_X27, winContext->X27);
+    unw_set_reg(cursor, UNW_AARCH64_X28, winContext->X28);
     unw_set_fpreg(cursor, UNW_AARCH64_V8, *(unw_fpreg_t *)&winContext->V[8].Low);
     unw_set_fpreg(cursor, UNW_AARCH64_V9, *(unw_fpreg_t *)&winContext->V[9].Low);
     unw_set_fpreg(cursor, UNW_AARCH64_V10, *(unw_fpreg_t *)&winContext->V[10].Low);

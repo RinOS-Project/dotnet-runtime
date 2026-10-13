@@ -72,7 +72,16 @@ set(libunwind_la_SOURCES_os_solaris_local
 # Nothing
 )
 
-if(CLR_CMAKE_TARGET_LINUX)
+if(CLR_CROSS_COMPONENTS_BUILD AND CLR_CMAKE_TARGET_RINOS AND CLR_CMAKE_HOST_LINUX)
+    # Cross-component JIT binaries are executed by the Linux build host even
+    # while the primary CoreCLR target is RinOS. Build this shared libunwind
+    # object set with Linux's process-image lookup so crossgen can inspect the
+    # host process ELF image.
+    set(libunwind_la_SOURCES_os                 ${libunwind_la_SOURCES_os_linux})
+    set(libunwind_la_SOURCES_os_local           ${libunwind_la_SOURCES_os_linux_local})
+    set(libunwind_la_SOURCES_x86_64_os          x86_64/Gos-linux.c)
+    set(libunwind_la_SOURCES_x86_64_os_local    x86_64/Los-linux.c)
+elseif(CLR_CMAKE_TARGET_LINUX)
     set(libunwind_la_SOURCES_os                 ${libunwind_la_SOURCES_os_linux})
     set(libunwind_la_SOURCES_os_local           ${libunwind_la_SOURCES_os_linux_local})
     set(libunwind_la_SOURCES_x86_os             x86/Gos-linux.c)

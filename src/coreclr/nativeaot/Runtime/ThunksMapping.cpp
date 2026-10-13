@@ -653,9 +653,39 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
     }
     thunkDataMappingSize *= (size_t)thunkBlockSize;
 
+    size_t thunkDataMappingCount =
+        (size_t)(blockCount / thunkBlocksPerMapping);
+    if (thunkDataMappingCount == 0 ||
+        thunkDataMappingSize > SIZE_MAX / thunkDataMappingCount)
+    {
+        return E_FAIL;
+    }
+    size_t thunkDataSize = thunkDataMappingSize * thunkDataMappingCount;
+
     void* pThunkDataBlock = RhpGetThunkDataBlockAddress(pThunksSection);
     if (pThunkDataBlock == NULL ||
         RhpGetThunkStubsBlockAddress(pThunkDataBlock) != pThunksSection)
+    {
+        return E_INVALIDARG;
+    }
+
+    // The address helpers only describe the fixed-pool layout; they do not
+    // prove that the caller supplied a block from this process's reservation.
+    // Validate the derived data page against the exact reserved range before
+    // passing it to VirtualFree.  This prevents a foreign, page-aligned pair
+    // that happens to satisfy the reversible helper relation from becoming a
+    // decommit request against unrelated memory.
+    if (g_pThunkStubData == 0 || thunkDataSize == 0)
+    {
+        return E_INVALIDARG;
+    }
+
+    const uintptr_t poolBegin = g_pThunkStubData;
+    const uintptr_t dataBegin = (uintptr_t)pThunkDataBlock;
+    if (dataBegin < poolBegin ||
+        dataBegin - poolBegin >= thunkDataSize ||
+        (dataBegin - poolBegin) % thunkDataMappingSize != 0 ||
+        thunkDataMappingSize > thunkDataSize - (dataBegin - poolBegin))
     {
         return E_INVALIDARG;
     }

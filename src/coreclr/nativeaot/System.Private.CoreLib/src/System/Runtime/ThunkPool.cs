@@ -152,6 +152,11 @@ namespace System.Runtime
         private nuint _freeThunkCount;
         private nuint _allocatedThunkCount;
         private bool _destroyed;
+        // A failed native mapping release leaves the native owner registered so
+        // DestroyThunksHeap can retry it.  Keep the heap unusable while that
+        // retry is pending; the thunk data has already been scrubbed.
+        private bool _releasePending;
+        private bool _destroying;
 
         private AllocatedBlock _allocatedBlocks;
 
@@ -242,25 +247,25 @@ namespace System.Runtime
             AllocatedBlock blocksToRelease;
             lock (this)
             {
-                if (_destroyed || _allocatedThunkCount != _freeThunkCount)
+                if (_destroyed || _destroying ||
+                    (!_releasePending && _allocatedThunkCount != _freeThunkCount))
                     return false;
 
                 blocksToRelease = _allocatedBlocks;
-                for (AllocatedBlock block = blocksToRelease;
-                     block != null;
-                     block = block._nextBlock)
+                if (!_releasePending)
                 {
-                    // A failed native release must not leave callable thunks
-                    // carrying the old context/target pointers.
-                    ClearThunkData(block._dataBlockAddress);
-                }
+                    for (AllocatedBlock block = blocksToRelease;
+                         block != null;
+                         block = block._nextBlock)
+                    {
+                        // A failed native release must not leave callable thunks
+                        // carrying the old context/target pointers.
+                        ClearThunkData(block._dataBlockAddress);
+                    }
 
-                _destroyed = true;
-                _commonStubAddress = IntPtr.Zero;
-                _nextAvailableThunkPtr = IntPtr.Zero;
-                _freeThunkCount = 0;
-                _allocatedThunkCount = 0;
-                _allocatedBlocks = null;
+                    _releasePending = true;
+                }
+                _destroying = true;
             }
 
             bool released = true;
@@ -271,7 +276,21 @@ namespace System.Runtime
                 released = ThunkBlocks.ReleaseBlock(block._mapping) && released;
             }
 
-            return released;
+            lock (this)
+            {
+                _destroying = false;
+                if (!released)
+                    return false;
+
+                _destroyed = true;
+                _releasePending = false;
+                _commonStubAddress = IntPtr.Zero;
+                _nextAvailableThunkPtr = IntPtr.Zero;
+                _freeThunkCount = 0;
+                _allocatedThunkCount = 0;
+                _allocatedBlocks = null;
+                return true;
+            }
         }
 
         private static unsafe void ClearThunkData(IntPtr dataBlockAddress)
@@ -357,7 +376,7 @@ namespace System.Runtime
             IntPtr thunkAddress;
             lock (this)
             {
-                if (_destroyed)
+                if (_destroyed || _releasePending || _destroying)
                     throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
 
                 if (_nextAvailableThunkPtr == IntPtr.Zero ||
@@ -413,7 +432,7 @@ namespace System.Runtime
 
             lock (this)
             {
-                if (_destroyed)
+                if (_destroyed || _releasePending || _destroying)
                     return;
 
                 // Keep address derivation and ownership validation under the
@@ -619,7 +638,7 @@ namespace System.Runtime
 
             lock (this)
             {
-                if (_destroyed)
+                if (_destroyed || _releasePending || _destroying)
                     return false;
 
                 // Derive and validate the data address while holding the heap
@@ -650,7 +669,7 @@ namespace System.Runtime
         {
             lock (this)
             {
-                if (_destroyed)
+                if (_destroyed || _releasePending || _destroying)
                     throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
 
                 // Keep address derivation, ownership validation, and the write
@@ -701,12 +720,15 @@ namespace System.Runtime
         {
             if (mapping == null)
                 return false;
-            if (mapping._releaseAttempted)
-                return mapping._releaseSucceeded;
+            if (mapping._releaseSucceeded)
+                return true;
 
-            mapping._releaseAttempted = true;
             mapping._releaseSucceeded = RuntimeImports.RhFreeThunksMapping(
                 mapping._mappingBaseAddress) == HResults.S_OK;
+            // Keep the attempt marker for diagnostics, but deliberately do not
+            // make a failed attempt terminal.  The native owner registry keeps
+            // the mapping live on failure and expects a later retry.
+            mapping._releaseAttempted = true;
             return mapping._releaseSucceeded;
         }
 
@@ -714,12 +736,18 @@ namespace System.Runtime
         {
             using Lock.Scope scope = s_lock.EnterScope();
 
-            if (mapping == null || mapping._outstandingBlockCount <= 0)
+            if (mapping == null)
                 return false;
 
-            --mapping._outstandingBlockCount;
-            if (mapping._outstandingBlockCount != 0)
+            if (mapping._releaseSucceeded)
                 return true;
+
+            if (mapping._outstandingBlockCount > 0)
+            {
+                --mapping._outstandingBlockCount;
+                if (mapping._outstandingBlockCount != 0)
+                    return true;
+            }
 
             // The current cache may still contain blocks that have never been
             // leased.  Once no heap owns this mapping, discard those cached

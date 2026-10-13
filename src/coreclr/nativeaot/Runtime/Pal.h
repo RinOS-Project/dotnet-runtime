@@ -229,6 +229,11 @@ inline uint8_t * PalNtCurrentTeb()
 #endif // _WIN32
 
 _Ret_maybenull_ _Post_writable_byte_size_(size) void* PalVirtualAlloc(uintptr_t size, uint32_t protect);
+// The historical PAL free entry point is void-returning. Keep it for callers
+// that cannot recover from release failure, but expose the checked form to
+// resource owners that must not report a mapping as reclaimed when the OS
+// rejected the release.
+UInt32_BOOL PalVirtualFreeChecked(_In_ void* pAddress, uintptr_t size);
 void PalVirtualFree(_In_ void* pAddress, uintptr_t size);
 UInt32_BOOL PalVirtualProtect(_In_ void* pAddress, uintptr_t size, uint32_t protect);
 void PalFlushInstructionCache(_In_ void* pAddress, size_t size);

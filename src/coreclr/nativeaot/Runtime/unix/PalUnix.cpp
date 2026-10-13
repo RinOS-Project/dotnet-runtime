@@ -787,8 +787,7 @@ UInt32_BOOL PalFreeThunksFromTemplate(void *pBaseAddress, size_t templateSize)
     // Keep template-thunk release on the RinOS PAL boundary as well as
     // allocation/publication.  A direct munmap would bypass the target's
     // user-VA validation and the runtime memory-accounting contract.
-    PalVirtualFree(pBaseAddress, templateSize * 2);
-    return UInt32_TRUE;
+    return PalVirtualFreeChecked(pBaseAddress, templateSize * 2);
 #else
     return munmap(pBaseAddress, templateSize * 2) == 0
                ? UInt32_TRUE
@@ -1255,31 +1254,38 @@ _Ret_maybenull_ _Post_writable_byte_size_(size) void* PalVirtualAlloc(size_t siz
     return pMappedMemory;
 }
 
-void PalVirtualFree(_In_ void* pAddress, size_t size)
+UInt32_BOOL PalVirtualFreeChecked(_In_ void* pAddress, size_t size)
 {
 #if defined(TARGET_RINOS)
-    // The Unix PAL exposes a void-returning release API, so an invalid range
-    // must be rejected before reaching munmap rather than reported after the
-    // kernel has attempted a platform-dependent partial operation. Keep the
-    // same user-VA and overflow contract as PalVirtualAlloc/PalVirtualProtect.
-    if (pAddress == nullptr || size == 0)
+    // An invalid range must be rejected before reaching munmap rather than
+    // reported after the kernel has attempted a platform-dependent partial
+    // operation. Keep the same page, user-VA, and overflow contract as
+    // PalVirtualAlloc/PalVirtualProtect.
+    if (pAddress == nullptr || size == 0 || OS_PAGE_SIZE == 0 ||
+        ((uintptr_t)pAddress % (uintptr_t)OS_PAGE_SIZE) != 0 ||
+        (size % (size_t)OS_PAGE_SIZE) != 0)
     {
-        return;
+        return UInt32_FALSE;
     }
 
     const uintptr_t address = (uintptr_t)pAddress;
     if (address > UINTPTR_MAX - (uintptr_t)size)
     {
-        return;
+        return UInt32_FALSE;
     }
 
     const uintptr_t end = address + (uintptr_t)size;
     if (!RinOSUserRangeValid(address, end))
     {
-        return;
+        return UInt32_FALSE;
     }
 #endif
-    munmap(pAddress, size);
+    return munmap(pAddress, size) == 0 ? UInt32_TRUE : UInt32_FALSE;
+}
+
+void PalVirtualFree(_In_ void* pAddress, size_t size)
+{
+    (void)PalVirtualFreeChecked(pAddress, size);
 }
 
 UInt32_BOOL PalVirtualProtect(_In_ void* pAddress, size_t size, uint32_t protect)

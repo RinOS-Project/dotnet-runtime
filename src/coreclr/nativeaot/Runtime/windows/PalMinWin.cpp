@@ -995,9 +995,15 @@ _Ret_maybenull_ _Post_writable_byte_size_(size) void* PalVirtualAlloc(uintptr_t 
     return VirtualAlloc(NULL, size, MEM_RESERVE | MEM_COMMIT, protect);
 }
 
+UInt32_BOOL PalVirtualFreeChecked(_In_ void* pAddress, uintptr_t size)
+{
+    UNREFERENCED_PARAMETER(size);
+    return VirtualFree(pAddress, 0, MEM_RELEASE);
+}
+
 void PalVirtualFree(_In_ void* pAddress, uintptr_t size)
 {
-    VirtualFree(pAddress, 0, MEM_RELEASE);
+    (void)PalVirtualFreeChecked(pAddress, size);
 }
 
 UInt32_BOOL PalVirtualProtect(_In_ void* pAddress, uintptr_t size, uint32_t protect)

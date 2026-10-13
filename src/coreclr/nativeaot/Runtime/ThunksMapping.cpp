@@ -858,6 +858,12 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
         return E_INVALIDARG;
     }
 
+    // The reservation owner and its allocation bitmap are process-wide state.
+    // Hold the same lock used by allocation before validating or dereferencing
+    // either one; otherwise a concurrent allocator can publish the reservation
+    // or bitmap between these checks and the decommit below.
+    LockFixedPoolThunkMappings();
+
     // The address helpers only describe the fixed-pool layout; they do not
     // prove that the caller supplied a block from this process's reservation.
     // Validate the derived data page against the exact reserved range before
@@ -867,6 +873,7 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
     if (g_pThunkStubData == 0 || g_thunkStubDataSize == 0 ||
         g_thunkStubDataSize != thunkDataSize)
     {
+        UnlockFixedPoolThunkMappings();
         return E_INVALIDARG;
     }
 
@@ -877,6 +884,7 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
         (dataBegin - poolBegin) % thunkDataMappingSize != 0 ||
         thunkDataMappingSize > g_thunkStubDataSize - (dataBegin - poolBegin))
     {
+        UnlockFixedPoolThunkMappings();
         return E_INVALIDARG;
     }
 
@@ -885,10 +893,10 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
     if (g_thunkDataMappingInUse == NULL ||
         mappingIndex >= g_thunkDataMappingCount)
     {
+        UnlockFixedPoolThunkMappings();
         return E_INVALIDARG;
     }
 
-    LockFixedPoolThunkMappings();
     if (g_thunkDataMappingInUse[mappingIndex] == 0)
     {
         UnlockFixedPoolThunkMappings();

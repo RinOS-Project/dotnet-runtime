@@ -70,6 +70,24 @@ tdep_reuse_frame(struct dwarf_cursor *dw, int frame)
 }
 #endif
 
+int
+tdep_get_elf_image(struct elf_image *ei, pid_t pid, unw_word_t ip,
+                   unsigned long *segbase, unsigned long *mapoff,
+                   char *path, size_t pathlen)
+{
+  /* RinOS does not expose process memory maps to libunwind. The generic ELF
+   * helpers are shared with other targets, so provide the platform hook and
+   * report that process-image lookup is unavailable. */
+  (void)ei;
+  (void)pid;
+  (void)ip;
+  (void)segbase;
+  (void)mapoff;
+  (void)path;
+  (void)pathlen;
+  return -UNW_ENOINFO;
+}
+
 #ifndef UNW_REMOTE_ONLY
 void
 tdep_get_exe_image_path(char *path)

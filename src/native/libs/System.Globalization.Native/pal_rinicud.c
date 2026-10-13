@@ -2803,7 +2803,9 @@ typedef struct RinTimeZoneIdMapping
     const char* region;
 } RinTimeZoneIdMapping;
 
-static const RinTimeZoneIdMapping g_time_zone_id_mappings[] = {
+#if 0
+/* Superseded by the hash-pinned CLDR 48.2 generated map below. */
+static const RinTimeZoneIdMapping g_time_zone_id_legacy_mappings[] = {
     { "Eastern Standard Time", "America/New_York", "US" },
     { "Eastern Standard Time", "America/Toronto", "CA" },
     { "Central Standard Time", "America/Chicago", "US" },
@@ -2866,6 +2868,9 @@ static const RinTimeZoneIdMapping g_time_zone_id_mappings[] = {
     { "UTC", "Etc/GMT", "001" },
     { "UTC", "GMT", "001" },
 };
+#endif
+
+#include "generated_windows_zone_map.h"
 
 enum {
     RIN_IDNA_MAX_NAME = 4096,

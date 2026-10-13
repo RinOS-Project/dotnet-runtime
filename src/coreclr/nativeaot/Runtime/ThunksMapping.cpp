@@ -754,7 +754,15 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         g_thunkDataMappingInUse = new (std::nothrow) uint8_t[thunkDataMappingCount]();
         if (g_thunkDataMappingInUse == NULL)
         {
-            VirtualFree((void*)g_pThunkStubData, 0, MEM_RELEASE);
+            if (!VirtualFree((void*)g_pThunkStubData, 0, MEM_RELEASE))
+            {
+                // Keep the reservation owner published when release itself
+                // fails.  A later call must fail closed on the incomplete
+                // metadata state rather than reserving another pool and
+                // leaking this address range.
+                UnlockFixedPoolThunkMappings();
+                return E_FAIL;
+            }
             g_pThunkStubData = NULL;
             g_thunkStubDataSize = 0;
             UnlockFixedPoolThunkMappings();

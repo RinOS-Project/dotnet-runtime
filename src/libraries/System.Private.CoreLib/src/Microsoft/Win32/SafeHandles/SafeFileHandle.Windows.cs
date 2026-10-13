@@ -109,7 +109,35 @@ namespace Microsoft.Win32.SafeHandles
 
                     tempReadHandle._fileOptions = asyncRead ? FileOptions.Asynchronous : FileOptions.None;
                     FileOptions writeOptions = asyncWrite ? FileOptions.Asynchronous : FileOptions.None;
-                    tempWriteHandle = Open(pipeName, FileMode.Open, FileAccess.Write, FileShare.Read, writeOptions, preallocationSize: 0);
+                    try
+                    {
+                        tempWriteHandle = Open(pipeName, FileMode.Open, FileAccess.Write, FileShare.Read, writeOptions, preallocationSize: 0);
+                    }
+                    catch (UnauthorizedAccessException) when (pipeName.StartsWith(@"\\.\pipe\LOCAL\", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // The server can be created in LOCAL while the restricted token is
+                        // still denied when it opens the client end. Retry the complete pair
+                        // outside LOCAL, preserving the same AppContainer-first policy.
+                        tempReadHandle.Dispose();
+                        pipeName = $@"\\.\pipe\dotnet_{Guid.NewGuid():N}";
+                        tempReadHandle = Interop.Kernel32.CreateNamedPipeFileHandle(
+                            pipeName,
+                            openMode,
+                            pipeMode,
+                            maxInstances: 1,
+                            outBufferSize: 0,
+                            inBufferSize: 4 * 4096,
+                            defaultTimeout: (int)TimeSpan.FromSeconds(120).TotalMilliseconds,
+                            ref securityAttributes);
+
+                        if (tempReadHandle.IsInvalid)
+                        {
+                            throw new Win32Exception();
+                        }
+
+                        tempReadHandle._fileOptions = asyncRead ? FileOptions.Asynchronous : FileOptions.None;
+                        tempWriteHandle = Open(pipeName, FileMode.Open, FileAccess.Write, FileShare.Read, writeOptions, preallocationSize: 0);
+                    }
                 }
                 catch
                 {

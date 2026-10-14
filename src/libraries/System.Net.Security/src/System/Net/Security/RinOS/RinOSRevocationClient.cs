@@ -490,7 +490,7 @@ namespace System.Net.Security
                     new CancellationTokenSource(timeoutMilliseconds);
                 socket.ConnectAsync(
                     new UnixDomainSocketEndPoint(WorkerdSocketPath),
-                    operationCancellation.Token).GetAwaiter().GetResult();
+                    operationCancellation.Token).AsTask().GetAwaiter().GetResult();
                 SendAll(socket, message, operationCancellation.Token);
 
                 byte[] header = new byte[32];
@@ -590,7 +590,7 @@ namespace System.Net.Security
             {
                 int sent = socket.SendAsync(
                     buffer.AsMemory(offset), SocketFlags.None,
-                    cancellationToken).GetAwaiter().GetResult();
+                    cancellationToken).AsTask().GetAwaiter().GetResult();
                 if (sent <= 0)
                 {
                     throw new IOException("workerd closed the revocation request.");
@@ -608,7 +608,7 @@ namespace System.Net.Security
             {
                 int received = socket.ReceiveAsync(
                     buffer.AsMemory(offset), SocketFlags.None,
-                    cancellationToken).GetAwaiter().GetResult();
+                    cancellationToken).AsTask().GetAwaiter().GetResult();
                 if (received <= 0)
                 {
                     throw new IOException("workerd truncated the revocation response.");

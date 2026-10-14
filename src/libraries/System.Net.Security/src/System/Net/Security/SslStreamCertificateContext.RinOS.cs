@@ -20,6 +20,7 @@ namespace System.Net.Security
             Trust = trust;
         }
 
+#pragma warning disable CA1822 // These implementations must match shared instance partial methods.
         partial void AddRootCertificate(X509Certificate2? rootCertificate,
                                         ref bool transferredOwnership)
         {
@@ -33,5 +34,6 @@ namespace System.Net.Security
         partial void ReleasePlatformSpecificResources()
         {
         }
+#pragma warning restore CA1822
     }
 }

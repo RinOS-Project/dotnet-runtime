@@ -127,7 +127,7 @@ namespace System.Net
                 AddPeerCertificateChain(handle, der, chain);
             }
 
-            return new X509Certificate2(der);
+            return X509CertificateLoader.LoadCertificate(der);
         }
 
         private static void AddPeerCertificateChain(
@@ -178,8 +178,8 @@ namespace System.Net
                 }
 
                 int certificateSize = checked((int)certificateLength);
-                X509Certificate2 certificate = new X509Certificate2(
-                    encoded.AsSpan(offset, certificateSize).ToArray());
+                X509Certificate2 certificate = X509CertificateLoader.LoadCertificate(
+                    encoded.AsSpan(offset, certificateSize));
                 offset += certificateSize;
 
                 if (index == 0u)

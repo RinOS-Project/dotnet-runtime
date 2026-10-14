@@ -402,7 +402,7 @@ namespace System.Net
 
                     // Keep the caller-owned token separate from the internal
                     // transcript so Dispose can zeroize the latter safely.
-                    outgoingBlob = _negotiateMessage.ToArray();
+                    outgoingBlob = _negotiateMessage.AsSpan().ToArray();
                     statusCode = NegotiateAuthenticationStatusCode.ContinueNeeded;
                 }
                 else
@@ -524,7 +524,7 @@ namespace System.Net
                 _negotiateMessage = blob.ToArray();
                 // The challenge is returned to the caller, so retain a
                 // private transcript copy that can be zeroized on Dispose.
-                _challengeMessage = challengeBytes.ToArray();
+                _challengeMessage = challengeBytes.AsSpan().ToArray();
                 _serverChallenge = challengeBytes.AsSpan(24, ChallengeLength).ToArray();
                 statusCode = NegotiateAuthenticationStatusCode.ContinueNeeded;
                 return challengeBytes;
@@ -532,7 +532,8 @@ namespace System.Net
 
             private unsafe byte[]? ProcessAuthenticate(ReadOnlySpan<byte> blob, out NegotiateAuthenticationStatusCode statusCode)
             {
-                if (_serverChallenge is null || _challengeMessage is null || blob.Length < sizeof(AuthenticateMessage) ||
+                if (_serverChallenge is null || _challengeMessage is null ||
+                    _negotiateMessage is null || blob.Length < sizeof(AuthenticateMessage) ||
                     !NtlmHeader.SequenceEqual(blob.Slice(0, NtlmHeader.Length)))
                 {
                     statusCode = NegotiateAuthenticationStatusCode.InvalidToken;

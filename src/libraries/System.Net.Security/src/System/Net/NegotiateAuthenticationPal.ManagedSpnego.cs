@@ -317,7 +317,7 @@ namespace System.Net
             {
                 string? selectedMechanism = null;
                 byte[]? mechanismToken = null;
-                byte[]? mechanismList = null;
+                byte[] mechanismList;
 
                 try
                 {

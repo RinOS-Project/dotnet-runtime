@@ -293,8 +293,10 @@ static uint32_t rinos_gss_map_kerberos_supplementary(
  * the values that have an unambiguous GSS representation.  Values such as
  * KDC_ERR_S_PRINCIPAL_UNKNOWN remain GSS_S_FAILURE: the managed PAL uses the
  * preserved minor value to report TargetUnknown, while GSS has no distinct
- * target-unknown major status.  Unknown values remain failure rather than
- * being guessed into a credential or success state.
+ * target-unknown major status.  The explicit table below covers the RFC 4120
+ * error table plus the PKINIT/FAST/IAKERB extensions already accepted by the
+ * provider's status-name formatter.  Unknown values remain failure rather
+ * than being guessed into a credential or success state.
  *
  * MIT krb5 treats an expired service ticket returned during initiator
  * establishment as an expired credential (see its init_sec_context path).
@@ -317,12 +319,28 @@ static uint32_t rinos_gss_map_kerberos_major(
     {
         case 1u:  /* KDC_ERR_NAME_EXP */
         case 23u: /* KDC_ERR_KEY_EXP */
+        case 90u: /* KDC_ERR_PREAUTH_EXPIRED */
             return PAL_GSS_S_CREDENTIALS_EXPIRED;
+        case 2u:  /* KDC_ERR_SERVICE_EXP */
+        case 7u:  /* KDC_ERR_S_PRINCIPAL_UNKNOWN */
+        case 8u:  /* KDC_ERR_PRINCIPAL_NOT_UNIQUE */
+        case 22u: /* KDC_ERR_SERVICE_NOTYET */
+        case 26u: /* KDC_ERR_SERVER_NOMATCH */
+        case 35u: /* KRB_AP_ERR_NOT_US */
+        case 68u: /* KDC_ERR_WRONG_REALM */
+        case 76u: /* KDC_ERR_KDC_NAME_MISMATCH */
+            /* GSSAPI has no target-unknown major value.  Preserve the
+             * protocol error in minorStatus for the managed PAL. */
+            return PAL_GSS_S_FAILURE;
         case 6u:  /* KDC_ERR_C_PRINCIPAL_UNKNOWN */
+        case 67u: /* KRB_AP_ERR_NO_TGT */
             return PAL_GSS_S_NO_CRED;
+        case 4u:  /* KDC_ERR_C_OLD_MAST_KVNO */
+        case 5u:  /* KDC_ERR_S_OLD_MAST_KVNO */
         case 3u:  /* KDC_ERR_BAD_PVNO */
         case 25u: /* KDC_ERR_PREAUTH_REQUIRED: provider did not turn the
                    * pre-auth challenge into a continuation token. */
+        case 13u: /* KDC_ERR_BADOPTION */
         case 14u: /* KDC_ERR_ETYPE_NOSUPP */
         case 15u: /* KDC_ERR_SUMTYPE_NOSUPP */
         case 16u: /* KDC_ERR_PADATA_TYPE_NOSUPP */
@@ -330,8 +348,46 @@ static uint32_t rinos_gss_map_kerberos_major(
         case 65u: /* KDC_ERR_DH_KEY_PARAMETERS_NOT_ACCEPTED */
         case 39u: /* KRB_AP_ERR_BADVERSION */
         case 48u: /* KRB_AP_ERR_METHOD */
+        case 51u: /* KRB_AP_PATH_NOT_ACCEPTED */
+        case 52u: /* KRB_ERR_RESPONSE_TOO_BIG */
         case 69u: /* KRB_AP_ERR_USER_TO_USER_REQUIRED */
+        case 27u: /* KDC_ERR_MUST_USE_USER2USER */
+        case 28u: /* KDC_ERR_PATH_NOT_ACCEPTED */
+        case 29u: /* KDC_ERR_SVC_UNAVAILABLE */
+        case 45u: /* KRB_AP_ERR_NOKEY */
+        case 73u: /* KDC_ERR_REVOCATION_STATUS_UNKNOWN */
+        case 74u: /* KDC_ERR_REVOCATION_STATUS_UNAVAILABLE */
+        case 81u: /* KDC_ERR_PUBLIC_KEY_ENCRYPTION_NOT_SUPPORTED */
+        case 85u: /* KRB_AP_ERR_IAKERB_KDC_NOT_FOUND */
+        case 86u: /* KRB_AP_ERR_IAKERB_KDC_NO_RESPONSE */
+        case 91u: /* KDC_ERR_MORE_PREAUTH_DATA_REQUIRED */
+        case 93u: /* KDC_ERR_UNKNOWN_CRITICAL_FAST_OPTIONS */
+        case 100u: /* KDC_ERR_NO_ACCEPTABLE_KDF */
             return PAL_GSS_S_UNAVAILABLE;
+        case 9u:  /* KDC_ERR_NULL_KEY */
+        case 10u: /* KDC_ERR_CANNOT_POSTDATE */
+        case 11u: /* KDC_ERR_NEVER_VALID */
+        case 18u: /* KDC_ERR_CLIENT_REVOKED */
+        case 19u: /* KDC_ERR_SERVICE_REVOKED */
+        case 20u: /* KDC_ERR_TGT_REVOKED */
+        case 21u: /* KDC_ERR_CLIENT_NOTYET */
+        case 24u: /* KDC_ERR_PREAUTH_FAILED */
+        case 33u: /* KRB_AP_ERR_TKT_NYV */
+        case 36u: /* KRB_AP_ERR_BADMATCH */
+        case 38u: /* KRB_AP_ERR_BADADDR */
+        case 43u: /* KRB_AP_ERR_ILL_CR_TKT */
+        case 44u: /* KRB_AP_ERR_BADKEYVER */
+        case 62u: /* KDC_ERR_CLIENT_NOT_TRUSTED */
+        case 63u: /* KDC_ERR_KDC_NOT_TRUSTED */
+        case 66u: /* KDC_ERR_CERTIFICATE_MISMATCH */
+        case 70u: /* KDC_ERR_CANT_VERIFY_CERTIFICATE */
+        case 71u: /* KDC_ERR_INVALID_CERTIFICATE */
+        case 72u: /* KDC_ERR_REVOKED_CERTIFICATE */
+        case 75u: /* KDC_ERR_CLIENT_NAME_MISMATCH */
+        case 77u: /* KDC_ERR_INCONSISTENT_KEY_PURPOSE */
+        case 78u: /* KDC_ERR_DIGEST_IN_CERT_NOT_ACCEPTED */
+        case 80u: /* KDC_ERR_DIGEST_IN_SIGNED_DATA_NOT_ACCEPTED */
+            return PAL_GSS_S_DEFECTIVE_CREDENTIAL;
         case 40u: /* KRB_AP_ERR_MSG_TYPE */
             /* RFC 4120 defines this as an invalid top-level message type.
              * Preserve the mechanism minor while exposing the standard GSS
@@ -343,40 +399,24 @@ static uint32_t rinos_gss_map_kerberos_major(
              * distinguish the remediation (clock synchronization) while
              * returning the same GSS major classification as .NET. */
             return PAL_GSS_S_DEFECTIVE_TOKEN;
-        case 18u: /* KDC_ERR_CLIENT_REVOKED */
-        case 19u: /* KDC_ERR_SERVICE_REVOKED */
-        case 20u: /* KDC_ERR_TGT_REVOKED */
-        case 21u: /* KDC_ERR_CLIENT_NOTYET */
-        case 24u: /* KDC_ERR_PREAUTH_FAILED */
-        case 43u: /* KRB_AP_ERR_ILL_CR_TKT */
-        case 44u: /* KRB_AP_ERR_BADKEYVER */
-        case 33u: /* KRB_AP_ERR_TKT_NYV */
-        case 36u: /* KRB_AP_ERR_BADMATCH */
-        case 38u: /* KRB_AP_ERR_BADADDR */
-            return PAL_GSS_S_DEFECTIVE_CREDENTIAL;
         case 31u: /* KRB_AP_ERR_BAD_INTEGRITY */
         case 41u: /* KRB_AP_ERR_MODIFIED */
         case 50u: /* KRB_AP_ERR_INAPP_CKSUM */
+        case 64u: /* KDC_ERR_INVALID_SIG */
             return PAL_GSS_S_BAD_SIG;
         case 32u: /* KRB_AP_ERR_TKT_EXPIRED */
             return initiator_context != 0
                 ? PAL_GSS_S_CREDENTIALS_EXPIRED
                 : PAL_GSS_S_FAILURE;
-        case 67u: /* KRB_AP_ERR_NO_TGT */
-            return PAL_GSS_S_NO_CRED;
-        case 90u: /* KDC_ERR_PREAUTH_EXPIRED */
-            return PAL_GSS_S_CREDENTIALS_EXPIRED;
-        case 27u: /* KDC_ERR_MUST_USE_USER2USER */
-        case 28u: /* KDC_ERR_PATH_NOT_ACCEPTED */
-        case 29u: /* KDC_ERR_SVC_UNAVAILABLE */
-        case 45u: /* KRB_AP_ERR_NOKEY */
-        case 52u: /* KRB_ERR_RESPONSE_TOO_BIG */
-        case 85u: /* KRB_AP_ERR_IAKERB_KDC_NOT_FOUND */
-        case 86u: /* KRB_AP_ERR_IAKERB_KDC_NO_RESPONSE */
-        case 91u: /* KDC_ERR_MORE_PREAUTH_DATA_REQUIRED */
-        case 93u: /* KDC_ERR_UNKNOWN_CRITICAL_FAST_OPTIONS */
-        case 100u: /* KDC_ERR_NO_ACCEPTABLE_KDF */
-            return PAL_GSS_S_UNAVAILABLE;
+        case 47u: /* KRB_AP_ERR_BADDIRECTION */
+        case 61u: /* KRB_ERR_FIELD_TOOLONG */
+        case 79u: /* KDC_ERR_PA_CHECKSUM_MUST_BE_INCLUDED */
+            return PAL_GSS_S_DEFECTIVE_TOKEN;
+        case 0u:  /* KDC_ERR_NONE is invalid inside a KRB-ERROR */
+        case 12u: /* KDC_ERR_POLICY */
+        case 30u: /* unassigned */
+        case 46u: /* KRB_AP_ERR_MUT_FAIL */
+        case 60u: /* KRB_ERR_GENERIC */
         case 92u: /* KDC_ERR_PREAUTH_BAD_AUTHENTICATION_SET: upstream
                    * NegotiateAuthenticationPal leaves this value on its
                    * generic-failure path rather than classifying it as

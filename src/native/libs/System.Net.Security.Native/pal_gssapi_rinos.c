@@ -373,7 +373,7 @@ static uint32_t rinos_gss_map_kerberos_major(
         case 85u: /* KRB_AP_ERR_IAKERB_KDC_NOT_FOUND */
         case 86u: /* KRB_AP_ERR_IAKERB_KDC_NO_RESPONSE */
         case 91u: /* KDC_ERR_MORE_PREAUTH_DATA_REQUIRED */
-        case 93u: /* KDC_ERR_UNKNOWN_CRITICAL_FAST_OPTION */
+        case 93u: /* KDC_ERR_UNKNOWN_CRITICAL_FAST_OPTIONS */
         case 100u: /* KDC_ERR_NO_ACCEPTABLE_KDF */
             return PAL_GSS_S_UNAVAILABLE;
         default:

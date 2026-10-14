@@ -42,7 +42,7 @@
 // the saved argument frame; it does not return to the original caller.
 //
 // Inputs:
-//      rdi, esi, rcx, rdx, r8, r9, stack space: arguments as normal
+//      rdi, rsi, rcx, rdx, r8, r9, stack space: arguments as normal
 //      r10: The location of the target code the UniversalTransition thunk will call
 //      r11: The only parameter to the target function (passed in rdx to callee)
 //

@@ -374,10 +374,14 @@ static uint32_t rinos_gss_map_kerberos_major(
         case 85u: /* KRB_AP_ERR_IAKERB_KDC_NOT_FOUND */
         case 86u: /* KRB_AP_ERR_IAKERB_KDC_NO_RESPONSE */
         case 91u: /* KDC_ERR_MORE_PREAUTH_DATA_REQUIRED */
-        case 92u: /* KDC_ERR_PREAUTH_BAD_AUTHENTICATION_SET */
         case 93u: /* KDC_ERR_UNKNOWN_CRITICAL_FAST_OPTIONS */
         case 100u: /* KDC_ERR_NO_ACCEPTABLE_KDF */
             return PAL_GSS_S_UNAVAILABLE;
+        case 92u: /* KDC_ERR_PREAUTH_BAD_AUTHENTICATION_SET: upstream
+                   * NegotiateAuthenticationPal leaves this value on its
+                   * generic-failure path rather than classifying it as
+                   * Unsupported. Keep that parity explicit. */
+            return PAL_GSS_S_FAILURE;
         default:
             return PAL_GSS_S_FAILURE;
     }

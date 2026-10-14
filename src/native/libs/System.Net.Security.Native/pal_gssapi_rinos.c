@@ -8,7 +8,10 @@
  * process-local Kerberos owner client below the PAL, while the RFC 4120/4121
  * token provider remains a separate capability.  Keep every exported entry
  * point present so the managed interop surface resolves deterministically,
- * then report unsupported status without dereferencing caller-owned handles.
+ * and fail closed when the provider or its authenticated owner is unavailable.
+ * Once a provider-owned object has been returned, its release callback must
+ * remain reachable even if a later capability probe observes a transient
+ * keyring/owner outage; release paths never dereference the opaque handle.
  */
 
 #include "pal_gssapi.h"
@@ -95,6 +98,27 @@ static int rinos_gss_kerberos_owner_valid(const RinAuthProviderV1* provider)
         operation_owner->operation != NULL;
 }
 
+/* The RinOS provider table is process-lifetime storage in the linked target
+ * PAL.  Capability discovery may temporarily return NULL when the authenticated
+ * keyring owner is unavailable, but that must not strand objects which were
+ * already allocated by the provider.  Keep the last structurally valid table
+ * only for release callbacks; new operations still require a fresh live
+ * capability probe through rinos_gss_provider(). */
+static const RinAuthProviderV1* g_last_valid_provider;
+
+static void rinos_gss_remember_provider(const RinAuthProviderV1* provider)
+{
+    __atomic_store_n(&g_last_valid_provider, provider, __ATOMIC_RELEASE);
+}
+
+static const RinAuthProviderV1* rinos_gss_provider_for_release(
+    const RinAuthProviderV1* provider)
+{
+    return provider != NULL
+        ? provider
+        : __atomic_load_n(&g_last_valid_provider, __ATOMIC_ACQUIRE);
+}
+
 static const RinAuthProviderV1* rinos_gss_provider(void)
 {
     const RinAuthProviderV1* provider;
@@ -140,6 +164,7 @@ static const RinAuthProviderV1* rinos_gss_provider(void)
         return NULL;
     }
 
+    rinos_gss_remember_provider(provider);
     return provider;
 }
 
@@ -180,10 +205,13 @@ static uint32_t rinos_gss_local_buffer_error(
     const RinAuthProviderV1* provider, uint32_t* minorStatus,
     PAL_GssBuffer* outBuffer, uint32_t majorStatus)
 {
-    if (provider != NULL && outBuffer != NULL && outBuffer->data != NULL)
+    const RinAuthProviderV1* release_provider =
+        rinos_gss_provider_for_release(provider);
+    if (release_provider != NULL && outBuffer != NULL &&
+        outBuffer->data != NULL)
     {
-        provider->release_buffer(provider->context, outBuffer->data,
-                                 outBuffer->length);
+        release_provider->release_buffer(release_provider->context,
+                                         outBuffer->data, outBuffer->length);
     }
     rinos_gss_clear_buffer(outBuffer);
     return rinos_gss_local_error(minorStatus, majorStatus);
@@ -617,7 +645,8 @@ static uint32_t rinos_gss_release_status(uint32_t* minorStatus, int32_t hadHandl
 
 PALEXPORT void NetSecurityNative_ReleaseGssBuffer(void* buffer, uint64_t length)
 {
-    const RinAuthProviderV1* provider = rinos_gss_provider();
+    const RinAuthProviderV1* provider = rinos_gss_provider_for_release(
+        rinos_gss_provider());
     if (provider != NULL && buffer != NULL)
     {
         provider->release_buffer(provider->context, buffer, length);
@@ -761,7 +790,8 @@ PALEXPORT uint32_t NetSecurityNative_ReleaseName(uint32_t* minorStatus, GssName*
             minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
     }
 
-    const RinAuthProviderV1* provider = rinos_gss_provider();
+    const RinAuthProviderV1* provider = rinos_gss_provider_for_release(
+        rinos_gss_provider());
     if (provider != NULL)
     {
         return rinos_gss_release_provider_handle(
@@ -836,7 +866,8 @@ PALEXPORT uint32_t NetSecurityNative_ReleaseCred(uint32_t* minorStatus, GssCredI
             minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
     }
 
-    const RinAuthProviderV1* provider = rinos_gss_provider();
+    const RinAuthProviderV1* provider = rinos_gss_provider_for_release(
+        rinos_gss_provider());
     if (provider != NULL)
     {
         return rinos_gss_release_provider_handle(
@@ -1115,7 +1146,8 @@ PALEXPORT uint32_t NetSecurityNative_AcceptSecContext(
 
 PALEXPORT uint32_t NetSecurityNative_DeleteSecContext(uint32_t* minorStatus, GssCtxId** contextHandle)
 {
-    const RinAuthProviderV1* provider = rinos_gss_provider();
+    const RinAuthProviderV1* provider = rinos_gss_provider_for_release(
+        rinos_gss_provider());
     if (contextHandle == NULL)
     {
         return rinos_gss_local_error(

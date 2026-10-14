@@ -937,6 +937,7 @@ struct RinOsTemplateThunkMappingOwner
 {
     void* baseAddress;
     size_t mappingSize;
+    bool pendingRelease;
     RinOsTemplateThunkMappingOwner* next;
 };
 
@@ -957,6 +958,38 @@ static void UnlockTemplateThunkMappingOwners()
     VolatileStore<volatile int32_t>(&g_templateThunkMappingOwnerLock, 0);
 }
 
+/* A dynamic template mapping can be allocated successfully and then fail the
+ * platform call-target publication step. The managed API receives no mapping
+ * in that case, so losing a failed PAL release here would leak an executable
+ * mapping with no caller that can retry it. Keep such owners in the native
+ * registry and retry before the next allocation. */
+static bool RetryPendingTemplateThunkReleases()
+{
+    bool allReleased = true;
+    RinOsTemplateThunkMappingOwner** ownerLink =
+        &g_templateThunkMappingOwners;
+    while (*ownerLink != NULL)
+    {
+        RinOsTemplateThunkMappingOwner* owner = *ownerLink;
+        if (!owner->pendingRelease)
+        {
+            ownerLink = &owner->next;
+            continue;
+        }
+
+        if (!PalFreeThunksFromTemplate(owner->baseAddress, owner->mappingSize))
+        {
+            allReleased = false;
+            ownerLink = &owner->next;
+            continue;
+        }
+
+        *ownerLink = owner->next;
+        delete owner;
+    }
+    return allReleased;
+}
+
 EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
 {
     if (ppThunksSection == NULL)
@@ -967,6 +1000,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
 
     void *pThunkMap = NULL;
     bool usingTemplate = false;
+    RinOsTemplateThunkMappingOwner* dynamicOwner = NULL;
 
     int thunkBlocksPerMapping = RhpGetNumThunkBlocksPerMapping();
     int thunkBlockSize = RhpGetThunkBlockSize();
@@ -983,6 +1017,12 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     }
 
     LockTemplateThunkMappingOwners();
+
+    if (!RetryPendingTemplateThunkReleases())
+    {
+        UnlockTemplateThunkMappingOwners();
+        return E_FAIL;
+    }
 
 #ifndef TARGET_APPLE // Apple platforms cannot use the initial template
     if (g_pThunksTemplateAddress == NULL)
@@ -1016,8 +1056,16 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         }
         uint32_t templateRva = (uint32_t)(thunkAddress - moduleAddress);
 
+        dynamicOwner = new (nothrow) RinOsTemplateThunkMappingOwner();
+        if (dynamicOwner == NULL)
+        {
+            UnlockTemplateThunkMappingOwners();
+            return E_OUTOFMEMORY;
+        }
+
         if (!PalAllocateThunksFromTemplate((HANDLE)pModuleBase, templateRva, templateSize, &pThunkMap))
         {
+            delete dynamicOwner;
             UnlockTemplateThunkMappingOwners();
             return E_OUTOFMEMORY;
         }
@@ -1025,6 +1073,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
 
     if (pThunkMap == NULL)
     {
+        delete dynamicOwner;
         UnlockTemplateThunkMappingOwners();
         return E_FAIL;
     }
@@ -1037,7 +1086,18 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         thunkBlocksPerMapping))
     {
         if (!usingTemplate)
-            PalFreeThunksFromTemplate(pThunkMap, templateSize);
+        {
+            dynamicOwner->baseAddress = pThunkMap;
+            dynamicOwner->mappingSize = templateSize;
+            dynamicOwner->pendingRelease = true;
+            dynamicOwner->next = g_templateThunkMappingOwners;
+            g_templateThunkMappingOwners = dynamicOwner;
+            if (PalFreeThunksFromTemplate(pThunkMap, templateSize))
+            {
+                g_templateThunkMappingOwners = dynamicOwner->next;
+                delete dynamicOwner;
+            }
+        }
 
         UnlockTemplateThunkMappingOwners();
         return E_FAIL;
@@ -1051,18 +1111,11 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     }
     else
     {
-        RinOsTemplateThunkMappingOwner* owner =
-            new (nothrow) RinOsTemplateThunkMappingOwner();
-        if (owner == NULL)
-        {
-            PalFreeThunksFromTemplate(pThunkMap, templateSize);
-            UnlockTemplateThunkMappingOwners();
-            return E_OUTOFMEMORY;
-        }
-        owner->baseAddress = pThunkMap;
-        owner->mappingSize = templateSize;
-        owner->next = g_templateThunkMappingOwners;
-        g_templateThunkMappingOwners = owner;
+        dynamicOwner->baseAddress = pThunkMap;
+        dynamicOwner->mappingSize = templateSize;
+        dynamicOwner->pendingRelease = false;
+        dynamicOwner->next = g_templateThunkMappingOwners;
+        g_templateThunkMappingOwners = dynamicOwner;
     }
 
     *ppThunksSection = pThunkMap;

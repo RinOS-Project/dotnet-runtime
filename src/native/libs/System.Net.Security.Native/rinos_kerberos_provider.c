@@ -1186,6 +1186,10 @@ static int provider_gss_krb_error(const uint8_t* token, uint32_t token_size,
         !provider_gss_token_payload(token, token_size, &payload,
                                     &payload_size))
         return -1;
+    /* Keep this parser total even if the GSS framing helper is changed later:
+     * TOK_ID is a two-octet field, and a truncated mechanism payload is a
+     * defective token rather than a different token kind. */
+    if (payload_size < 2u) return -1;
     if (payload[0] != 0x03u || payload[1] != 0x00u) return 0;
     return provider_kerberos_error_der(payload + 2u, payload_size - 2u,
                                        error_code_out) ? 1 : -1;

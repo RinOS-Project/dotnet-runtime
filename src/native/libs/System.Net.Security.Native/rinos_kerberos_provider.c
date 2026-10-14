@@ -1637,8 +1637,13 @@ static uint32_t provider_build_sec_context_input(
     uint8_t* bytes;
     if (output == NULL || output_size == NULL ||
         (target_name != NULL && !provider_name_valid(target_name)) ||
+        /* The upstream GSS namespace is wider than the RinOS operation
+         * contract.  Do not let a caller request delegation, identity, or
+         * another mode whose session policy/owner lifecycle is not present;
+         * advertising only the known bit names would turn an unsupported
+         * request into a provider-side success path. */
         (requested_flags &
-         ~RIN_KERBEROS_OPERATION_KNOWN_RETURN_FLAGS) != 0u ||
+         ~RIN_KERBEROS_OPERATION_SUPPORTED_CONTEXT_FLAGS) != 0u ||
         channel_binding_size > RIN_KERBEROS_PROVIDER_MAX_CHANNEL_BINDING_SIZE ||
         (channel_binding_size != 0u && channel_binding == NULL) ||
         token_size > RIN_KERBEROS_OPERATION_MAX_INPUT_SIZE ||

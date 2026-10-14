@@ -303,6 +303,12 @@ if(NOT CLR_CMAKE_TARGET_ARCH_WASM)
     ${ARCH_SOURCES_DIR}/GcProbe.${ASM_SUFFIX}
     ${ARCH_SOURCES_DIR}/MiscStubs.${ASM_SUFFIX}
     ${ARCH_SOURCES_DIR}/PInvoke.${ASM_SUFFIX}
+    # The non-WASM NativeAOT interop path still uses the legacy common-stub
+    # ABI exposed by RuntimeImports.cs and PInvokeMarshal.cs.  Keep this
+    # helper in the Full/runtime assembly graph; PortableRuntime supplies its
+    # provider callbacks in portable.cpp instead and must not consume native
+    # architecture assembly.
+    ${ARCH_SOURCES_DIR}/InteropThunksHelpers.${ASM_SUFFIX}
     ${RUNTIME_DIR}/${ARCH_SOURCES_DIR}/StubDispatch.${ASM_SUFFIX}
     ${ARCH_SOURCES_DIR}/UniversalTransition.${ASM_SUFFIX}
     ${RUNTIME_DIR}/${ARCH_SOURCES_DIR}/WriteBarriers.${ASM_SUFFIX}

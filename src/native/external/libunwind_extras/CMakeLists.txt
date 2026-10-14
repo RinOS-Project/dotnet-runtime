@@ -186,6 +186,12 @@ if(CLR_CMAKE_HOST_UNIX AND (NOT CLR_CMAKE_TARGET_RINOS OR RINOS_CROSS_COMPONENTS
         add_library(libunwind_dac OBJECT ${LIBUNWIND_SOURCES})
     else()
         add_library(libunwind OBJECT ${LIBUNWIND_SOURCES})
+        if(CLR_CMAKE_TARGET_RINOS AND RINOS_CROSS_COMPONENTS_HOST)
+            # The host JIT is built for Linux although the cross-component
+            # configure still defines __rinos__. Select libunwind's host ELF
+            # metadata lookup instead of the target-only kernel inventory API.
+            target_compile_definitions(libunwind PRIVATE RINOS_CROSS_COMPONENTS_HOST=1)
+        endif()
     endif(CLR_CMAKE_HOST_APPLE)
 else()
     if(CLR_CMAKE_TARGET_RINOS)

@@ -42,7 +42,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
 #include "unwind_i.h"
 
-#if defined(__rinos__)
+#if defined(__rinos__) && !defined(RINOS_CROSS_COMPONENTS_HOST)
 extern int rinos_find_proc_info(unw_addr_space_t as, unw_word_t ip,
                                 unw_proc_info_t *pi, int need_unwind_info,
                                 void *arg);
@@ -192,7 +192,7 @@ x86_64_local_addr_space_init (void)
 # endif
 #endif
   local_addr_space.caching_policy = UNWI_DEFAULT_CACHING_POLICY;
-#if defined(__rinos__)
+#if defined(__rinos__) && !defined(RINOS_CROSS_COMPONENTS_HOST)
   local_addr_space.acc.find_proc_info = rinos_find_proc_info;
 #else
   local_addr_space.acc.find_proc_info = dwarf_find_proc_info;

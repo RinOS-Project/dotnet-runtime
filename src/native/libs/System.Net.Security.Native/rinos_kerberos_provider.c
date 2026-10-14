@@ -1167,7 +1167,14 @@ static int provider_kerberos_error_der(const uint8_t* bytes, uint32_t size,
             !provider_kerberos_principal_name_valid(ignored_bytes,
                                                      ignored_size))
             return 0;
-        if (tag == 0xa9u) have_service_realm = 1;
+        /* RFC 4120 Realm is a required, non-empty GeneralString.  An empty
+         * realm cannot identify the service and must not be preserved as a
+         * successful protocol error merely because the surrounding DER is
+         * well framed. */
+        if (tag == 0xa9u) {
+            if (ignored_size == 0u) return 0;
+            have_service_realm = 1;
+        }
         if (tag == 0xaau) have_service_name = 1;
         (void)ignored_bytes;
         (void)ignored_size;

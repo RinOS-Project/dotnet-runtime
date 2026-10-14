@@ -124,7 +124,52 @@ FORCEINLINE uint32_t MethodTable::GetFieldOffset(EETypeField eField)
         ASSERT(IsDynamicType());
         return cbOffset;
     }
-    ASSERT(!"NYI");
+    if (IsDynamicType())
+        cbOffset += sizeof(UIntTarget);
+
+    // Keep this layout in lockstep with the managed MethodTable.GetFieldOffset
+    // implementation. Dynamic type flags are stored in a target-sized cell,
+    // and the three optional static-storage cells follow only when their
+    // corresponding flag is present. Returning the offset for an absent cell
+    // is still an assertion failure in checked builds, matching the managed
+    // Debug.Assert contract; the caller never gets an invented fallback.
+    const UIntTarget dynamicTypeFlagsHasGcStatics = (UIntTarget)0x00000002u;
+    const UIntTarget dynamicTypeFlagsHasNonGcStatics = (UIntTarget)0x00000004u;
+    const UIntTarget dynamicTypeFlagsHasThreadStatics = (UIntTarget)0x00000008u;
+    UIntTarget dynamicTypeFlags = 0;
+    if (eField == ETF_DynamicTypeFlags)
+    {
+        ASSERT(IsDynamicType());
+        return cbOffset;
+    }
+    if (IsDynamicType())
+    {
+        dynamicTypeFlags = *(UIntTarget*)((uint8_t*)this + cbOffset);
+        cbOffset += sizeof(UIntTarget);
+    }
+
+    if (eField == ETF_DynamicGcStatics)
+    {
+        ASSERT((dynamicTypeFlags & dynamicTypeFlagsHasGcStatics) != 0);
+        return cbOffset;
+    }
+    if ((dynamicTypeFlags & dynamicTypeFlagsHasGcStatics) != 0)
+        cbOffset += sizeof(UIntTarget);
+
+    if (eField == ETF_DynamicNonGcStatics)
+    {
+        ASSERT((dynamicTypeFlags & dynamicTypeFlagsHasNonGcStatics) != 0);
+        return cbOffset;
+    }
+    if ((dynamicTypeFlags & dynamicTypeFlagsHasNonGcStatics) != 0)
+        cbOffset += sizeof(UIntTarget);
+
+    if (eField == ETF_DynamicThreadStaticOffset)
+    {
+        ASSERT((dynamicTypeFlags & dynamicTypeFlagsHasThreadStatics) != 0);
+        return cbOffset;
+    }
+    ASSERT(!"Unknown MethodTable field type");
 
     return 0;
 }

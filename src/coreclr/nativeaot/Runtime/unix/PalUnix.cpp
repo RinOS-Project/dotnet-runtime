@@ -1295,7 +1295,9 @@ UInt32_BOOL PalVirtualProtect(_In_ void* pAddress, size_t size, uint32_t protect
     // before doing any pointer arithmetic.  NativeAOT uses this boundary for
     // both W^X thunk publication and GC/JIT write-protect transitions; a
     // wrapped range must never turn into an unrelated page permission change.
-    if (pAddress == nullptr || size == 0)
+    const size_t pageSize = (size_t)OS_PAGE_SIZE;
+    if (pAddress == nullptr || size == 0 || pageSize == 0 ||
+        (pageSize & (pageSize - 1)) != 0)
     {
         return UInt32_FALSE;
     }
@@ -1307,7 +1309,7 @@ UInt32_BOOL PalVirtualProtect(_In_ void* pAddress, size_t size, uint32_t protect
     }
 
     const uintptr_t end = address + (uintptr_t)size;
-    const uintptr_t pageMask = (uintptr_t)OS_PAGE_SIZE - 1u;
+    const uintptr_t pageMask = (uintptr_t)pageSize - 1u;
     const uintptr_t pageStart = address & ~pageMask;
     if (end > UINTPTR_MAX - pageMask)
     {

@@ -1869,7 +1869,16 @@ static uint32_t provider_operation(
             *minor_status = RIN_KERBEROS_OPERATION_MINOR_PROTOCOL_ERROR |
                             error_code;
     }
-    if (provider_context != NULL) {
+    if (provider_context != NULL &&
+        provider_result != RIN_KERBEROS_OPERATION_RESULT_ERROR &&
+        (request->operation == RIN_KERBEROS_OPERATION_INIT_SEC_CONTEXT ||
+         request->operation == RIN_KERBEROS_OPERATION_ACCEPT_SEC_CONTEXT)) {
+        /* A failed continuation may still leave the owner-side context live.
+         * Do not replace its generation/token with the empty error response:
+         * the PAL must be able to delete the previous opaque context after a
+         * KRB-ERROR, and a caller may retry the same continuation.  Message
+         * protection and identity operations have no next context token; they
+         * must retain the token that authenticated the current context. */
         if (request->operation != RIN_KERBEROS_OPERATION_DELETE_SEC_CONTEXT &&
             provider_context->generation != 0u &&
             provider_context->generation != operation_generation) {
@@ -2304,6 +2313,10 @@ static uint32_t provider_init_sec_context(
             free(provider_context);
             *security_context = NULL;
         }
+        /* Keep an already-published context live for the PAL cleanup path on
+         * a mechanism error.  The owner operation above deliberately kept
+         * its previous generation/token rather than accepting the empty error
+         * response as a new context state. */
         return status;
     }
     if (created_context &&
@@ -2599,6 +2612,8 @@ static uint32_t provider_init_sec_context_ex(
             free(provider_context);
             *security_context = NULL;
         }
+        /* Preserve an existing owner context on a mechanism error so the
+         * PAL can issue DELETE_SEC_CONTEXT with the prior opaque token. */
         return status;
     }
     if (created_context &&

@@ -818,8 +818,9 @@ UInt32_BOOL PalMarkThunksAsValidCallTargets(
     // These parameters are part of the common PAL ABI.  They are intentionally
     // checked even though this Unix path only needs the mapping half-size: a
     // zero/negative layout is not a valid thunk provider contract.
-    if (thunkSize <= 0 || thunksPerBlock <= 0 ||
-        thunkBlockSize != (int)OS_PAGE_SIZE ||
+    if (OS_PAGE_SIZE == 0 || OS_PAGE_SIZE > (size_t)INT_MAX ||
+        thunkSize <= 0 || thunksPerBlock <= 0 ||
+        (size_t)thunkBlockSize != (size_t)OS_PAGE_SIZE ||
         thunkSize > thunkBlockSize ||
         (size_t)thunksPerBlock > (size_t)thunkBlockSize / (size_t)thunkSize)
     {

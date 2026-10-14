@@ -1858,6 +1858,15 @@ static uint32_t provider_operation(
         (request->operation == RIN_KERBEROS_OPERATION_DELETE_SEC_CONTEXT &&
          (operation_generation != 0u || operation_output_size != 0u ||
           next_context_size != 0u || operation_return_flags != 0u)) ||
+         /* The keyring response generation is the credential-record
+          * generation for every non-delete operation.  Once a context has
+          * published a generation, accepting a response from another
+          * generation would mix an old opaque context token with a refreshed
+          * session credential.  DELETE is intentionally generation-zero and
+          * is validated by the separate branch above. */
+         (request->operation != RIN_KERBEROS_OPERATION_DELETE_SEC_CONTEXT &&
+          provider_context != NULL && provider_context->generation != 0u &&
+          operation_generation != provider_context->generation) ||
         (operation_return_flags &
          ~RIN_KERBEROS_OPERATION_KNOWN_RETURN_FLAGS) != 0u) {
         if (operation_output != NULL) {

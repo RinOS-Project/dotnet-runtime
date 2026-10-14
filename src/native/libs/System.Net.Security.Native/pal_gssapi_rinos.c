@@ -82,6 +82,7 @@ static int rinos_gss_kerberos_owner_valid(const RinAuthProviderV1* provider)
         owner->struct_size == sizeof(*owner) &&
         owner->version == RIN_KERBEROS_CREDENTIAL_OWNER_ABI_VERSION &&
         owner->reserved0 == 0u &&
+        owner->reserved1 == 0u &&
         (owner->capability_mask &
             RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES) ==
             RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES &&

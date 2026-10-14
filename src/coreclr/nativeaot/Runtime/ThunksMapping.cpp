@@ -1185,6 +1185,10 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
     *ownerLink = owner->next;
     if (!PalFreeThunksFromTemplate(pThunksSection, templateSize))
     {
+        // Heap teardown may not retain a usable managed retry handle. Keep
+        // the native owner on the allocation retry queue as well, so a later
+        // allocation can release the mapping without leaking it indefinitely.
+        owner->pendingRelease = true;
         owner->next = g_templateThunkMappingOwners;
         g_templateThunkMappingOwners = owner;
         UnlockTemplateThunkMappingOwners();

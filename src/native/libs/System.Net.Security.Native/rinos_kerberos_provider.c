@@ -1702,6 +1702,7 @@ static uint32_t provider_operation(
     uint64_t operation_generation = 0u;
     uint32_t provider_result = 0u;
     uint32_t operation_return_flags = 0u;
+    uint32_t allowed_return_flags = 0u;
     uint32_t owner_minor_status = 0u;
     uint32_t status;
     const uint8_t* first_input = NULL;
@@ -1847,6 +1848,27 @@ static uint32_t provider_operation(
           next_context_size != 0u || operation_return_flags != 0u)) ||
         (operation_return_flags &
          ~RIN_KERBEROS_OPERATION_KNOWN_RETURN_FLAGS) != 0u) {
+        if (operation_output != NULL) {
+            provider_zero(operation_output, request->output_capacity);
+            free(operation_output);
+        }
+        provider_zero(next_context, sizeof(next_context));
+        return RIN_AUTH_PROVIDER_UNAVAILABLE;
+    }
+    /* The wider GSS flag namespace is not the same as the flags this RinOS
+     * provider can safely carry.  In particular, delegation/identity/anon
+     * need a session policy and owner lifecycle that are not part of the
+     * current operation ABI.  Reject an owner which advertises them instead
+     * of exposing a capability that the managed PAL cannot honor.  The
+     * extended-error bit is meaningful only on a KRB-ERROR response. */
+    if (request->operation == RIN_KERBEROS_OPERATION_INIT_SEC_CONTEXT ||
+        request->operation == RIN_KERBEROS_OPERATION_ACCEPT_SEC_CONTEXT) {
+        allowed_return_flags = RIN_KERBEROS_OPERATION_SUPPORTED_CONTEXT_FLAGS;
+        if (provider_result == RIN_KERBEROS_OPERATION_RESULT_ERROR)
+            allowed_return_flags |=
+                RIN_KERBEROS_OPERATION_RETURN_FLAG_EXTENDED_ERROR;
+    }
+    if ((operation_return_flags & ~allowed_return_flags) != 0u) {
         if (operation_output != NULL) {
             provider_zero(operation_output, request->output_capacity);
             free(operation_output);

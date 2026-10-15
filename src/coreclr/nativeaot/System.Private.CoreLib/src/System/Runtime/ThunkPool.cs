@@ -882,9 +882,30 @@ namespace System.Runtime
                         currentThunksBlock = Constants.AddOffsetChecked(
                             currentThunksBlock, (nuint)Constants.ThunkBlockSize);
                     }
+
+                    // Setup the first block before publishing the mapping in
+                    // the managed cache.  If checked arithmetic or the
+                    // provider layout validation fails, the native owner must
+                    // be released and no partially initialized block may be
+                    // returned by a later allocation.
+                    for (int i = 0; i < Constants.NumThunksPerBlock; i++)
+                    {
+                        IntPtr nextDataAddress = Constants.AddOffsetChecked(
+                            dataAddress, (nuint)Constants.ThunkDataSize);
+                        if (i == (Constants.NumThunksPerBlock - 1))
+                            *((IntPtr*)(dataAddress)) = IntPtr.Zero;
+                        else
+                            *((IntPtr*)(dataAddress)) = nextDataAddress;
+
+                        *((IntPtr*)(dataAddress + IntPtr.Size)) = IntPtr.Zero;
+                        dataAddress = nextDataAddress;
+                    }
                 }
                 catch
                 {
+                    for (int i = 0; i < s_currentlyMappedThunkBlocks.Length; i++)
+                        s_currentlyMappedThunkBlocks[i] = IntPtr.Zero;
+                    s_currentlyMappedThunkBlocksIndex = Constants.NumThunkBlocksPerMapping;
                     TryReleaseMapping(mapping);
                     throw;
                 }
@@ -892,26 +913,6 @@ namespace System.Runtime
                 s_currentMapping = mapping;
                 s_currentlyMappedThunkBlocksIndex = 1;
                 mapping._outstandingBlockCount = 1;
-            }
-
-            // Setup the thunks in the new block as a linked list of thunks.
-            // Use the first data field of the thunk to build the linked list.
-
-            for (int i = 0; i < Constants.NumThunksPerBlock; i++)
-            {
-                IntPtr nextDataAddress = Constants.AddOffsetChecked(
-                    dataAddress, (nuint)Constants.ThunkDataSize);
-                if (i == (Constants.NumThunksPerBlock - 1))
-                    *((IntPtr*)(dataAddress)) = IntPtr.Zero;
-                else
-                    *((IntPtr*)(dataAddress)) = nextDataAddress;
-
-#if DEBUG
-                // Debug flag in the second data cell indicating the thunk is not used
-                *((IntPtr*)(dataAddress + IntPtr.Size)) = new IntPtr(-1);
-#endif
-
-                dataAddress = nextDataAddress;
             }
 
             return nextThunksBlock;

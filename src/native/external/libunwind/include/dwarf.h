@@ -420,12 +420,12 @@ extern int dwarf_search_unwind_table (unw_addr_space_t as,
                                       unw_dyn_info_t *di,
                                       unw_proc_info_t *pi,
                                       int need_unwind_info, void *arg);
-#ifndef UNW_REMOTE_ONLY
+#if !defined(UNW_REMOTE_ONLY) || defined(__rinos__)
 extern int dwarf_search_unwind_table_linear(
     unw_addr_space_t as, unw_word_t ip, unw_word_t start_ip,
     unw_word_t end_ip, unw_word_t eh_frame_start, unw_word_t eh_frame_end,
     int is_debug_frame, unw_proc_info_t *pi, int need_unwind_info, void *arg);
-#endif
+#endif /* !UNW_REMOTE_ONLY || __rinos__ */
 
 extern int dwarf_find_unwind_table (struct elf_dyn_info *edi, unw_addr_space_t as,
                                     const char *path, unw_word_t segbase, unw_word_t mapoff,

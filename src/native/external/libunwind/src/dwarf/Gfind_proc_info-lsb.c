@@ -44,7 +44,7 @@ struct table_entry
     int32_t fde_offset;
   };
 
-#ifndef UNW_REMOTE_ONLY
+#if !defined(UNW_REMOTE_ONLY) || defined(__rinos__)
 
 #ifdef __linux__
 #include "os-linux.h"
@@ -117,7 +117,7 @@ dwarf_search_unwind_table_linear (unw_addr_space_t as, unw_word_t ip,
                        ~((unw_word_t)0), is_debug_frame, pi,
                        need_unwind_info, arg);
 }
-#endif /* !UNW_REMOTE_ONLY */
+#endif /* !UNW_REMOTE_ONLY || __rinos__ */
 
 #ifdef CONFIG_DEBUG_FRAME
 /* Load .debug_frame section from FILE.  Allocates and returns space

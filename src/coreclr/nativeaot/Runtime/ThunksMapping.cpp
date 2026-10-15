@@ -59,6 +59,7 @@ struct RinOsRxThunkMappingOwner
 {
     void* baseAddress;
     size_t mappingSize;
+    bool pendingRelease;
     RinOsRxThunkMappingOwner* next;
 };
 
@@ -77,6 +78,59 @@ static void LockRxThunkMappingOwners()
 static void UnlockRxThunkMappingOwners()
 {
     VolatileStore<volatile int32_t>(&g_rxThunkMappingOwnerLock, 0);
+}
+
+static void QueueRxThunkMappingRelease(RinOsRxThunkMappingOwner* owner)
+{
+    owner->pendingRelease = true;
+    owner->next = g_rxThunkMappingOwners;
+    g_rxThunkMappingOwners = owner;
+}
+
+static bool RetryPendingRxThunkMappingReleases()
+{
+    LockRxThunkMappingOwners();
+    bool allReleased = true;
+    RinOsRxThunkMappingOwner** ownerLink = &g_rxThunkMappingOwners;
+    while (*ownerLink != NULL)
+    {
+        RinOsRxThunkMappingOwner* owner = *ownerLink;
+        if (!owner->pendingRelease)
+        {
+            ownerLink = &owner->next;
+            continue;
+        }
+
+        if (!PalVirtualFreeChecked(owner->baseAddress,
+                                   (uintptr_t)owner->mappingSize))
+        {
+            allReleased = false;
+            ownerLink = &owner->next;
+            continue;
+        }
+
+        *ownerLink = owner->next;
+        delete owner;
+    }
+    UnlockRxThunkMappingOwners();
+    return allReleased;
+}
+
+static void ReleaseFailedRxThunkMapping(RinOsRxThunkMappingOwner* owner)
+{
+    if (PalVirtualFreeChecked(owner->baseAddress,
+                              (uintptr_t)owner->mappingSize))
+    {
+        delete owner;
+        return;
+    }
+
+    // Do not discard the owner capability when PAL release fails.  The next
+    // allocation retries this mapping before publishing another one, and the
+    // normal free entry point can also retry the exact failed release.
+    LockRxThunkMappingOwners();
+    QueueRxThunkMappingRelease(owner);
+    UnlockRxThunkMappingOwners();
 }
 
 /* The block-address helpers are consumed by managed ThunkPool code, but they
@@ -101,6 +155,10 @@ static bool IsOwnedRxThunkPage(uintptr_t pageAddress, bool dataSection)
          owner != NULL;
          owner = owner->next)
     {
+        if (owner->pendingRelease)
+        {
+            continue;
+        }
         const uintptr_t baseAddress = (uintptr_t)owner->baseAddress;
         if (baseAddress == 0 || owner->mappingSize != mappingSize ||
             baseAddress > UINTPTR_MAX - (uintptr_t)owner->mappingSize)
@@ -308,16 +366,37 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     }
     const size_t mappingSize = thunksMapSize * 2;
 
+    // Reserve the native owner before mapping memory.  Every post-allocation
+    // failure can then retain ownership if PAL unmapping itself fails.
+    RinOsRxThunkMappingOwner* owner =
+        new (nothrow) RinOsRxThunkMappingOwner();
+    if (owner == NULL)
+    {
+        return E_OUTOFMEMORY;
+    }
+    owner->baseAddress = NULL;
+    owner->mappingSize = mappingSize;
+    owner->pendingRelease = false;
+    owner->next = NULL;
+
+    if (!RetryPendingRxThunkMappingReleases())
+    {
+        delete owner;
+        return E_FAIL;
+    }
+
 #ifdef WIN32
 
     void * pNewMapping = PalVirtualAlloc(mappingSize, PAGE_READWRITE);
     if (pNewMapping == NULL)
     {
+        delete owner;
         return E_OUTOFMEMORY;
     }
 
     void * pThunksSection = pNewMapping;
     void * pDataSection = (uint8_t*)pNewMapping + thunksMapSize;
+    owner->baseAddress = pNewMapping;
 
 #else
 
@@ -335,25 +414,29 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     void * pNewMapping = PalVirtualAlloc(mappingSize, PAGE_READWRITE);
     if (pNewMapping == NULL)
     {
+        delete owner;
         return E_OUTOFMEMORY;
     }
 
     void * pThunksSection = pNewMapping;
     void * pDataSection = (uint8_t*)pNewMapping + thunksMapSize;
+    owner->baseAddress = pNewMapping;
 #else
     void * pNewMapping = PalVirtualAlloc(mappingSize, PAGE_EXECUTE_READ);
     if (pNewMapping == NULL)
     {
+        delete owner;
         return E_OUTOFMEMORY;
     }
 
     void * pThunksSection = pNewMapping;
     void * pDataSection = (uint8_t*)pNewMapping + thunksMapSize;
+    owner->baseAddress = pNewMapping;
 
     if (!PalVirtualProtect(pDataSection, thunksMapSize, PAGE_READWRITE) ||
         !PalVirtualProtect(pThunksSection, thunksMapSize, PAGE_EXECUTE_READWRITE))
     {
-        PalVirtualFree(pNewMapping, mappingSize);
+        ReleaseFailedRxThunkMapping(owner);
         return E_FAIL;
     }
 #endif
@@ -390,7 +473,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         numThunksPerBlock <= 0 ||
         (size_t)numThunksPerBlock > thunkCapacity)
     {
-        PalVirtualFree(pNewMapping, mappingSize);
+        ReleaseFailedRxThunkMapping(owner);
         return E_FAIL;
     }
 
@@ -585,7 +668,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
             // THUNK_SIZE and corrupting the adjacent thunk/data page.
             if (!thunkWriteOk || pCurrentThunkAddress != thunkEndAddress)
             {
-                PalVirtualFree(pNewMapping, mappingSize);
+                ReleaseFailedRxThunkMapping(owner);
                 return E_FAIL;
             }
         }
@@ -602,22 +685,14 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
 #else
     if (!PalVirtualProtect(pThunksSection, thunksMapSize, PAGE_EXECUTE_READ))
     {
-        PalVirtualFree(pNewMapping, mappingSize);
+        ReleaseFailedRxThunkMapping(owner);
         return E_FAIL;
     }
 #endif
 
     PalFlushInstructionCache(pThunksSection, thunksMapSize);
 
-    RinOsRxThunkMappingOwner* owner =
-        new (nothrow) RinOsRxThunkMappingOwner();
-    if (owner == NULL)
-    {
-        PalVirtualFree(pNewMapping, mappingSize);
-        return E_OUTOFMEMORY;
-    }
     owner->baseAddress = pThunksSection;
-    owner->mappingSize = mappingSize;
 
     LockRxThunkMappingOwners();
     owner->next = g_rxThunkMappingOwners;
@@ -657,8 +732,7 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
     *ownerLink = owner->next;
     if (!PalVirtualFreeChecked(pThunksSection, (uintptr_t)mappingSize))
     {
-        owner->next = g_rxThunkMappingOwners;
-        g_rxThunkMappingOwners = owner;
+        QueueRxThunkMappingRelease(owner);
         UnlockRxThunkMappingOwners();
         return E_FAIL;
     }

@@ -256,6 +256,15 @@ LEAF_ENTRY RhpGetNumThunkBlocksPerMapping, _TEXT
 LEAF_END RhpGetNumThunkBlocksPerMapping, _TEXT
 
 ;;
+;; int RhpGetThunkBlockCount()
+;; The fixed-pool image contains the eight ThunkPool* blocks above.
+;;
+LEAF_ENTRY RhpGetThunkBlockCount, _TEXT
+        mov     rax, 8
+        ret
+LEAF_END RhpGetThunkBlockCount, _TEXT
+
+;;
 ;; int RhpGetThunkBlockSize
 ;;
 LEAF_ENTRY RhpGetThunkBlockSize, _TEXT

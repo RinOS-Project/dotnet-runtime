@@ -302,6 +302,15 @@ label_$groupIndex_$index_P$pageIndex
     LEAF_END_NO_PDATA RhpGetNumThunkBlocksPerMapping
 
     ;;
+    ;; int RhpGetThunkBlockCount()
+    ;; The fixed-pool image contains the eight ThunkPool* blocks above.
+    ;;
+    LEAF_ENTRY_NO_PDATA RhpGetThunkBlockCount
+        mov     x0, 8
+        ret
+    LEAF_END_NO_PDATA RhpGetThunkBlockCount
+
+    ;;
     ;; int RhpGetThunkBlockSize
     ;;
     LEAF_ENTRY_NO_PDATA RhpGetThunkBlockSize

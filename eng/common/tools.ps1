@@ -601,8 +601,15 @@ function InitializeBuildTool() {
   if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1' -and $dotnetRoot) {
     $env:DOTNET_HOST_PATH = Join-Path $dotnetRoot (GetExecutableFileName 'dotnet')
     $env:UseSharedCompilation = 'false'
-    $rinosRoslynToolPath = Get-ChildItem -LiteralPath (Join-Path $dotnetRoot 'sdk') -Filter 'csc.exe' -File -Recurse -ErrorAction SilentlyContinue |
-      Select-Object -First 1 -ExpandProperty DirectoryName
+    # The outer RinOS wrapper may select the exact standalone compiler
+    # toolset pinned by Version.Details.props. Preserve that selection; only
+    # fall back to the bundled SDK compiler when no valid path was supplied.
+    $rinosRoslynToolPath = $env:RINOS_DOTNET_CSC_TOOL_PATH
+    if (-not $rinosRoslynToolPath -or
+        -not (Test-Path (Join-Path $rinosRoslynToolPath 'csc.exe'))) {
+      $rinosRoslynToolPath = Get-ChildItem -LiteralPath (Join-Path $dotnetRoot 'sdk') -Filter 'csc.exe' -File -Recurse -ErrorAction SilentlyContinue |
+        Select-Object -First 1 -ExpandProperty DirectoryName
+    }
     if ($rinosRoslynToolPath) {
       $env:RINOS_DOTNET_CSC_TOOL_PATH = $rinosRoslynToolPath
     }

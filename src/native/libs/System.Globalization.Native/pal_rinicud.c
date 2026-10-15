@@ -1262,7 +1262,13 @@ typedef enum ProductDigitSet
     ProductDigitsTamil,
     ProductDigitsTibetan,
     ProductDigitsFullwidth,
-    ProductDigitsHanidec
+    ProductDigitsHanidec,
+    ProductDigitsAdlam,
+    ProductDigitsOlChiki,
+    ProductDigitsChakma,
+    ProductDigitsNagMundari,
+    ProductDigitsMeiteiMayek,
+    ProductDigitsNko
 } ProductDigitSet;
 
 static int product_ascii_token_ieq(const char* token, size_t length,
@@ -1309,6 +1315,12 @@ static int product_digit_set_from_token(const char* token, size_t length,
     else if (product_ascii_token_ieq(token, length, "tibt")) *digit_set = ProductDigitsTibetan;
     else if (product_ascii_token_ieq(token, length, "fullwide")) *digit_set = ProductDigitsFullwidth;
     else if (product_ascii_token_ieq(token, length, "hanidec")) *digit_set = ProductDigitsHanidec;
+    else if (product_ascii_token_ieq(token, length, "adlm")) *digit_set = ProductDigitsAdlam;
+    else if (product_ascii_token_ieq(token, length, "olck")) *digit_set = ProductDigitsOlChiki;
+    else if (product_ascii_token_ieq(token, length, "cakm")) *digit_set = ProductDigitsChakma;
+    else if (product_ascii_token_ieq(token, length, "hmnp")) *digit_set = ProductDigitsNagMundari;
+    else if (product_ascii_token_ieq(token, length, "mtei")) *digit_set = ProductDigitsMeiteiMayek;
+    else if (product_ascii_token_ieq(token, length, "nkoo")) *digit_set = ProductDigitsNko;
     else return 0;
     return 1;
 }
@@ -1491,6 +1503,36 @@ static const char* product_native_digits(const RinIcuDataLocaleRecord* record,
         "三" "\xEF\xBF\xBF" "四" "\xEF\xBF\xBF" "五" "\xEF\xBF\xBF"
         "六" "\xEF\xBF\xBF" "七" "\xEF\xBF\xBF" "八" "\xEF\xBF\xBF"
         "九";
+    static const char adlam_digits[] =
+        "𞥐" "\xEF\xBF\xBF" "𞥑" "\xEF\xBF\xBF" "𞥒" "\xEF\xBF\xBF"
+        "𞥓" "\xEF\xBF\xBF" "𞥔" "\xEF\xBF\xBF" "𞥕" "\xEF\xBF\xBF"
+        "𞥖" "\xEF\xBF\xBF" "𞥗" "\xEF\xBF\xBF" "𞥘" "\xEF\xBF\xBF"
+        "𞥙";
+    static const char ol_chiki_digits[] =
+        "᱐" "\xEF\xBF\xBF" "᱑" "\xEF\xBF\xBF" "᱒" "\xEF\xBF\xBF"
+        "᱓" "\xEF\xBF\xBF" "᱔" "\xEF\xBF\xBF" "᱕" "\xEF\xBF\xBF"
+        "᱖" "\xEF\xBF\xBF" "᱗" "\xEF\xBF\xBF" "᱘" "\xEF\xBF\xBF"
+        "᱙";
+    static const char chakma_digits[] =
+        "𑄶" "\xEF\xBF\xBF" "𑄷" "\xEF\xBF\xBF" "𑄸" "\xEF\xBF\xBF"
+        "𑄹" "\xEF\xBF\xBF" "𑄺" "\xEF\xBF\xBF" "𑄻" "\xEF\xBF\xBF"
+        "𑄼" "\xEF\xBF\xBF" "𑄽" "\xEF\xBF\xBF" "𑄾" "\xEF\xBF\xBF"
+        "𑄿";
+    static const char nag_mundari_digits[] =
+        "𞅀" "\xEF\xBF\xBF" "𞅁" "\xEF\xBF\xBF" "𞅂" "\xEF\xBF\xBF"
+        "𞅃" "\xEF\xBF\xBF" "𞅄" "\xEF\xBF\xBF" "𞅅" "\xEF\xBF\xBF"
+        "𞅆" "\xEF\xBF\xBF" "𞅇" "\xEF\xBF\xBF" "𞅈" "\xEF\xBF\xBF"
+        "𞅉";
+    static const char meitei_mayek_digits[] =
+        "꯰" "\xEF\xBF\xBF" "꯱" "\xEF\xBF\xBF" "꯲" "\xEF\xBF\xBF"
+        "꯳" "\xEF\xBF\xBF" "꯴" "\xEF\xBF\xBF" "꯵" "\xEF\xBF\xBF"
+        "꯶" "\xEF\xBF\xBF" "꯷" "\xEF\xBF\xBF" "꯸" "\xEF\xBF\xBF"
+        "꯹";
+    static const char nko_digits[] =
+        "߀" "\xEF\xBF\xBF" "߁" "\xEF\xBF\xBF" "߂" "\xEF\xBF\xBF"
+        "߃" "\xEF\xBF\xBF" "߄" "\xEF\xBF\xBF" "߅" "\xEF\xBF\xBF"
+        "߆" "\xEF\xBF\xBF" "߇" "\xEF\xBF\xBF" "߈" "\xEF\xBF\xBF"
+        "߉";
     ProductDigitSet digit_set;
     int has_override;
     if (!record || !product_numbering_system_override(locale_name, &digit_set, &has_override)) return NULL;
@@ -1515,6 +1557,12 @@ static const char* product_native_digits(const RinIcuDataLocaleRecord* record,
         case ProductDigitsTibetan: return tibetan_digits;
         case ProductDigitsFullwidth: return fullwidth_digits;
         case ProductDigitsHanidec: return hanidec_digits;
+        case ProductDigitsAdlam: return adlam_digits;
+        case ProductDigitsOlChiki: return ol_chiki_digits;
+        case ProductDigitsChakma: return chakma_digits;
+        case ProductDigitsNagMundari: return nag_mundari_digits;
+        case ProductDigitsMeiteiMayek: return meitei_mayek_digits;
+        case ProductDigitsNko: return nko_digits;
         default: return NULL;
     }
 }

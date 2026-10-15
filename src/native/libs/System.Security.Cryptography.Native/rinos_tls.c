@@ -6,7 +6,7 @@
 #include "rinos_crypto_adapter.h"
 #include "rintls.h"
 #include "crypto/sha256.h"
-#include "rin_certificate_revocation_cache.h"
+#include <rinruntime/rin_certificate_revocation_cache.h>
 
 /* System.Net.Security drives RinTLS with a bounded, non-blocking buffer pair.
  * No socket is owned by this adapter: the managed Socket remains responsible

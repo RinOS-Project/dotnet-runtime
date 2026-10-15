@@ -194,9 +194,15 @@ rinos_unwind_fetch(uint32_t index, RinDlInventoryUnwindRecordV1 *record)
     return -UNW_ENOINFO;
   if ((record->flags & RIN_DLINVENTORY_UNWIND_V1_FLAG_PRESENT) == 0u) {
     if (record->unwind_address != 0u || record->unwind_size != 0u ||
-        (record->flags & RIN_DLINVENTORY_UNWIND_V1_FLAG_DWARF_DEBUG_FRAME) != 0u)
+        (record->flags & (RIN_DLINVENTORY_UNWIND_V1_FLAG_DWARF_DEBUG_FRAME |
+                          RIN_DLINVENTORY_UNWIND_V1_FLAG_EH_FRAME)) != 0u)
       return -UNW_ENOINFO;
-  } else if ((record->flags & RIN_DLINVENTORY_UNWIND_V1_FLAG_DWARF_DEBUG_FRAME) == 0u ||
+  } else if (((record->flags & (RIN_DLINVENTORY_UNWIND_V1_FLAG_DWARF_DEBUG_FRAME |
+                                RIN_DLINVENTORY_UNWIND_V1_FLAG_EH_FRAME)) == 0u) ||
+             ((record->flags & (RIN_DLINVENTORY_UNWIND_V1_FLAG_DWARF_DEBUG_FRAME |
+                                RIN_DLINVENTORY_UNWIND_V1_FLAG_EH_FRAME)) ==
+              (RIN_DLINVENTORY_UNWIND_V1_FLAG_DWARF_DEBUG_FRAME |
+               RIN_DLINVENTORY_UNWIND_V1_FLAG_EH_FRAME)) ||
              record->unwind_address == 0u || record->unwind_size == 0u ||
              record->unwind_address < record->load_address ||
              record->unwind_address > UINT64_MAX - record->unwind_size ||

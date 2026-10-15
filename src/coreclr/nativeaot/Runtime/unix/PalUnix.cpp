@@ -1210,6 +1210,29 @@ static bool RinOSUserRangeValid(uintptr_t begin, uintptr_t end)
     return begin < RINOS_PAL_USER_ADDRESS_LIMIT &&
            end >= begin && end <= RINOS_PAL_USER_ADDRESS_LIMIT;
 }
+
+static bool RinOSPageRoundSize(size_t logicalSize, size_t* roundedSize)
+{
+    if (roundedSize == nullptr || logicalSize == 0 || OS_PAGE_SIZE == 0)
+    {
+        return false;
+    }
+
+    const size_t pageSize = (size_t)OS_PAGE_SIZE;
+    if (logicalSize > SIZE_MAX - (pageSize - 1u))
+    {
+        return false;
+    }
+
+    const size_t rounded = ((logicalSize + pageSize - 1u) / pageSize) * pageSize;
+    if (rounded == 0)
+    {
+        return false;
+    }
+
+    *roundedSize = rounded;
+    return true;
+}
 #endif
 
 _Ret_maybenull_ _Post_writable_byte_size_(size) void* PalVirtualAlloc(size_t size, uint32_t protect)
@@ -1219,14 +1242,15 @@ _Ret_maybenull_ _Post_writable_byte_size_(size) void* PalVirtualAlloc(size_t siz
     // executable mapping here instead of relying on mmap to fail after the
     // caller has already selected an unsafe publication mode.  NativeAOT
     // thunk mappings use RW during emission and publish the code half as RX.
-    if ((protect & 0xffu) == PAGE_EXECUTE_READWRITE)
+    size_t mappingSize = 0;
+    if ((protect & 0xffu) == PAGE_EXECUTE_READWRITE ||
+        !RinOSPageRoundSize(size, &mappingSize) ||
+        mappingSize > (size_t)RINOS_PAL_USER_ADDRESS_LIMIT)
     {
         return NULL;
     }
-    if (size == 0 || size > (size_t)RINOS_PAL_USER_ADDRESS_LIMIT)
-    {
-        return NULL;
-    }
+#else
+    size_t mappingSize = size;
 #endif
 
     int unixProtect = W32toUnixAccessControl(protect);
@@ -1239,16 +1263,16 @@ _Ret_maybenull_ _Post_writable_byte_size_(size) void* PalVirtualAlloc(size_t siz
         flags |= MAP_JIT;
     }
 #endif
-    void* pMappedMemory = mmap(NULL, size, unixProtect, flags, -1, 0);
+    void* pMappedMemory = mmap(NULL, mappingSize, unixProtect, flags, -1, 0);
     if (pMappedMemory == MAP_FAILED)
         return NULL;
 #if defined(TARGET_RINOS)
     const uintptr_t mappingBegin = (uintptr_t)pMappedMemory;
-    if (mappingBegin > UINTPTR_MAX - (uintptr_t)size ||
+    if (mappingBegin > UINTPTR_MAX - (uintptr_t)mappingSize ||
         !RinOSUserRangeValid(mappingBegin,
-                             mappingBegin + (uintptr_t)size))
+                             mappingBegin + (uintptr_t)mappingSize))
     {
-        (void)munmap(pMappedMemory, size);
+        (void)munmap(pMappedMemory, mappingSize);
         return NULL;
     }
 #endif
@@ -1265,23 +1289,16 @@ UInt32_BOOL PalVirtualFreeChecked(_In_ void* pAddress, size_t size)
     // request up to a page internally, so release the same rounded mapping;
     // rejecting the caller's logical byte count here would strand the tail
     // pages of EventPipe and other PAL users that are not page-sized.
-    if (pAddress == nullptr || size == 0 || OS_PAGE_SIZE == 0 ||
+    size_t releaseSize = 0;
+    if (pAddress == nullptr ||
+        !RinOSPageRoundSize(size, &releaseSize) ||
         ((uintptr_t)pAddress % (uintptr_t)OS_PAGE_SIZE) != 0)
     {
         return UInt32_FALSE;
     }
 
     const uintptr_t address = (uintptr_t)pAddress;
-    const size_t pageSize = (size_t)OS_PAGE_SIZE;
-    if (size > SIZE_MAX - (pageSize - 1u))
-    {
-        return UInt32_FALSE;
-    }
-
-    const size_t releaseSize =
-        ((size + pageSize - 1u) / pageSize) * pageSize;
-    if (releaseSize == 0 ||
-        address > UINTPTR_MAX - (uintptr_t)releaseSize)
+    if (address > UINTPTR_MAX - (uintptr_t)releaseSize)
     {
         return UInt32_FALSE;
     }

@@ -1219,6 +1219,10 @@ static bool RinOSPageRoundSize(size_t logicalSize, size_t* roundedSize)
     }
 
     const size_t pageSize = (size_t)OS_PAGE_SIZE;
+    if ((pageSize & (pageSize - 1u)) != 0)
+    {
+        return false;
+    }
     if (logicalSize > SIZE_MAX - (pageSize - 1u))
     {
         return false;

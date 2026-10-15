@@ -105,6 +105,7 @@ if(CLR_CMAKE_TARGET_RINOS AND NOT RINOS_CROSS_COMPONENTS_HOST)
         "${RINOS_RUNTIME_ROOT}/public-base/RinOS-SDK/include"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libcxx/include"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/rinwire/include"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/rinruntime/include"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/rinicu/include"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libunicode"

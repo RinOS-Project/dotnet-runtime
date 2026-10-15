@@ -1206,7 +1206,12 @@ static int W32toUnixAccessControl(uint32_t flProtect)
 
 static bool IsSupportedW32AccessControl(uint32_t flProtect)
 {
-    switch (flProtect & 0xffu)
+    if ((flProtect & ~0xffu) != 0u)
+    {
+        return false;
+    }
+
+    switch (flProtect)
     {
     case PAGE_NOACCESS:
     case PAGE_READONLY:

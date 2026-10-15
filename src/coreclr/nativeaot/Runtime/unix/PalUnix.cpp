@@ -964,6 +964,13 @@ static void* RinOSBackgroundWorkEntry(void* rawContext)
 
 bool PalStartBackgroundWork(_In_ BackgroundCallback callback, _In_opt_ void* pCallbackContext, UInt32_BOOL highPriority)
 {
+    // A null callback cannot produce a managed background thread on any Unix
+    // flavor. Reject it before either the WASM fail-closed path or pthread
+    // creation so the ordinary hosted-Unix path cannot publish a thread that
+    // will call through a null function pointer.
+    if (callback == nullptr)
+        return false;
+
 #ifdef HOST_WASM
     // WASM has no native pthread/thread ABI in this PAL.  Do not assert and
     // then fall through into the pthread path: release builds would attempt
@@ -974,9 +981,6 @@ bool PalStartBackgroundWork(_In_ BackgroundCallback callback, _In_opt_ void* pCa
     return false;
 #else // HOST_WASM
 #if defined(TARGET_RINOS)
-    if (callback == nullptr)
-        return false;
-
     RinOSBackgroundWorkStart* start = new (nothrow) RinOSBackgroundWorkStart{};
     if (start == nullptr)
         return false;

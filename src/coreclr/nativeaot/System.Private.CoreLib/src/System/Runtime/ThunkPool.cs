@@ -490,6 +490,12 @@ namespace System.Runtime
                     return false;
                 if (current == dataAddress)
                     return true;
+                // A bounded walk is not enough to make a corrupted free-list
+                // safe: the next link may be a foreign address. Validate each
+                // node before reading its link so stale/corrupt thunk data
+                // fails closed instead of becoming an arbitrary dereference.
+                if (!IsThunkDataInHeap(current))
+                    return false;
                 current = *((IntPtr*)current);
                 --remaining;
             }

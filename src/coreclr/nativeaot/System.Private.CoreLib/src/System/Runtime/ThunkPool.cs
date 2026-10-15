@@ -420,13 +420,15 @@ namespace System.Runtime
 
                 _nextAvailableThunkPtr = nextNextAvailableThunkPtr;
                 --_freeThunkCount;
+
+                // The first cell held the free-list link and the second cell
+                // held the previous target.  Clear both before publishing the
+                // thunk to its caller so a caller that inspects or delays
+                // SetThunkData cannot observe data from the previous owner.
+                *((IntPtr*)nextAvailableThunkPtr) = IntPtr.Zero;
+                *((IntPtr*)(nextAvailableThunkPtr + IntPtr.Size)) = IntPtr.Zero;
             }
             Debug.Assert(nextAvailableThunkPtr != IntPtr.Zero);
-
-#if DEBUG
-            // Reset debug flag indicating the thunk is now in use
-            *((IntPtr*)(nextAvailableThunkPtr + IntPtr.Size)) = IntPtr.Zero;
-#endif
 
             return SetThumbBit(thunkAddress);
         }
@@ -463,13 +465,12 @@ namespace System.Runtime
                 if (_freeThunkCount == nuint.MaxValue)
                     return;
 
-#if DEBUG
                 Debug.Assert(IsThunkInHeap(thunkAddress));
 
-                // Debug flag indicating the thunk is no longer used
-                *((IntPtr*)(dataAddress + IntPtr.Size)) = new IntPtr(-1);
-#endif
-
+                // Do not retain the previous target or context while this
+                // executable address is available for reuse.  The first cell
+                // is then repurposed for the free-list link.
+                *((IntPtr*)(dataAddress + IntPtr.Size)) = IntPtr.Zero;
                 *((IntPtr*)(dataAddress)) = _nextAvailableThunkPtr;
                 _nextAvailableThunkPtr = dataAddress;
                 ++_freeThunkCount;

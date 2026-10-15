@@ -1204,6 +1204,25 @@ static int W32toUnixAccessControl(uint32_t flProtect)
     return prot;
 }
 
+static bool IsSupportedW32AccessControl(uint32_t flProtect)
+{
+    switch (flProtect & 0xffu)
+    {
+    case PAGE_NOACCESS:
+    case PAGE_READONLY:
+    case PAGE_READWRITE:
+    case PAGE_EXECUTE_READ:
+    case PAGE_EXECUTE_READWRITE:
+        return true;
+    default:
+        /* W32toUnixAccessControl is deliberately assertion-backed for the
+         * internal PAL call sites.  Validate at the public allocation and
+         * protection boundaries first so malformed NativeAOT metadata cannot
+         * turn into an assertion or an accidental PROT_NONE mapping. */
+        return false;
+    }
+}
+
 #if defined(TARGET_RINOS)
 static bool RinOSUserRangeValid(uintptr_t begin, uintptr_t end)
 {
@@ -1241,6 +1260,10 @@ static bool RinOSPageRoundSize(size_t logicalSize, size_t* roundedSize)
 
 _Ret_maybenull_ _Post_writable_byte_size_(size) void* PalVirtualAlloc(size_t size, uint32_t protect)
 {
+    if (!IsSupportedW32AccessControl(protect))
+    {
+        return NULL;
+    }
 #if defined(TARGET_RINOS)
     // RinOS enforces W^X in the kernel.  Reject a request for a writable
     // executable mapping here instead of relying on mmap to fail after the
@@ -1327,6 +1350,11 @@ void PalVirtualFree(_In_ void* pAddress, size_t size)
 
 UInt32_BOOL PalVirtualProtect(_In_ void* pAddress, size_t size, uint32_t protect)
 {
+    if (!IsSupportedW32AccessControl(protect))
+    {
+        return UInt32_FALSE;
+    }
+
     // mprotect rounds to whole pages, so reject invalid or overflowing ranges
     // before doing any pointer arithmetic.  NativeAOT uses this boundary for
     // both W^X thunk publication and GC/JIT write-protect transitions; a

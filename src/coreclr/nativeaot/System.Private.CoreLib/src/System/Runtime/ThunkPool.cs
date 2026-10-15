@@ -124,16 +124,20 @@ namespace System.Runtime
     // its blocks without freeing a mapping still leased by another heap.
     internal sealed class ThunkMapping
     {
-        internal readonly IntPtr _mappingBaseAddress;
+        // Allocate the managed lease before asking native code for an executable
+        // mapping.  If the managed object allocation itself fails, no native
+        // owner has been published and there is nothing to reclaim.  The base
+        // address is filled exactly once after the native allocation succeeds.
+        internal IntPtr _mappingBaseAddress;
         internal int _outstandingBlockCount;
         internal bool _releaseAttempted;
         internal bool _releaseSucceeded;
         internal ThunkMapping _nextReleaseRetry;
         internal bool _releaseRetryQueued;
 
-        internal ThunkMapping(IntPtr mappingBaseAddress)
+        internal ThunkMapping()
         {
-            _mappingBaseAddress = mappingBaseAddress;
+            _mappingBaseAddress = IntPtr.Zero;
         }
     }
 
@@ -852,6 +856,10 @@ namespace System.Runtime
             }
             else
             {
+                // Establish the managed owner before native allocation.  A
+                // managed OOM here must not strand a mapping that native code
+                // has already registered for later release.
+                mapping = new ThunkMapping();
                 nextThunksBlock = IntPtr.Zero;
                 int result = RuntimeImports.RhAllocateThunksMapping(&nextThunksBlock);
                 if (result == HResults.E_OUTOFMEMORY)
@@ -859,7 +867,7 @@ namespace System.Runtime
                 else if (result != HResults.S_OK)
                     throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
 
-                mapping = new ThunkMapping(nextThunksBlock);
+                mapping._mappingBaseAddress = nextThunksBlock;
                 try
                 {
                     ValidateThunkBlockPair(nextThunksBlock, out dataAddress);

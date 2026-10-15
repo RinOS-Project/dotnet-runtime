@@ -1261,27 +1261,42 @@ UInt32_BOOL PalVirtualFreeChecked(_In_ void* pAddress, size_t size)
     // An invalid range must be rejected before reaching munmap rather than
     // reported after the kernel has attempted a platform-dependent partial
     // operation. Keep the same page, user-VA, and overflow contract as
-    // PalVirtualAlloc/PalVirtualProtect.
+    // PalVirtualAlloc/PalVirtualProtect. mmap rounds a non-page-sized
+    // request up to a page internally, so release the same rounded mapping;
+    // rejecting the caller's logical byte count here would strand the tail
+    // pages of EventPipe and other PAL users that are not page-sized.
     if (pAddress == nullptr || size == 0 || OS_PAGE_SIZE == 0 ||
-        ((uintptr_t)pAddress % (uintptr_t)OS_PAGE_SIZE) != 0 ||
-        (size % (size_t)OS_PAGE_SIZE) != 0)
+        ((uintptr_t)pAddress % (uintptr_t)OS_PAGE_SIZE) != 0)
     {
         return UInt32_FALSE;
     }
 
     const uintptr_t address = (uintptr_t)pAddress;
-    if (address > UINTPTR_MAX - (uintptr_t)size)
+    const size_t pageSize = (size_t)OS_PAGE_SIZE;
+    if (size > SIZE_MAX - (pageSize - 1u))
     {
         return UInt32_FALSE;
     }
 
-    const uintptr_t end = address + (uintptr_t)size;
+    const size_t releaseSize =
+        ((size + pageSize - 1u) / pageSize) * pageSize;
+    if (releaseSize == 0 ||
+        address > UINTPTR_MAX - (uintptr_t)releaseSize)
+    {
+        return UInt32_FALSE;
+    }
+
+    const uintptr_t end = address + (uintptr_t)releaseSize;
     if (!RinOSUserRangeValid(address, end))
     {
         return UInt32_FALSE;
     }
+
+    return munmap(pAddress, releaseSize) == 0 ? UInt32_TRUE : UInt32_FALSE;
 #endif
+#if !defined(TARGET_RINOS)
     return munmap(pAddress, size) == 0 ? UInt32_TRUE : UInt32_FALSE;
+#endif
 }
 
 void PalVirtualFree(_In_ void* pAddress, size_t size)

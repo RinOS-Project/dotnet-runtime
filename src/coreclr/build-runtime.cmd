@@ -144,7 +144,7 @@ if /i "%1" == "-targetrid"           (set __TargetRid=%2&shift&shift&goto Arg_Lo
 if /i "%1" == "-outputrid"           (set __TargetRid=%2&shift&shift&goto Arg_Loop)
 if /i "%1" == "-subdir"              (set __SubDir=%2&shift&shift&goto Arg_Loop)
 
-if /i "%1" == "-cmakeargs"           (set "__CMakeArgs=%~2 %__CMakeArgs%"&set __remainingArgs="!__remainingArgs:*%2=!"&shift&shift&goto Arg_Loop)
+if /i "%1" == "-cmakeargs"           (set __CMakeArgs=%2 %__CMakeArgs%&set __remainingArgs="!__remainingArgs:*%2=!"&shift&shift&goto Arg_Loop)
 if /i "%1" == "-configureonly"       (set __ConfigureOnly=1&set __BuildNative=1&shift&goto Arg_Loop)
 if /i "%1" == "-skipconfigure"       (set __SkipConfigure=1&shift&goto Arg_Loop)
 if /i "%1" == "-skipnative"          (set __BuildNative=0&shift&goto Arg_Loop)

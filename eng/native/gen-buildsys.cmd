@@ -111,7 +111,7 @@ if /i "%__Os%" == "android" (
 
 :loop
 if [%6] == [] goto end_loop
-set __ExtraCmakeParams=!__ExtraCmakeParams! ^"%~6^"
+set __ExtraCmakeParams=%__ExtraCmakeParams% %6
 shift
 goto loop
 :end_loop

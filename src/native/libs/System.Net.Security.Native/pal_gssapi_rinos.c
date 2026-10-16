@@ -298,12 +298,12 @@ static uint32_t rinos_gss_map_kerberos_supplementary(
  * provider's status-name formatter.  Unknown values remain failure rather
  * than being guessed into a credential or success state.
  *
- * MIT krb5 treats an expired service ticket returned during initiator
- * establishment as an expired credential (see its init_sec_context path).
- * Keep that direction-sensitive behavior for KRB_AP_ERR_TKT_EXPIRED. */
+ * The upstream managed Unix PAL maps KRB_AP_ERR_TKT_EXPIRED to
+ * CredentialsExpired for both initiator and acceptor errors.  Keep the
+ * native major status direction-independent; the preserved protocol minor
+ * still identifies the RFC 4120 cause. */
 static uint32_t rinos_gss_map_kerberos_major(
-    uint32_t providerStatus, const uint32_t* minorStatus,
-    int initiator_context)
+    uint32_t providerStatus, const uint32_t* minorStatus)
 {
     const uint32_t protocolErrorBit =
         RIN_KERBEROS_OPERATION_MINOR_PROTOCOL_ERROR;
@@ -405,9 +405,7 @@ static uint32_t rinos_gss_map_kerberos_major(
         case 64u: /* KDC_ERR_INVALID_SIG */
             return PAL_GSS_S_BAD_SIG;
         case 32u: /* KRB_AP_ERR_TKT_EXPIRED */
-            return initiator_context != 0
-                ? PAL_GSS_S_CREDENTIALS_EXPIRED
-                : PAL_GSS_S_FAILURE;
+            return PAL_GSS_S_CREDENTIALS_EXPIRED;
         case 47u: /* KRB_AP_ERR_BADDIRECTION */
         case 61u: /* KRB_ERR_FIELD_TOOLONG */
         case 79u: /* KDC_ERR_PA_CHECKSUM_MUST_BE_INCLUDED */
@@ -489,8 +487,7 @@ static uint32_t rinos_gss_finish_provider_buffer(
     const RinAuthProviderV1* provider, uint32_t* minorStatus,
     uint32_t status, int initiator_context, PAL_GssBuffer* outBuffer)
 {
-    uint32_t mappedStatus = rinos_gss_map_kerberos_major(
-        status, minorStatus, initiator_context);
+    uint32_t mappedStatus = rinos_gss_map_kerberos_major(status, minorStatus);
     mappedStatus |= rinos_gss_map_kerberos_supplementary(
         status, minorStatus, initiator_context);
     const int preserve_error_token = status == RIN_AUTH_PROVIDER_KRB_ERROR;
@@ -536,8 +533,7 @@ static uint32_t rinos_gss_finish_provider_handle(
     uint32_t status, void** outputHandle,
     RinAuthProviderReleaseHandleCallback release)
 {
-    uint32_t mappedStatus = rinos_gss_map_kerberos_major(
-        status, minorStatus, 0);
+    uint32_t mappedStatus = rinos_gss_map_kerberos_major(status, minorStatus);
     uint32_t releaseStatus = RIN_AUTH_PROVIDER_UNAVAILABLE;
 
     /* A failed acquire must not publish a usable provider-owned opaque

@@ -729,6 +729,14 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
     }
 
     RinOsRxThunkMappingOwner* owner = *ownerLink;
+    if (owner->pendingRelease)
+    {
+        // A previous PAL release failed.  Keep the owner queued for the
+        // retry path; never submit the same address to the PAL twice while
+        // the original release is still unresolved.
+        UnlockRxThunkMappingOwners();
+        return E_FAIL;
+    }
     *ownerLink = owner->next;
     if (!PalVirtualFreeChecked(pThunksSection, (uintptr_t)mappingSize))
     {
@@ -1256,6 +1264,14 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
     }
 
     RinOsTemplateThunkMappingOwner* owner = *ownerLink;
+    if (owner->pendingRelease)
+    {
+        // A previous PAL release failed.  Keep the owner queued for the
+        // retry path; never submit the same address to the PAL twice while
+        // the original release is still unresolved.
+        UnlockTemplateThunkMappingOwners();
+        return E_FAIL;
+    }
     *ownerLink = owner->next;
     if (!PalFreeThunksFromTemplate(pThunksSection, templateSize))
     {

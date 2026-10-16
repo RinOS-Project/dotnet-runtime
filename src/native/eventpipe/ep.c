@@ -1032,7 +1032,13 @@ get_next_config_value_as_uint64_t (const ep_char8_t **data)
 
 	uint64_t value = UINT64_MAX;
 	if (value_as_utf8) {
+		/* The RinOS unity C++ build imports std::strtoull alongside the
+		 * global C ABI.  Keep the plain spelling for the regular C build. */
+#ifdef __cplusplus
+		value = (uint64_t)::strtoull (value_as_utf8, NULL, 16);
+#else
 		value = (uint64_t)strtoull (value_as_utf8, NULL, 16);
+#endif
 		ep_rt_utf8_string_free (value_as_utf8);
 	}
 	return value;
@@ -1048,7 +1054,11 @@ get_next_config_value_as_uint32_t (const ep_char8_t **data)
 
 	uint32_t value = UINT32_MAX;
 	if (value_as_utf8) {
+#ifdef __cplusplus
+		value = (uint32_t)::strtoul (value_as_utf8, NULL, 10);
+#else
 		value = (uint32_t)strtoul (value_as_utf8, NULL, 10);
+#endif
 		ep_rt_utf8_string_free (value_as_utf8);
 	}
 	return value;

@@ -635,7 +635,9 @@ bool ReadMemoryValueFromFile(const char* filename, uint64_t* val)
         goto done;
 
     errno = 0;
-    num = strtoull(line, &endptr, 0);
+    // RinOS exposes the C conversion routine in both the global C surface
+    // and std::.  GC headers import std, so make the ABI owner explicit.
+    num = ::strtoull(line, &endptr, 0);
     if (line == endptr || errno != 0)
         goto done;
 
@@ -987,7 +989,7 @@ static size_t GetCurrentVirtualMemorySize()
         char* strTok = strtok_r(line, " ", &context);
 
         errno = 0;
-        result = strtoull(strTok, nullptr, 0);
+        result = ::strtoull(strTok, nullptr, 0);
         if (errno == 0)
         {
             long pageSize = sysconf(_SC_PAGE_SIZE);

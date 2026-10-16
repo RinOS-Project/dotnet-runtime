@@ -1114,11 +1114,25 @@ ep_rt_temp_path_get (
     EP_ASSERT (buffer != NULL);
     EP_ASSERT (buffer_len > 0);
 
-    const ep_char8_t *path = getenv ("TMPDIR");
+	/* The RinOS C++ headers provide both global C and std:: environment
+	 * entrypoints.  Select the global ABI owner in the unity build. */
+#ifdef __cplusplus
+	const ep_char8_t *path = ::getenv ("TMPDIR");
+#else
+	const ep_char8_t *path = getenv ("TMPDIR");
+#endif
     if (path == NULL){
-        path = getenv ("TMP");
+	#ifdef __cplusplus
+		path = ::getenv ("TMP");
+	#else
+		path = getenv ("TMP");
+	#endif
         if (path == NULL){
-            path = getenv ("TEMP");
+		#ifdef __cplusplus
+			path = ::getenv ("TEMP");
+		#else
+			path = getenv ("TEMP");
+		#endif
             if (path == NULL)
                 path = "/tmp/";
         }

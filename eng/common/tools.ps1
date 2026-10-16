@@ -670,6 +670,7 @@ function InitializeBuildTool() {
     $directMsbuildDll = Get-ChildItem -LiteralPath $sdkDirectory -Filter 'MSBuild.dll' -File -Recurse -ErrorAction SilentlyContinue |
       Select-Object -First 1 -ExpandProperty FullName
     if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1' -and
+        $env:RINOS_DOTNET_FORCE_DOTNET_MSBUILD_VERB -ne '1' -and
         $directMsbuildDll -and (Test-Path -LiteralPath $directMsbuildDll)) {
       $buildTool = @{ Path = $dotnetPath; Command = "`"$directMsbuildDll`"" }
     } else {

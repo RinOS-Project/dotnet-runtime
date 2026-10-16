@@ -183,7 +183,7 @@ bool RhConfig::ReadConfigValue(_In_z_ const char *name, uint64_t* pValue, bool d
     const char *embeddedValue = nullptr;
     if (GetEmbeddedVariable(&g_compilerEmbeddedSettingsBlob, name, true, &embeddedValue))
     {
-        *pValue = strtoull(embeddedValue, NULL, decimal ? 10 : 16);
+        *pValue = ::strtoull(embeddedValue, NULL, decimal ? 10 : 16);
         return true;
     }
 
@@ -213,7 +213,7 @@ bool RhConfig::ReadKnobUInt64Value(_In_z_ const char *name, uint64_t* pValue)
     const char *embeddedValue = nullptr;
     if (GetEmbeddedVariable(&g_compilerEmbeddedKnobsBlob, name, false, &embeddedValue))
     {
-        *pValue = strtoull(embeddedValue, NULL, 10);
+        *pValue = ::strtoull(embeddedValue, NULL, 10);
         return true;
     }
 

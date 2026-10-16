@@ -215,10 +215,11 @@ namespace System.Threading
 
         private void ThreadNameChanged(string? value)
         {
-            if (value == null)
-            {
-                return;
-            }
+            // Thread.Name = null is the documented clear operation.  RinOS's
+            // thread-name ABI represents that state with an empty string, so
+            // keep the same path for current and non-current threads instead
+            // of silently leaving the old diagnostic name installed.
+            value ??= string.Empty;
 
             if (Thread.CurrentThread == this)
             {

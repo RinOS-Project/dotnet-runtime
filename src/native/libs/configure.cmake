@@ -1274,6 +1274,17 @@ if (CLR_CMAKE_TARGET_RINOS)
     set(HAVE_PWRITEV 0)
     set(HAVE_TCP_H_TCPSTATE_ENUM 0)
     set(HAVE_TCP_FSM_H 0)
+    # The product's 64-bit stat ABI has second-resolution timestamps.  The
+    # host Linux probe may select st_atim/st_mtim/st_ctim, which are not fields
+    # of RinOS's stat64 record and would make a target compile bind to a host
+    # layout.
+    set(HAVE_STAT_TIMESPEC 0)
+    set(HAVE_STAT_TIM 0)
+    set(HAVE_STAT_NSEC 0)
+    # RinOS libc intentionally exposes getgroups(), not the hosted
+    # getgrouplist() symbol.  System.Native already contains the POSIX
+    # getgrent-based fallback, which is the product-backed implementation.
+    set(HAVE_GETGROUPLIST 0)
     # statvfs, ifaddrs and the event/watch wrappers are product headers and
     # implementations, so the target-specific source branches may use them
     # even when the host probe could not link against RinOS libc.

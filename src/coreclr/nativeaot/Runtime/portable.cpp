@@ -157,17 +157,27 @@ static void UnlockPortableThunkMappingOwners()
     VolatileStore<volatile int32_t>(&g_portableThunkMappingOwnerLock, 0);
 }
 
-static HRESULT RegisterPortableThunkMapping(
-    void* mapping, const RinNativeAotThunkProviderV1* provider)
+static RinOsPortableThunkMappingOwner* ReservePortableThunkMappingOwner()
 {
     RinOsPortableThunkMappingOwner* owner =
         new (std::nothrow) RinOsPortableThunkMappingOwner{};
     if (owner == nullptr)
-        return E_OUTOFMEMORY;
+        return nullptr;
 
+    owner->mapping = nullptr;
+    owner->provider = nullptr;
+    owner->releaseInProgress = false;
+    owner->next = nullptr;
+    return owner;
+}
+
+static HRESULT RegisterPortableThunkMapping(
+    RinOsPortableThunkMappingOwner* owner,
+    void* mapping,
+    const RinNativeAotThunkProviderV1* provider)
+{
     owner->mapping = mapping;
     owner->provider = provider;
-    owner->releaseInProgress = false;
 
     LockPortableThunkMappingOwners();
     for (RinOsPortableThunkMappingOwner* current =
@@ -178,7 +188,6 @@ static HRESULT RegisterPortableThunkMapping(
         if (current->mapping == mapping)
         {
             UnlockPortableThunkMappingOwners();
-            delete owner;
             // The provider returned an address already owned by a live
             // mapping.  Do not release it from the allocation failure path:
             // doing so would tear down the first mapping while its owner is
@@ -590,6 +599,15 @@ FCIMPL1(HRESULT, RhAllocateThunksMapping, void ** ppThunksSection)
         if (!IsValidRinNativeAotThunkGeometry(provider))
             return E_FAIL;
 
+        // Reserve the bookkeeping owner before invoking product code.  The
+        // callback may return an executable mapping even when a later
+        // registry allocation fails; reserving first keeps that mapping
+        // attributable to this provider for every post-callback failure.
+        RinOsPortableThunkMappingOwner* owner =
+            ReservePortableThunkMappingOwner();
+        if (owner == nullptr)
+            return E_OUTOFMEMORY;
+
         HRESULT result = (HRESULT)provider->allocate_thunks_mapping(
             provider->context, ppThunksSection);
         if (result != S_OK || *ppThunksSection == nullptr)
@@ -604,17 +622,18 @@ FCIMPL1(HRESULT, RhAllocateThunksMapping, void ** ppThunksSection)
                 (void)provider->free_thunks_mapping(
                     provider->context, failedMapping);
             }
+            delete owner;
             return result == S_OK ? E_FAIL : result;
         }
 
-        result = RegisterPortableThunkMapping(*ppThunksSection, provider);
+        result = RegisterPortableThunkMapping(owner, *ppThunksSection, provider);
         if (result != S_OK)
         {
             // E_INVALIDARG means the provider returned an address already
             // owned by a live mapping.  Releasing that address here would
-            // invalidate the earlier allocation, so only release mappings
-            // whose registry entry could not be created for an allocation
-            // failure.
+            // invalidate the earlier allocation.  The owner was reserved
+            // before the callback, so no post-callback allocation failure
+            // can leave an untracked mapping behind.
             if (result != E_INVALIDARG &&
                 (provider->capability_mask &
                     RIN_NATIVEAOT_THUNK_CAP_MAPPING_RELEASE) != 0 &&
@@ -624,6 +643,7 @@ FCIMPL1(HRESULT, RhAllocateThunksMapping, void ** ppThunksSection)
                     provider->context, *ppThunksSection);
             }
             *ppThunksSection = nullptr;
+            delete owner;
             return result;
         }
 

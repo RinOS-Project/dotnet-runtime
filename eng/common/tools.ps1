@@ -629,25 +629,18 @@ function InitializeBuildTool() {
         $env:MSBuildSDKsPath = $rinosMsbuildSdksPath
       }
     }
-    # Desktop MSBuild can host the pinned net472 compiler task directly.  The
-    # direct dotnet/MSBuild host must instead use the SDK's csc.dll; passing a
-    # net472 csc.exe through a Core task causes the task to fall back to the
-    # compiler server and recreate the inaccessible LOCAL\dotnet_* pipe.
-    if ($env:RINOS_DOTNET_USE_VS_MSBUILD -eq '1') {
-      $rinosRoslynToolPath = $env:RINOS_DOTNET_CSC_TOOL_PATH
-      if (-not $rinosRoslynToolPath -or
-          -not (Test-Path (Join-Path $rinosRoslynToolPath 'csc.exe'))) {
-        $rinosRoslynToolPath = Get-ChildItem -LiteralPath (Join-Path $dotnetRoot 'sdk') -Filter 'csc.exe' -File -Recurse -ErrorAction SilentlyContinue |
-          Select-Object -First 1 -ExpandProperty DirectoryName
-      }
+    # The runtime-pinned compiler package supplies a standalone csc.exe.  It
+    # is valid for both the desktop and bundled dotnet/MSBuild hosts; a
+    # csc.dll is only a managed assembly and cannot be started as a Windows
+    # executable by ToolTask.  Keep the explicit path selected by the product
+    # wrapper, and only publish it when the executable actually exists.
+    $rinosRoslynToolPath = $env:RINOS_DOTNET_CSC_TOOL_PATH
+    if ($rinosRoslynToolPath -and
+        (Test-Path (Join-Path $rinosRoslynToolPath 'csc.exe'))) {
       $env:RINOS_DOTNET_CSC_TOOL_EXE = 'csc.exe'
     } else {
-      $rinosRoslynToolPath = Get-ChildItem -LiteralPath (Join-Path $dotnetRoot 'sdk') -Filter 'csc.dll' -File -Recurse -ErrorAction SilentlyContinue |
-        Select-Object -First 1 -ExpandProperty DirectoryName
-      $env:RINOS_DOTNET_CSC_TOOL_EXE = 'csc.dll'
-    }
-    if ($rinosRoslynToolPath) {
-      $env:RINOS_DOTNET_CSC_TOOL_PATH = $rinosRoslynToolPath
+      Remove-Item Env:RINOS_DOTNET_CSC_TOOL_PATH -ErrorAction SilentlyContinue
+      Remove-Item Env:RINOS_DOTNET_CSC_TOOL_EXE -ErrorAction SilentlyContinue
     }
   }
 
@@ -887,9 +880,9 @@ function MSBuild() {
     $args += "/p:CscToolExe=$cscToolExe"
   }
 
-  # The desktop MSBuild fallback uses the framework Roslyn task set and the
-  # standalone csc.exe selected above.  Direct dotnet/MSBuild remains on the
-  # SDK's Core compiler with csc.dll and no shared compiler server.
+  # Both MSBuild hosts use the standalone csc.exe selected above.  Do not
+  # replace it with the SDK's csc.dll: ToolTask starts CscToolExe directly on
+  # Windows, so a DLL produces the platform-loader error before compilation.
   if ($env:RINOS_DOTNET_USE_VS_MSBUILD -eq '1') {
     $args += '/p:RoslynCompilerType=Framework'
     $args += '/p:MSBuildEnableWorkloadResolver=false'

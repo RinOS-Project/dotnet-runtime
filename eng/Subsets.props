@@ -675,6 +675,14 @@
   <!-- Libraries test sets -->
   <ItemGroup Condition="$(_subset.Contains('+libs.pretest+'))">
     <ProjectToBuild Include="$(LibrariesProjectRoot)pretest.proj" Category="libs"  />
+    <!--
+      pretest.proj consumes InstallerTasksAssemblyPath during source-only
+      builds. Keep the non-shipping task project in the restore graph so the
+      later project reference cannot reach Build with a missing assets file.
+    -->
+    <ProjectToBuild Condition="'$(DotNetBuildSourceOnly)' == 'true'"
+                   Include="$(RepoTasksDir)installer.tasks\installer.tasks.csproj"
+                   Category="libs" />
   </ItemGroup>
 
   <ItemGroup Condition="$(_subset.Contains('+libs.tests+'))">

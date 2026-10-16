@@ -879,6 +879,7 @@ function MSBuild() {
   # server even though shared compilation is disabled.
   if ($env:RINOS_DOTNET_USE_VS_MSBUILD -eq '1') {
     $args += '/p:RoslynCompilerType=Framework'
+    $args += '/p:MSBuildEnableWorkloadResolver=false'
   }
 
   if ($pipelinesLog) {

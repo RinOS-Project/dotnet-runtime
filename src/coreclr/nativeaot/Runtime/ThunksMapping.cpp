@@ -758,6 +758,7 @@ uintptr_t g_pThunkStubData = NULL;
 static size_t g_thunkStubDataSize = 0;
 static uint8_t* g_thunkDataMappingInUse = NULL;
 static size_t g_thunkDataMappingCount = 0;
+static bool g_fixedPoolThunkReservationReleasePending = false;
 static volatile int32_t g_fixedPoolThunkMappingLock = 0;
 
 static void LockFixedPoolThunkMappings()
@@ -822,6 +823,23 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
 
     LockFixedPoolThunkMappings();
 
+    // If bitmap allocation failed after the process-wide reservation was
+    // published and MEM_RELEASE also failed, retry that release before
+    // touching the incomplete metadata.  Do not reserve another pool while
+    // the old address range is still owned by this process.
+    if (g_fixedPoolThunkReservationReleasePending)
+    {
+        if (!VirtualFree((void*)g_pThunkStubData, 0, MEM_RELEASE))
+        {
+            UnlockFixedPoolThunkMappings();
+            return E_FAIL;
+        }
+        g_pThunkStubData = NULL;
+        g_thunkStubDataSize = 0;
+        g_thunkDataMappingCount = 0;
+        g_fixedPoolThunkReservationReleasePending = false;
+    }
+
     if (g_pThunkStubData == NULL)
     {
         g_pThunkStubData = (uintptr_t)VirtualAlloc(NULL, thunkDataSize, MEM_RESERVE, PAGE_READWRITE);
@@ -839,9 +857,9 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
             if (!VirtualFree((void*)g_pThunkStubData, 0, MEM_RELEASE))
             {
                 // Keep the reservation owner published when release itself
-                // fails.  A later call must fail closed on the incomplete
-                // metadata state rather than reserving another pool and
-                // leaking this address range.
+                // fails.  A later allocation retries the release before it
+                // can reserve another process-wide pool.
+                g_fixedPoolThunkReservationReleasePending = true;
                 UnlockFixedPoolThunkMappings();
                 return E_FAIL;
             }

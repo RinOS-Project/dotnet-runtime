@@ -2998,6 +2998,19 @@ static uint32_t provider_delete_sec_context(
     status = provider_operation(credential, provider_context, &request, NULL,
                                 0u, NULL, 0u, NULL, minor_status);
     if (status != RIN_AUTH_PROVIDER_OK) {
+        /* The keyring operation owner removes an expired context slot before
+         * returning CONTEXT_EXPIRED.  There is therefore no remote context
+         * left for a later DELETE_SEC_CONTEXT retry.  Release the local
+         * lifetime reference at this terminal boundary; retaining it would
+         * keep the credential wrapper permanently unreleasable after ticket
+         * expiry.  Other failures remain retryable because their remote
+         * context ownership is not established to have ended. */
+        if (status == RIN_AUTH_PROVIDER_CONTEXT_EXPIRED) {
+            provider_context_release(provider_context);
+            provider_zero(provider_context, sizeof(*provider_context));
+            free(provider_context);
+            *security_context = NULL;
+        }
         /* The owner still owns the remote context when cleanup fails.  Keep
          * the local handle alive so the caller can retry after a transient
          * transport failure; successful cleanup below is the commit point. */

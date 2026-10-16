@@ -399,6 +399,15 @@ function InitializeVisualStudioMSBuild([object]$vsRequirements = $null) {
     return $global:_MSBuildExe
   }
 
+  # RinOS' restricted cross-build wrapper discovers the installed desktop
+  # MSBuild before entering this script.  Prefer that verified local path so
+  # an offline/restricted host does not need to download vswhere merely to
+  # select an already-installed MSBuild executable.
+  if ($env:RINOS_DOTNET_VS_MSBUILD_PATH -and
+      (Test-Path -LiteralPath $env:RINOS_DOTNET_VS_MSBUILD_PATH)) {
+    return $global:_MSBuildExe = $env:RINOS_DOTNET_VS_MSBUILD_PATH
+  }
+
   # Minimum VS version to require.
   $vsMinVersionReqdStr = '18.0'
 

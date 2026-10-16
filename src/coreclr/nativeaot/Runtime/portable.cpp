@@ -179,7 +179,13 @@ static HRESULT RegisterPortableThunkMapping(
         {
             UnlockPortableThunkMappingOwners();
             delete owner;
-            return E_FAIL;
+            // The provider returned an address already owned by a live
+            // mapping.  Do not release it from the allocation failure path:
+            // doing so would tear down the first mapping while its owner is
+            // still using it.  The caller must clear its output and fail
+            // closed without handing this duplicate address back to the
+            // provider.
+            return E_INVALIDARG;
         }
     }
     owner->next = g_portableThunkMappingOwners;
@@ -604,7 +610,13 @@ FCIMPL1(HRESULT, RhAllocateThunksMapping, void ** ppThunksSection)
         result = RegisterPortableThunkMapping(*ppThunksSection, provider);
         if (result != S_OK)
         {
-            if ((provider->capability_mask &
+            // E_INVALIDARG means the provider returned an address already
+            // owned by a live mapping.  Releasing that address here would
+            // invalidate the earlier allocation, so only release mappings
+            // whose registry entry could not be created for an allocation
+            // failure.
+            if (result != E_INVALIDARG &&
+                (provider->capability_mask &
                     RIN_NATIVEAOT_THUNK_CAP_MAPPING_RELEASE) != 0 &&
                 provider->free_thunks_mapping != nullptr)
             {

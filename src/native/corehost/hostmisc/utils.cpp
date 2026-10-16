@@ -408,7 +408,7 @@ pal::string_t get_host_version_description()
 
     // sccsid is @(#)Version <file_version> [@Commit: <commit_hash>]
     // Get the commit portion if available
-    char* commit_maybe = ::strchr(&sccsid[STRING_LENGTH("@(#)Version ")], '@');
+    const char* commit_maybe = ::strchr(&sccsid[STRING_LENGTH("@(#)Version ")], '@');
     if (commit_maybe != nullptr)
     {
         info.append(" ");

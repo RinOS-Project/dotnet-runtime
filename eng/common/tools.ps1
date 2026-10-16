@@ -873,12 +873,18 @@ function MSBuild() {
     $args += '/p:CscToolExe=csc.exe'
   }
 
-  # The desktop MSBuild fallback must use the framework Roslyn task set and
-  # the standalone csc.exe selected above.  Otherwise the toolset's Core-host
-  # bridge can still try to reach the inaccessible LOCAL\dotnet_* compiler
-  # server even though shared compilation is disabled.
-  if ($env:RINOS_DOTNET_USE_VS_MSBUILD -eq '1') {
+  # The restricted RinOS cross-build must use the framework Roslyn task set
+  # and the standalone csc.exe selected above.  Otherwise the toolset's
+  # Core-host bridge can still try to reach the inaccessible LOCAL\dotnet_*
+  # compiler server even though shared compilation is disabled.  This applies
+  # to both direct dotnet MSBuild and the optional desktop-MSBuild fallback.
+  if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1') {
     $args += '/p:RoslynCompilerType=Framework'
+  }
+
+  # The desktop fallback additionally disables workload probing because the
+  # runtime build deliberately does not use SDK workloads.
+  if ($env:RINOS_DOTNET_USE_VS_MSBUILD -eq '1') {
     $args += '/p:MSBuildEnableWorkloadResolver=false'
   }
 

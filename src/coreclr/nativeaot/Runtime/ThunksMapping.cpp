@@ -49,6 +49,19 @@ static bool IsValidThunkPageGeometry()
         mappingSize <= (size_t)UINTPTR_MAX;
 }
 
+static bool IsValidRxThunkMappingAddress(void* mapping, size_t mappingSize)
+{
+    if (mapping == NULL || !IsValidThunkPageGeometry() || mappingSize == 0 ||
+        mappingSize > (size_t)UINTPTR_MAX)
+    {
+        return false;
+    }
+
+    const uintptr_t baseAddress = (uintptr_t)mapping;
+    return (baseAddress % (uintptr_t)OS_PAGE_SIZE) == 0 &&
+        baseAddress <= UINTPTR_MAX - (uintptr_t)mappingSize;
+}
+
 // NativeAOT normally serializes mapping allocation/release through the
 // managed ThunkBlocks lock.  Keep an independent native owner registry as a
 // defense-in-depth boundary: a page-aligned foreign pointer or a duplicate
@@ -440,6 +453,16 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         return E_FAIL;
     }
 #endif
+
+    // PalVirtualAlloc is required to return a page-aligned mapping.  Check the
+    // returned address before dereferencing either half or emitting pointers
+    // into the thunk stubs; otherwise a malformed PAL result could turn the
+    // provider-owned mapping into an overlapping or wrapping address range.
+    if (!IsValidRxThunkMappingAddress(pNewMapping, mappingSize))
+    {
+        ReleaseFailedRxThunkMapping(owner);
+        return E_FAIL;
+    }
 
 #if defined(HOST_APPLE) && defined(HOST_ARM64)
 #if defined(HOST_MACCATALYST) || defined(HOST_IOS) || defined(HOST_TVOS)

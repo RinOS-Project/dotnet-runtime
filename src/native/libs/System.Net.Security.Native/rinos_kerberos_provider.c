@@ -1101,8 +1101,6 @@ static int provider_kerberos_error_der(const uint8_t* bytes, uint32_t size,
     uint32_t time_size;
     uint32_t value;
     uint32_t previous_optional_tag = 0u;
-    int have_service_realm = 0;
-    int have_service_name = 0;
     ProviderDerCursorV1 token = {bytes, size, 0u};
     ProviderDerCursorV1 sequence;
 
@@ -1167,19 +1165,17 @@ static int provider_kerberos_error_der(const uint8_t* bytes, uint32_t size,
             !provider_kerberos_principal_name_valid(ignored_bytes,
                                                      ignored_size))
             return 0;
-        /* RFC 4120 Realm is a required, non-empty GeneralString.  An empty
-         * realm cannot identify the service and must not be preserved as a
-         * successful protocol error merely because the surrounding DER is
-         * well framed. */
+        /* RFC 4120 makes crealm, cname, realm, sname, e-text, and e-data
+         * optional.  Validate identity fields when a peer supplies them, but
+         * do not require a service identity in order to surface the KDC error
+         * code.  An explicitly supplied empty realm is still malformed. */
         if (tag == 0xa9u) {
             if (ignored_size == 0u) return 0;
-            have_service_realm = 1;
         }
-        if (tag == 0xaau) have_service_name = 1;
         (void)ignored_bytes;
         (void)ignored_size;
     }
-    return have_service_realm && have_service_name;
+    return 1;
 }
 
 /* Returns 1 for a valid KRB-ERROR token, 0 for a different TOK_ID, and -1

@@ -1490,6 +1490,15 @@ uint32_t PalGetEnvironmentVariable(const char * name, char * buffer, uint32_t si
 
 uint16_t PalCaptureStackBackTrace(uint32_t arg1, uint32_t arg2, void* arg3, uint32_t* arg4)
 {
+    // The hash is an output value, not an input seed.  Initialize it before
+    // validating the platform-specific capture path so every unsupported or
+    // malformed-input return is failure-atomic and cannot expose a stale
+    // value left by the caller's previous capture.
+    if (arg4 != nullptr)
+    {
+        *arg4 = 0;
+    }
+
 #if defined(TARGET_RINOS) && defined(HOST_AMD64)
     // RinOS does not expose a hosted execinfo/backtrace ABI.  The target
     // toolchain keeps frame pointers, so use the product pthread stack-info

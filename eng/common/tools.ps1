@@ -629,14 +629,22 @@ function InitializeBuildTool() {
         $env:MSBuildSDKsPath = $rinosMsbuildSdksPath
       }
     }
-    # The outer RinOS wrapper may select the exact standalone compiler
-    # toolset pinned by Version.Details.props. Preserve that selection; only
-    # fall back to the bundled SDK compiler when no valid path was supplied.
-    $rinosRoslynToolPath = $env:RINOS_DOTNET_CSC_TOOL_PATH
-    if (-not $rinosRoslynToolPath -or
-        -not (Test-Path (Join-Path $rinosRoslynToolPath 'csc.exe'))) {
-      $rinosRoslynToolPath = Get-ChildItem -LiteralPath (Join-Path $dotnetRoot 'sdk') -Filter 'csc.exe' -File -Recurse -ErrorAction SilentlyContinue |
+    # Desktop MSBuild can host the pinned net472 compiler task directly.  The
+    # direct dotnet/MSBuild host must instead use the SDK's csc.dll; passing a
+    # net472 csc.exe through a Core task causes the task to fall back to the
+    # compiler server and recreate the inaccessible LOCAL\dotnet_* pipe.
+    if ($env:RINOS_DOTNET_USE_VS_MSBUILD -eq '1') {
+      $rinosRoslynToolPath = $env:RINOS_DOTNET_CSC_TOOL_PATH
+      if (-not $rinosRoslynToolPath -or
+          -not (Test-Path (Join-Path $rinosRoslynToolPath 'csc.exe'))) {
+        $rinosRoslynToolPath = Get-ChildItem -LiteralPath (Join-Path $dotnetRoot 'sdk') -Filter 'csc.exe' -File -Recurse -ErrorAction SilentlyContinue |
+          Select-Object -First 1 -ExpandProperty DirectoryName
+      }
+      $env:RINOS_DOTNET_CSC_TOOL_EXE = 'csc.exe'
+    } else {
+      $rinosRoslynToolPath = Get-ChildItem -LiteralPath (Join-Path $dotnetRoot 'sdk') -Filter 'csc.dll' -File -Recurse -ErrorAction SilentlyContinue |
         Select-Object -First 1 -ExpandProperty DirectoryName
+      $env:RINOS_DOTNET_CSC_TOOL_EXE = 'csc.dll'
     }
     if ($rinosRoslynToolPath) {
       $env:RINOS_DOTNET_CSC_TOOL_PATH = $rinosRoslynToolPath
@@ -870,21 +878,19 @@ function MSBuild() {
   if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1' -and
       $env:RINOS_DOTNET_CSC_TOOL_PATH) {
     $args += "/p:CscToolPath=$($env:RINOS_DOTNET_CSC_TOOL_PATH)"
-    $args += '/p:CscToolExe=csc.exe'
+    $cscToolExe = if ($env:RINOS_DOTNET_CSC_TOOL_EXE) {
+      $env:RINOS_DOTNET_CSC_TOOL_EXE
+    } else {
+      'csc.exe'
+    }
+    $args += "/p:CscToolExe=$cscToolExe"
   }
 
-  # The restricted RinOS cross-build must use the framework Roslyn task set
-  # and the standalone csc.exe selected above.  Otherwise the toolset's
-  # Core-host bridge can still try to reach the inaccessible LOCAL\dotnet_*
-  # compiler server even though shared compilation is disabled.  This applies
-  # to both direct dotnet MSBuild and the optional desktop-MSBuild fallback.
-  if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1') {
-    $args += '/p:RoslynCompilerType=Framework'
-  }
-
-  # The desktop fallback additionally disables workload probing because the
-  # runtime build deliberately does not use SDK workloads.
+  # The desktop MSBuild fallback uses the framework Roslyn task set and the
+  # standalone csc.exe selected above.  Direct dotnet/MSBuild remains on the
+  # SDK's Core compiler with csc.dll and no shared compiler server.
   if ($env:RINOS_DOTNET_USE_VS_MSBUILD -eq '1') {
+    $args += '/p:RoslynCompilerType=Framework'
     $args += '/p:MSBuildEnableWorkloadResolver=false'
   }
 

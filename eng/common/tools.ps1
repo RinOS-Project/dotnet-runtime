@@ -619,6 +619,16 @@ function InitializeBuildTool() {
   if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1' -and $dotnetRoot) {
     $env:DOTNET_HOST_PATH = Join-Path $dotnetRoot (GetExecutableFileName 'dotnet')
     $env:UseSharedCompilation = 'false'
+    if ($env:RINOS_DOTNET_USE_VS_MSBUILD -eq '1') {
+      # Visual Studio MSBuild does not reliably resolve the repo-local SDK
+      # from PATH alone.  Point its SDK resolver at the exact SDK selected by
+      # global.json so the desktop host and the runtime toolset agree.
+      $dotnetSdkVersion = $GlobalJson.tools.dotnet
+      $rinosMsbuildSdksPath = Join-Path $dotnetRoot "sdk\$dotnetSdkVersion\Sdks"
+      if (Test-Path -LiteralPath $rinosMsbuildSdksPath) {
+        $env:MSBuildSDKsPath = $rinosMsbuildSdksPath
+      }
+    }
     # The outer RinOS wrapper may select the exact standalone compiler
     # toolset pinned by Version.Details.props. Preserve that selection; only
     # fall back to the bundled SDK compiler when no valid path was supplied.

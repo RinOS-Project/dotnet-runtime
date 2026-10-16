@@ -32,6 +32,8 @@
 
 #include "GCMemoryHelpers.inl"
 
+#include <new>
+
 #if defined(__GNUC__) || defined(__clang__)
 #define RINOS_NATIVEAOT_THUNK_WEAK __attribute__((weak))
 #else
@@ -123,6 +125,112 @@ static bool IsValidRinNativeAotThunkGeometry(
         return false;
 
     return true;
+}
+
+/* A portable mapping must be released by the same provider that allocated it.
+ * Capability discovery is allowed to fail closed while an existing mapping is
+ * still live, so rediscovering a provider in RhpFreeThunksMapping would either
+ * leak the mapping or call a different owner.  Keep the exact provider
+ * association until the owner reports a successful release. */
+struct RinOsPortableThunkMappingOwner
+{
+    void* mapping;
+    const RinNativeAotThunkProviderV1* provider;
+    bool releaseInProgress;
+    RinOsPortableThunkMappingOwner* next;
+};
+
+static RinOsPortableThunkMappingOwner* g_portableThunkMappingOwners = nullptr;
+static volatile int32_t g_portableThunkMappingOwnerLock = 0;
+
+static void LockPortableThunkMappingOwners()
+{
+    while (PalInterlockedCompareExchange(
+               &g_portableThunkMappingOwnerLock, 1, 0) != 0)
+    {
+        PalSwitchToThread();
+    }
+}
+
+static void UnlockPortableThunkMappingOwners()
+{
+    VolatileStore<volatile int32_t>(&g_portableThunkMappingOwnerLock, 0);
+}
+
+static HRESULT RegisterPortableThunkMapping(
+    void* mapping, const RinNativeAotThunkProviderV1* provider)
+{
+    RinOsPortableThunkMappingOwner* owner =
+        new (std::nothrow) RinOsPortableThunkMappingOwner{};
+    if (owner == nullptr)
+        return E_OUTOFMEMORY;
+
+    owner->mapping = mapping;
+    owner->provider = provider;
+    owner->releaseInProgress = false;
+
+    LockPortableThunkMappingOwners();
+    for (RinOsPortableThunkMappingOwner* current =
+             g_portableThunkMappingOwners;
+         current != nullptr;
+         current = current->next)
+    {
+        if (current->mapping == mapping)
+        {
+            UnlockPortableThunkMappingOwners();
+            delete owner;
+            return E_FAIL;
+        }
+    }
+    owner->next = g_portableThunkMappingOwners;
+    g_portableThunkMappingOwners = owner;
+    UnlockPortableThunkMappingOwners();
+    return S_OK;
+}
+
+static RinOsPortableThunkMappingOwner* BeginPortableThunkMappingRelease(
+    void* mapping)
+{
+    LockPortableThunkMappingOwners();
+    for (RinOsPortableThunkMappingOwner* owner =
+             g_portableThunkMappingOwners;
+         owner != nullptr;
+         owner = owner->next)
+    {
+        if (owner->mapping == mapping)
+        {
+            if (owner->releaseInProgress)
+            {
+                UnlockPortableThunkMappingOwners();
+                return nullptr;
+            }
+            owner->releaseInProgress = true;
+            UnlockPortableThunkMappingOwners();
+            return owner;
+        }
+    }
+    UnlockPortableThunkMappingOwners();
+    return nullptr;
+}
+
+static void FinishPortableThunkMappingRelease(
+    RinOsPortableThunkMappingOwner* released, bool success)
+{
+    LockPortableThunkMappingOwners();
+    if (!success)
+    {
+        released->releaseInProgress = false;
+        UnlockPortableThunkMappingOwners();
+        return;
+    }
+
+    RinOsPortableThunkMappingOwner** link = &g_portableThunkMappingOwners;
+    while (*link != nullptr && *link != released)
+        link = &(*link)->next;
+    if (*link == released)
+        *link = released->next;
+    UnlockPortableThunkMappingOwners();
+    delete released;
 }
 
 #if defined(FEATURE_PORTABLE_HELPERS)
@@ -480,11 +588,34 @@ FCIMPL1(HRESULT, RhAllocateThunksMapping, void ** ppThunksSection)
             provider->context, ppThunksSection);
         if (result != S_OK || *ppThunksSection == nullptr)
         {
+            void* failedMapping = *ppThunksSection;
             *ppThunksSection = nullptr;
+            if (failedMapping != nullptr &&
+                (provider->capability_mask &
+                    RIN_NATIVEAOT_THUNK_CAP_MAPPING_RELEASE) != 0 &&
+                provider->free_thunks_mapping != nullptr)
+            {
+                (void)provider->free_thunks_mapping(
+                    provider->context, failedMapping);
+            }
             return result == S_OK ? E_FAIL : result;
         }
 
-        return result;
+        result = RegisterPortableThunkMapping(*ppThunksSection, provider);
+        if (result != S_OK)
+        {
+            if ((provider->capability_mask &
+                    RIN_NATIVEAOT_THUNK_CAP_MAPPING_RELEASE) != 0 &&
+                provider->free_thunks_mapping != nullptr)
+            {
+                (void)provider->free_thunks_mapping(
+                    provider->context, *ppThunksSection);
+            }
+            *ppThunksSection = nullptr;
+            return result;
+        }
+
+        return S_OK;
     }
 
     // Keep the unsupported boundary in the managed ThunkPool caller, which
@@ -498,20 +629,28 @@ FCIMPL1(HRESULT, RhFreeThunksMapping, void* pThunksSection)
     if (pThunksSection == nullptr)
         return E_INVALIDARG;
 
-    const RinNativeAotThunkProviderV1* provider =
-        GetRinNativeAotThunkProvider();
-    if (provider != nullptr &&
-        (provider->capability_mask & RIN_NATIVEAOT_THUNK_CAP_MAPPING_RELEASE) != 0 &&
+    RinOsPortableThunkMappingOwner* owner =
+        BeginPortableThunkMappingRelease(pThunksSection);
+    if (owner == nullptr)
+        return E_INVALIDARG;
+
+    const RinNativeAotThunkProviderV1* provider = owner->provider;
+    if ((provider->capability_mask &
+            RIN_NATIVEAOT_THUNK_CAP_MAPPING_RELEASE) != 0 &&
         provider->struct_size >= RIN_NATIVEAOT_THUNK_PROVIDER_V1_RELEASE_SIZE &&
         provider->free_thunks_mapping != nullptr)
     {
-        return (HRESULT)provider->free_thunks_mapping(
+        HRESULT result = (HRESULT)provider->free_thunks_mapping(
             provider->context, pThunksSection);
+        FinishPortableThunkMappingRelease(owner, result == S_OK);
+        return result;
     }
 
     // A provider that only advertises allocation cannot safely release an
-    // executable mapping. Keep the managed retry/fail-closed boundary until
-    // the product owner publishes the release capability.
+    // executable mapping. Keep its ownership record so the managed
+    // retry/fail-closed boundary and a later ABI upgrade cannot accidentally
+    // pass a foreign mapping to a new provider.
+    FinishPortableThunkMappingRelease(owner, false);
     return E_NOTIMPL;
 }
 FCIMPLEND

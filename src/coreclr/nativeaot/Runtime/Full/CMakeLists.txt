@@ -36,6 +36,16 @@ if(NATIVEAOT_PRIVATE_LIBUNWIND_SOURCES)
   # localize list is generated only from the bundled libunwind source objects.
   set(NATIVEAOT_PRIVATE_LIBUNWIND_SYMBOL_OBJECTS "$<FILTER:$<TARGET_OBJECTS:Runtime.PrivateLibunwind>,EXCLUDE,.*(UnwindHelpers|UnixNativeCodeManager)\\.cpp\\.o$>")
 
+  if(DEFINED RINOS_OBJCOPY_WRAPPER AND CMAKE_HOST_UNIX)
+    # drvfs cannot complete llvm-objcopy's in-place rewrite.  The wrapper
+    # stages only this generated object on the host filesystem and copies the
+    # localized result back to the checked-out build tree.
+    set(NATIVEAOT_PRIVATE_LIBUNWIND_OBJCOPY_COMMAND
+        /bin/bash "${RINOS_OBJCOPY_WRAPPER}")
+  else()
+    set(NATIVEAOT_PRIVATE_LIBUNWIND_OBJCOPY_COMMAND "${CMAKE_OBJCOPY}")
+  endif()
+
   add_custom_command(
     OUTPUT "${NATIVEAOT_PRIVATE_LIBUNWIND_OBJECT}"
     COMMAND "${CMAKE_COMMAND}" -E rm -f
@@ -53,7 +63,7 @@ if(NATIVEAOT_PRIVATE_LIBUNWIND_SOURCES)
     COMMAND "${CMAKE_COMMAND}" -E rm -f
             "${NATIVEAOT_PRIVATE_LIBUNWIND_SYMBOLS_UNSORTED}"
     COMMAND "${CMAKE_LINKER}" -r $<TARGET_OBJECTS:Runtime.PrivateLibunwind> -o "${NATIVEAOT_PRIVATE_LIBUNWIND_OBJECT}"
-    COMMAND "${CMAKE_OBJCOPY}"
+    COMMAND ${NATIVEAOT_PRIVATE_LIBUNWIND_OBJCOPY_COMMAND}
             "--localize-symbols=${NATIVEAOT_PRIVATE_LIBUNWIND_SYMBOLS}"
             "${NATIVEAOT_PRIVATE_LIBUNWIND_OBJECT}"
     DEPENDS

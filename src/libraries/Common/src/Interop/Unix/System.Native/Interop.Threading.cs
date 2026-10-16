@@ -20,6 +20,10 @@ internal static partial class Interop
         [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_SetThreadScheduling")]
         [return: MarshalAs(UnmanagedType.I4)]
         internal static partial int SetThreadScheduling(uint threadId, int policy, int priority);
+
+        [LibraryImport(Libraries.SystemNative, EntryPoint = "SystemNative_SetThreadName", StringMarshalling = StringMarshalling.Utf8)]
+        [return: MarshalAs(UnmanagedType.I4)]
+        internal static partial int SetThreadName(uint threadId, string name);
 #endif
 
 #if TARGET_OSX

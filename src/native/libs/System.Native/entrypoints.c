@@ -277,6 +277,7 @@ static const Entry s_sysNative[] =
 #if defined(TARGET_RINOS)
     DllImportEntry(SystemNative_GetThreadScheduling)
     DllImportEntry(SystemNative_SetThreadScheduling)
+    DllImportEntry(SystemNative_SetThreadName)
 #endif
     DllImportEntry(SystemNative_Exit)
     DllImportEntry(SystemNative_Abort)

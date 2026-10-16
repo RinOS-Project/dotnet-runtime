@@ -42,6 +42,11 @@ PALEXPORT int32_t SystemNative_GetThreadScheduling(uint32_t threadId, int32_t* p
 // the calling thread.  The RinOS kernel performs capability and policy
 // validation; -1 preserves that failure.
 PALEXPORT int32_t SystemNative_SetThreadScheduling(uint32_t threadId, int32_t policy, int32_t priority);
+
+// Sets a process-local RinOS thread's native name.  The name is passed
+// through minipal so the target keeps the same truncation and validation
+// rules as RhSetCurrentThreadName.
+PALEXPORT int32_t SystemNative_SetThreadName(uint32_t threadId, const char* name);
 #endif
 
 PALEXPORT __attribute__((noreturn)) void SystemNative_Exit(int32_t exitCode);

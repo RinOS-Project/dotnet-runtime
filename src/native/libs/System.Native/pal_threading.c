@@ -421,6 +421,20 @@ int32_t SystemNative_SetThreadScheduling(uint32_t threadId, int32_t policy, int3
     parameters.sched_priority = priority;
     return (int32_t)sched_setscheduler((pid_t)threadId, (int)policy, &parameters);
 }
+
+int32_t SystemNative_SetThreadName(uint32_t threadId, const char* name)
+{
+    if (threadId == 0 || threadId == (uint32_t)-1 || name == NULL)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    // minipal_set_thread_name applies the platform's native length policy
+    // before calling pthread_setname_np.  This must stay identical to the
+    // current-thread RhSetCurrentThreadName path.
+    return (int32_t)minipal_set_thread_name((pthread_t)threadId, name);
+}
 #endif
 
 __attribute__((noreturn))

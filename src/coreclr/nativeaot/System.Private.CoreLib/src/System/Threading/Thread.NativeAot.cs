@@ -213,18 +213,35 @@ namespace System.Threading
             get => _managedThreadId.Id;
         }
 
-        // TODO: Support non-current thread
         private void ThreadNameChanged(string? value)
         {
-            if (Thread.CurrentThread != this)
-            {
-                return;
-            }
             if (value == null)
             {
                 return;
             }
-            RuntimeImports.RhSetCurrentThreadName(value);
+
+            if (Thread.CurrentThread == this)
+            {
+                RuntimeImports.RhSetCurrentThreadName(value);
+                return;
+            }
+
+#if TARGET_RINOS
+            // RinOS exposes a process-local TID based name ABI.  Do not ask
+            // the native PAL to name an unstarted or already stopped thread:
+            // its OS identity does not designate a live target in that state.
+            if (!HasStarted() || IsDead() || _osThreadId == 0 ||
+                _osThreadId == uint.MaxValue)
+            {
+                return;
+            }
+
+            // Thread.Name has no managed failure channel.  Keep the existing
+            // NativeAOT contract (best-effort native diagnostic name) while
+            // routing RinOS through the real target ABI instead of silently
+            // discarding non-current updates.
+            _ = Interop.Sys.SetThreadName(_osThreadId, value);
+#endif
         }
 
         public ThreadPriority Priority

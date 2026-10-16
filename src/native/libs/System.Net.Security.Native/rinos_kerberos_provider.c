@@ -1320,6 +1320,8 @@ static int provider_context_valid(
            context->credential != NULL &&
            context->credential->magic == RINOS_KERBEROS_CREDENTIAL_MAGIC &&
            context->credential->kind == context->kind &&
+           context->credential->owner != NULL &&
+           context->credential->owner->release_credential != NULL &&
            context->credential->owner_credential == context->owner_credential &&
            context->credential_ref_held <= 1u &&
            (context->credential_ref_held == 0u ||
@@ -3051,7 +3053,10 @@ static uint32_t provider_message_operation(
     credential.magic = RINOS_KERBEROS_CREDENTIAL_MAGIC;
     credential.kind = provider_context->kind;
     credential.owner_credential = provider_context->owner_credential;
-    credential.owner = provider_credential_owner();
+    /* A published context retains the credential owner for its lifetime.
+     * Do not rediscover it here: a transient capability-probe outage must not
+     * turn an already-authenticated context into an unusable one. */
+    credential.owner = provider_context->credential->owner;
     request.struct_size = sizeof(request);
     request.version = RIN_KERBEROS_OPERATION_ABI_VERSION;
     request.operation = operation;
@@ -3173,7 +3178,9 @@ static uint32_t provider_verify_mic_bytes(
     credential.magic = RINOS_KERBEROS_CREDENTIAL_MAGIC;
     credential.kind = provider_context->kind;
     credential.owner_credential = provider_context->owner_credential;
-    credential.owner = provider_credential_owner();
+    /* Use the owner retained with the live context.  The context lifetime
+     * contract keeps this table reachable until the context is deleted. */
+    credential.owner = provider_context->credential->owner;
     request.struct_size = sizeof(request);
     request.version = RIN_KERBEROS_OPERATION_ABI_VERSION;
     request.operation = RIN_KERBEROS_OPERATION_VERIFY_MIC;
@@ -3495,7 +3502,10 @@ static uint32_t provider_get_user(
 
     if (provider_context->kind ==
         RIN_KERBEROS_OPERATION_CREDENTIAL_ACCEPTOR) {
-        owner = provider_credential_owner();
+        /* RemoteIdentity is bound to the authenticated context's owner.  A
+         * fresh global owner probe may be temporarily unavailable while this
+         * context is still valid, so use the retained credential owner. */
+        owner = provider_context->credential->owner;
         if (owner == NULL)
             return provider_unavailable(minor_status);
         credential.magic = RINOS_KERBEROS_CREDENTIAL_MAGIC;
@@ -3529,7 +3539,9 @@ static uint32_t provider_get_user(
     if (provider_context->kind !=
         RIN_KERBEROS_OPERATION_CREDENTIAL_INITIATOR)
         return provider_unavailable(minor_status);
-    owner = provider_credential_owner();
+    /* DefaultCredentials identity is also read from the owner retained by
+     * the established context, never from a replacement/global probe. */
+    owner = provider_context->credential->owner;
     if (owner == NULL || owner->get_session_principal == NULL)
         return provider_unavailable(minor_status);
     principal = (uint8_t*)calloc(1u, RINOS_KERBEROS_MAX_PRINCIPAL_SIZE);

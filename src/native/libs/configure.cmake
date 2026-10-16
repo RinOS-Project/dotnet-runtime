@@ -1247,6 +1247,38 @@ if (CLR_CMAKE_TARGET_RINOS)
     set(HAVE_POSIX_MEMALIGN 1)
     set(HAVE_PTHREAD_CONDATTR_SETCLOCK 1)
     set(HAVE_PTHREAD_MUTEX_CLOCKLOCK 0)
+    # These probes run with the build-machine compiler and therefore describe
+    # the host Linux headers, not the RinOS ABI.  A target build must not pull
+    # those Linux-only headers into the product libc namespace: linux/if.h,
+    # linux/in6.h, linux/errqueue.h, mntent.h and sys/statfs.h either collide
+    # with the product declarations or describe an unavailable host service.
+    # Keep the generic PAL fallbacks enabled; RinOS-specific paths are selected
+    # by TARGET_RINOS in the affected sources.
+    set(HAVE_LINUX_CAN_H 0)
+    set(HAVE_LINUX_ERRQUEUE_H 0)
+    set(HAVE_LINUX_RTNETLINK_H 0)
+    set(HAVE_ETHTOOL_H 0)
+    set(HAVE_NETPACKET_PACKET_H 0)
+    set(HAVE_NET_IF_ARP_H 0)
+    set(HAVE_NET_IFMEDIA_H 0)
+    set(HAVE_SYS_STATFS_H 0)
+    set(HAVE_STATFS_VFS 0)
+    set(HAVE_STATFS 0)
+    set(HAVE_NON_LEGACY_STATFS 0)
+    set(HAVE_SYS_MNTENT_H 0)
+    set(HAVE_MNTENT_H 0)
+    set(HAVE_SENDFILE_4 0)
+    set(HAVE_SENDFILE_6 0)
+    set(HAVE_SENDFILE_7 0)
+    set(HAVE_PREADV 0)
+    set(HAVE_PWRITEV 0)
+    set(HAVE_TCP_H_TCPSTATE_ENUM 0)
+    set(HAVE_TCP_FSM_H 0)
+    # statvfs, ifaddrs and the event/watch wrappers are product headers and
+    # implementations, so the target-specific source branches may use them
+    # even when the host probe could not link against RinOS libc.
+    set(HAVE_SYS_STATVFS_H 1)
+    set(HAVE_GETIFADDRS 1)
     # RinOS owns the socket ABI and exposes poll(2); do not inherit a host
     # epoll/kqueue event backend from configure probes.
     set(HAVE_EPOLL 0)

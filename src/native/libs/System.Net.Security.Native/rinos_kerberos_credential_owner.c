@@ -216,9 +216,11 @@ static uint32_t owner_get_session_principal(
         output_size == NULL ||
         generation == NULL || credential == NULL ||
         !owner_decode_token(credential, &index, &token_generation) ||
-        !owner_valid(owner) || !owner_lock(owner))
+        !owner_valid(owner))
         return RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
     owner_zero(output, output_capacity);
+    if (!owner_lock(owner))
+        return RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
     slot = &owner->slots[index];
     if (slot->magic != RINOS_KERBEROS_OWNER_MAGIC || slot->kind != 1u ||
         slot->generation != token_generation) {

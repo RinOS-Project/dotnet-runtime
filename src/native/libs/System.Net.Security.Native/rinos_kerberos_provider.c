@@ -1169,7 +1169,7 @@ static int provider_kerberos_error_der(const uint8_t* bytes, uint32_t size,
          * optional.  Validate identity fields when a peer supplies them, but
          * do not require a service identity in order to surface the KDC error
          * code.  An explicitly supplied empty realm is still malformed. */
-        if (tag == 0xa9u) {
+        if (tag == 0xa7u || tag == 0xa9u) {
             if (ignored_size == 0u) return 0;
         }
         (void)ignored_bytes;

@@ -137,6 +137,7 @@ struct RinOsPortableThunkMappingOwner
     void* mapping;
     const RinNativeAotThunkProviderV1* provider;
     bool releaseInProgress;
+    bool pendingRelease;
     RinOsPortableThunkMappingOwner* next;
 };
 
@@ -167,6 +168,7 @@ static RinOsPortableThunkMappingOwner* ReservePortableThunkMappingOwner()
     owner->mapping = nullptr;
     owner->provider = nullptr;
     owner->releaseInProgress = false;
+    owner->pendingRelease = false;
     owner->next = nullptr;
     return owner;
 }
@@ -178,6 +180,7 @@ static HRESULT RegisterPortableThunkMapping(
 {
     owner->mapping = mapping;
     owner->provider = provider;
+    owner->pendingRelease = false;
 
     LockPortableThunkMappingOwners();
     for (RinOsPortableThunkMappingOwner* current =
@@ -203,6 +206,102 @@ static HRESULT RegisterPortableThunkMapping(
     return S_OK;
 }
 
+static void QueuePendingPortableThunkMappingRelease(
+    RinOsPortableThunkMappingOwner* owner)
+{
+    owner->pendingRelease = true;
+    owner->releaseInProgress = false;
+
+    LockPortableThunkMappingOwners();
+    owner->next = g_portableThunkMappingOwners;
+    g_portableThunkMappingOwners = owner;
+    UnlockPortableThunkMappingOwners();
+}
+
+static bool TryReleasePortableThunkMapping(
+    const RinNativeAotThunkProviderV1* provider,
+    void* mapping)
+{
+    if (provider == nullptr || mapping == nullptr ||
+        (provider->capability_mask & RIN_NATIVEAOT_THUNK_CAP_MAPPING_RELEASE) == 0 ||
+        provider->struct_size < RIN_NATIVEAOT_THUNK_PROVIDER_V1_RELEASE_SIZE ||
+        provider->free_thunks_mapping == nullptr)
+    {
+        return false;
+    }
+
+    return provider->free_thunks_mapping(provider->context, mapping) ==
+        RIN_NATIVEAOT_THUNK_S_OK;
+}
+
+/* An allocation callback is allowed to return a non-null mapping together
+ * with a failure.  If the provider cannot release that mapping immediately,
+ * retain the exact provider/mapping pair and retry before publishing another
+ * mapping.  Dropping the owner here would leak an executable mapping with no
+ * caller-visible handle and would make a later provider replacement unsafe. */
+static bool RetryPendingPortableThunkMappingReleases()
+{
+    for (;;)
+    {
+        RinOsPortableThunkMappingOwner* candidate = nullptr;
+
+        LockPortableThunkMappingOwners();
+        for (RinOsPortableThunkMappingOwner* owner =
+                 g_portableThunkMappingOwners;
+             owner != nullptr;
+             owner = owner->next)
+        {
+            if (!owner->pendingRelease)
+                continue;
+
+            if (owner->releaseInProgress)
+            {
+                // Another retry is still invoking the provider.  Do not
+                // allocate a new executable mapping concurrently with it.
+                UnlockPortableThunkMappingOwners();
+                return false;
+            }
+
+            owner->releaseInProgress = true;
+            candidate = owner;
+            break;
+        }
+        UnlockPortableThunkMappingOwners();
+
+        if (candidate == nullptr)
+            return true;
+
+        const bool released = TryReleasePortableThunkMapping(
+            candidate->provider, candidate->mapping);
+
+        LockPortableThunkMappingOwners();
+        if (!released)
+        {
+            candidate->releaseInProgress = false;
+            UnlockPortableThunkMappingOwners();
+            return false;
+        }
+
+        RinOsPortableThunkMappingOwner** ownerLink =
+            &g_portableThunkMappingOwners;
+        while (*ownerLink != nullptr && *ownerLink != candidate)
+            ownerLink = &(*ownerLink)->next;
+        if (*ownerLink != candidate)
+        {
+            // The registry must not lose a pending owner while its provider
+            // callback is outside the lock.  Keep it retryable if that
+            // invariant is ever violated rather than freeing unknown state.
+            candidate->releaseInProgress = false;
+            UnlockPortableThunkMappingOwners();
+            return false;
+        }
+
+        *ownerLink = candidate->next;
+        UnlockPortableThunkMappingOwners();
+        delete candidate;
+    }
+}
+
 static RinOsPortableThunkMappingOwner* BeginPortableThunkMappingRelease(
     void* mapping)
 {
@@ -214,7 +313,7 @@ static RinOsPortableThunkMappingOwner* BeginPortableThunkMappingRelease(
     {
         if (owner->mapping == mapping)
         {
-            if (owner->releaseInProgress)
+            if (owner->pendingRelease || owner->releaseInProgress)
             {
                 UnlockPortableThunkMappingOwners();
                 return nullptr;
@@ -592,6 +691,9 @@ FCIMPL1(HRESULT, RhAllocateThunksMapping, void ** ppThunksSection)
 
     *ppThunksSection = nullptr;
 
+    if (!RetryPendingPortableThunkMappingReleases())
+        return E_FAIL;
+
     const RinNativeAotThunkProviderV1* provider =
         GetRinNativeAotThunkProvider();
     if (provider != nullptr)
@@ -614,13 +716,15 @@ FCIMPL1(HRESULT, RhAllocateThunksMapping, void ** ppThunksSection)
         {
             void* failedMapping = *ppThunksSection;
             *ppThunksSection = nullptr;
-            if (failedMapping != nullptr &&
-                (provider->capability_mask &
-                    RIN_NATIVEAOT_THUNK_CAP_MAPPING_RELEASE) != 0 &&
-                provider->free_thunks_mapping != nullptr)
+            if (failedMapping != nullptr)
             {
-                (void)provider->free_thunks_mapping(
-                    provider->context, failedMapping);
+                owner->mapping = failedMapping;
+                owner->provider = provider;
+                if (!TryReleasePortableThunkMapping(provider, failedMapping))
+                {
+                    QueuePendingPortableThunkMappingRelease(owner);
+                    return result == S_OK ? E_FAIL : result;
+                }
             }
             delete owner;
             return result == S_OK ? E_FAIL : result;

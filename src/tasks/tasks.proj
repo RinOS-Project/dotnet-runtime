@@ -5,6 +5,15 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetsMobile)' != 'true'">
+    <!--
+      RinOS source-only cross builds produce shipping runtime/tooling inputs,
+      not the upstream Helix test harness.  The wildcard above otherwise
+      schedules this non-shipping project without an assets restore, which
+      makes a target build fail with NETSDK1004 before any target compilation
+      starts.  Keep the test project in normal upstream builds.
+    -->
+    <ProjectReference Remove="HelixTestTasks\HelixTestTasks.csproj"
+                      Condition="'$(DotNetBuildSourceOnly)' == 'true'" />
     <ProjectReference Remove="AndroidAppBuilder\AndroidAppBuilder.csproj" />
     <ProjectReference Remove="AotCompilerTask\MonoAOTCompiler.csproj" />
     <ProjectReference Remove="AppleAppBuilder\AppleAppBuilder.csproj" />

@@ -2563,6 +2563,37 @@ static uint32_t provider_init_sec_context_ex(
     status = provider_operation(credential, provider_context, &request,
                                 operation_input, operation_input_size, output,
                                 1u, return_flags, minor_status);
+    if (status == RIN_AUTH_PROVIDER_CREDENTIALS_EXPIRED &&
+        provider_context->state == RINOS_KERBEROS_CONTEXT_NEGOTIATING &&
+        provider_context->token_size == 0u && mechanism_input_length == 0u &&
+        provider_refresh_initiator_credential(
+            credential, provider_context, minor_status) ==
+            RIN_AUTH_PROVIDER_OK) {
+        /* Channel binding does not change the retry rule: only an empty
+         * initial leg may be replayed, and it must be rebuilt with the same
+         * caller-supplied binding after the authenticated session owner
+         * returns a replacement opaque handle.  Never replay a continuation
+         * or manufacture a credential from the binding bytes. */
+        if (operation_input != NULL) {
+            provider_zero(operation_input, operation_input_size);
+            free(operation_input);
+            operation_input = NULL;
+            operation_input_size = 0u;
+        }
+        if (!provider_build_sec_context_input(
+                mechanism, requested_flags, name, channel_binding,
+                (uint32_t)channel_binding_size, mechanism_input,
+                mechanism_input_length, &operation_input,
+                &operation_input_size)) {
+            status = provider_unavailable(minor_status);
+        } else {
+            request.input_size = operation_input_size;
+            status = provider_operation(
+                credential, provider_context, &request, operation_input,
+                operation_input_size, output, 1u, return_flags,
+                minor_status);
+        }
+    }
     provider_zero(operation_input, operation_input_size);
     free(operation_input);
     if (spnego_mode && spnego_input.has_mechanism_mic) {

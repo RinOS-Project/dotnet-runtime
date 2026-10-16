@@ -1457,6 +1457,11 @@ uint32_t PalGetCurrentProcessId()
 
 UInt32_BOOL PalSetEvent(HANDLE event)
 {
+    if (event == NULL || event == INVALID_HANDLE_VALUE)
+    {
+        return UInt32_FALSE;
+    }
+
     UnixEvent* unixEvent = (UnixEvent*)event;
     unixEvent->Set();
     return UInt32_TRUE;
@@ -1464,6 +1469,11 @@ UInt32_BOOL PalSetEvent(HANDLE event)
 
 UInt32_BOOL PalResetEvent(HANDLE event)
 {
+    if (event == NULL || event == INVALID_HANDLE_VALUE)
+    {
+        return UInt32_FALSE;
+    }
+
     UnixEvent* unixEvent = (UnixEvent*)event;
     unixEvent->Reset();
     return UInt32_TRUE;
@@ -1779,6 +1789,11 @@ void PalHijack(Thread* pThreadToHijack)
 
 uint32_t PalWaitForSingleObjectEx(HANDLE handle, uint32_t milliseconds, UInt32_BOOL alertable)
 {
+    if (handle == NULL || handle == INVALID_HANDLE_VALUE)
+    {
+        return WAIT_FAILED;
+    }
+
     UnixEvent* unixEvent = (UnixEvent*)handle;
     return unixEvent->Wait(milliseconds);
 }
@@ -1786,7 +1801,10 @@ uint32_t PalWaitForSingleObjectEx(HANDLE handle, uint32_t milliseconds, UInt32_B
 uint32_t PalCompatibleWaitAny(UInt32_BOOL alertable, uint32_t timeout, uint32_t handleCount, HANDLE* pHandles, UInt32_BOOL allowReentrantWait)
 {
     // Only a single handle wait for event is supported
-    ASSERT(handleCount == 1);
+    if (handleCount != 1 || pHandles == NULL)
+    {
+        return WAIT_FAILED;
+    }
 
     return PalWaitForSingleObjectEx(pHandles[0], timeout, alertable);
 }

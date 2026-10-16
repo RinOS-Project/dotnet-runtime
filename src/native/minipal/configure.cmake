@@ -27,6 +27,12 @@ if(CLR_CMAKE_TARGET_RINOS)
     set(HAVE_HWPROBE_H 0)
     set(HAVE_SYSCTLBYNAME 0)
     set(HAVE_ELF_AUX_INFO 0)
+    # The product libc does not export arc4random_buf.  Its supported random
+    # source is the bounded getrandom/getentropy wrapper in <sys/random.h>;
+    # do not inherit the host probe result and bind minipal to a host symbol.
+    set(HAVE_ARC4RANDOM_BUF 0)
+    set(HAVE_GETRANDOM 1)
+    set(HAVE_GETENTROPY 1)
 
     # RinOS owns CLOCK_MONOTONIC/REALTIME in its product libc.  Do not let a
     # host-only uptime extension or probe alter the freestanding time path.

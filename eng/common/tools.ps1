@@ -588,6 +588,15 @@ function InitializeBuildTool() {
     $msbuildEngine = GetDefaultMSBuildEngine
   }
 
+  # The RinOS Windows cross-build can opt into the installed desktop
+  # MSBuild host when the bundled dotnet/MSBuild host cannot open its
+  # LOCAL\dotnet_* pipe.  Keep this opt-in and scoped to the product wrapper;
+  # ordinary upstream builds retain their normal engine selection.
+  if ($env:RINOS_DOTNET_USE_VS_MSBUILD -eq '1' -and
+      $msbuildEngine -eq 'dotnet') {
+    $msbuildEngine = 'vs'
+  }
+
   # Initialize dotnet cli if listed in 'tools'
   $dotnetRoot = $null
   if (Get-Member -InputObject $GlobalJson.tools -Name 'dotnet') {
@@ -843,6 +852,14 @@ function MSBuild() {
       $env:RINOS_DOTNET_CSC_TOOL_PATH) {
     $args += "/p:CscToolPath=$($env:RINOS_DOTNET_CSC_TOOL_PATH)"
     $args += '/p:CscToolExe=csc.exe'
+  }
+
+  # The desktop MSBuild fallback must use the framework Roslyn task set and
+  # the standalone csc.exe selected above.  Otherwise the toolset's Core-host
+  # bridge can still try to reach the inaccessible LOCAL\dotnet_* compiler
+  # server even though shared compilation is disabled.
+  if ($env:RINOS_DOTNET_USE_VS_MSBUILD -eq '1') {
+    $args += '/p:RoslynCompilerType=Framework'
   }
 
   if ($pipelinesLog) {

@@ -1471,6 +1471,14 @@ UInt32_BOOL PalResetEvent(HANDLE event)
 
 uint32_t PalGetEnvironmentVariable(const char * name, char * buffer, uint32_t size)
 {
+    // The PAL contract has no errno channel for malformed pointers.  Reject
+    // them before calling getenv() or strcpy(); a zero-sized query may omit
+    // the output buffer, but a bounded copy may not.
+    if (name == nullptr || (size != 0u && buffer == nullptr))
+    {
+        return 0;
+    }
+
     const char* value = getenv(name);
     if (value == NULL)
     {

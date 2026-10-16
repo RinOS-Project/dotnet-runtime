@@ -288,7 +288,12 @@ GetSystemInfo(
 #error The maximum application address is not known on this platform.
 #endif
 
+#if defined(TARGET_RINOS)
+    lpSystemInfo->lpMinimumApplicationAddress =
+        (PVOID) RINOS_PAL_USER_ADDRESS_MIN;
+#else
     lpSystemInfo->lpMinimumApplicationAddress = (PVOID) pagesize;
+#endif
 
     lpSystemInfo->dwProcessorType_PAL_Undefined = 0;
 

@@ -30,6 +30,11 @@
 #define RINOS_PAL_DIAGNOSTICS_TRANSPORT_UDS 1
 #define RINOS_PAL_HAS_LINUX_TRACEPOINTS 0
 
+/* Inclusive lower bound for user mappings.  Keep this in lockstep with the
+ * kernel's RIN_USER_ADDR_BASE so CoreCLR cannot accept a low-page mapping that
+ * the target VMM rejects. */
+#define RINOS_PAL_USER_ADDRESS_MIN ((uintptr_t)0x0000000000010000ULL)
+
 /* Exclusive upper bound for user mappings.  This is the product address-space
  * contract, not a host Linux canonical-address guess.  Keep it in the PAL
  * contract so GetSystemInfo/VirtualQuery and the GC/JIT see the same limit as

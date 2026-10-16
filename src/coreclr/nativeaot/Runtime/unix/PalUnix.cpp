@@ -1235,7 +1235,8 @@ static bool IsSupportedW32AccessControl(uint32_t flProtect)
 #if defined(TARGET_RINOS)
 static bool RinOSUserRangeValid(uintptr_t begin, uintptr_t end)
 {
-    return begin < RINOS_PAL_USER_ADDRESS_LIMIT &&
+    return begin >= RINOS_PAL_USER_ADDRESS_MIN &&
+           begin < RINOS_PAL_USER_ADDRESS_LIMIT &&
            end >= begin && end <= RINOS_PAL_USER_ADDRESS_LIMIT;
 }
 
@@ -1281,7 +1282,8 @@ _Ret_maybenull_ _Post_writable_byte_size_(size) void* PalVirtualAlloc(size_t siz
     size_t mappingSize = 0;
     if ((protect & 0xffu) == PAGE_EXECUTE_READWRITE ||
         !RinOSPageRoundSize(size, &mappingSize) ||
-        mappingSize > (size_t)RINOS_PAL_USER_ADDRESS_LIMIT)
+        mappingSize >
+            (size_t)(RINOS_PAL_USER_ADDRESS_LIMIT - RINOS_PAL_USER_ADDRESS_MIN))
     {
         return NULL;
     }

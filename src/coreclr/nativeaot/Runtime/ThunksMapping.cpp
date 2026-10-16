@@ -407,9 +407,18 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         return E_OUTOFMEMORY;
     }
 
+    owner->baseAddress = pNewMapping;
+    // PalVirtualAlloc is required to return a page-aligned mapping.  Check
+    // the address before deriving either half or changing page protections;
+    // a malformed PAL result must not reach pointer arithmetic or mprotect.
+    if (!IsValidRxThunkMappingAddress(pNewMapping, mappingSize))
+    {
+        ReleaseFailedRxThunkMapping(owner);
+        return E_FAIL;
+    }
+
     void * pThunksSection = pNewMapping;
     void * pDataSection = (uint8_t*)pNewMapping + thunksMapSize;
-    owner->baseAddress = pNewMapping;
 
 #else
 
@@ -431,9 +440,17 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         return E_OUTOFMEMORY;
     }
 
+    owner->baseAddress = pNewMapping;
+    // The RinOS PAL owns the W^X transition.  Validate its mapping contract
+    // before deriving the data half or asking it to publish protections.
+    if (!IsValidRxThunkMappingAddress(pNewMapping, mappingSize))
+    {
+        ReleaseFailedRxThunkMapping(owner);
+        return E_FAIL;
+    }
+
     void * pThunksSection = pNewMapping;
     void * pDataSection = (uint8_t*)pNewMapping + thunksMapSize;
-    owner->baseAddress = pNewMapping;
 #else
     void * pNewMapping = PalVirtualAlloc(mappingSize, PAGE_EXECUTE_READ);
     if (pNewMapping == NULL)
@@ -442,9 +459,17 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         return E_OUTOFMEMORY;
     }
 
+    owner->baseAddress = pNewMapping;
+    // Do not pass a malformed PAL address to protection changes.  The
+    // address/overflow contract is checked immediately after allocation.
+    if (!IsValidRxThunkMappingAddress(pNewMapping, mappingSize))
+    {
+        ReleaseFailedRxThunkMapping(owner);
+        return E_FAIL;
+    }
+
     void * pThunksSection = pNewMapping;
     void * pDataSection = (uint8_t*)pNewMapping + thunksMapSize;
-    owner->baseAddress = pNewMapping;
 
     if (!PalVirtualProtect(pDataSection, thunksMapSize, PAGE_READWRITE) ||
         !PalVirtualProtect(pThunksSection, thunksMapSize, PAGE_EXECUTE_READWRITE))
@@ -453,16 +478,6 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         return E_FAIL;
     }
 #endif
-
-    // PalVirtualAlloc is required to return a page-aligned mapping.  Check the
-    // returned address before dereferencing either half or emitting pointers
-    // into the thunk stubs; otherwise a malformed PAL result could turn the
-    // provider-owned mapping into an overlapping or wrapping address range.
-    if (!IsValidRxThunkMappingAddress(pNewMapping, mappingSize))
-    {
-        ReleaseFailedRxThunkMapping(owner);
-        return E_FAIL;
-    }
 
 #if defined(HOST_APPLE) && defined(HOST_ARM64)
 #if defined(HOST_MACCATALYST) || defined(HOST_IOS) || defined(HOST_TVOS)

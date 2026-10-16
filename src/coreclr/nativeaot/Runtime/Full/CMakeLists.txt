@@ -34,7 +34,7 @@ if(NATIVEAOT_PRIVATE_LIBUNWIND_SOURCES)
   # The relocatable object includes runtime-owned objects so their references to
   # libunwind implementation symbols are resolved before localization. The
   # localize list is generated only from the bundled libunwind source objects.
-  set(NATIVEAOT_PRIVATE_LIBUNWIND_SYMBOL_OBJECTS "$<FILTER:$<TARGET_OBJECTS:Runtime.PrivateLibunwind>,EXCLUDE,.*(UnwindHelpers|UnixNativeCodeManager)\\.cpp\\.o$>")
+  set(NATIVEAOT_PRIVATE_LIBUNWIND_SYMBOL_OBJECTS "$<FILTER:$<TARGET_OBJECTS:Runtime.PrivateLibunwind>,EXCLUDE,.*(UnwindHelpers|UnixNativeCodeManager)\\.cpp\\.(o|obj)$>")
 
   if(DEFINED RINOS_OBJCOPY_WRAPPER AND CMAKE_HOST_UNIX)
     # drvfs cannot complete llvm-objcopy's in-place rewrite.  The wrapper
@@ -44,6 +44,16 @@ if(NATIVEAOT_PRIVATE_LIBUNWIND_SOURCES)
         /bin/bash "${RINOS_OBJCOPY_WRAPPER}")
   else()
     set(NATIVEAOT_PRIVATE_LIBUNWIND_OBJCOPY_COMMAND "${CMAKE_OBJCOPY}")
+  endif()
+
+  if(DEFINED RINOS_LINKER_WRAPPER AND CMAKE_HOST_UNIX)
+    # The same drvfs boundary can corrupt a relocatable ld.lld output even
+    # when the final objcopy rewrite is staged.  Link this temporary object
+    # on the host filesystem before copying it back to the build tree.
+    set(NATIVEAOT_PRIVATE_LIBUNWIND_LINK_COMMAND
+        /bin/bash "${RINOS_LINKER_WRAPPER}")
+  else()
+    set(NATIVEAOT_PRIVATE_LIBUNWIND_LINK_COMMAND "${CMAKE_LINKER}")
   endif()
 
   add_custom_command(
@@ -62,7 +72,9 @@ if(NATIVEAOT_PRIVATE_LIBUNWIND_SOURCES)
             -P "${CMAKE_CURRENT_LIST_DIR}/SortSymbols.cmake"
     COMMAND "${CMAKE_COMMAND}" -E rm -f
             "${NATIVEAOT_PRIVATE_LIBUNWIND_SYMBOLS_UNSORTED}"
-    COMMAND "${CMAKE_LINKER}" -r $<TARGET_OBJECTS:Runtime.PrivateLibunwind> -o "${NATIVEAOT_PRIVATE_LIBUNWIND_OBJECT}"
+    COMMAND ${NATIVEAOT_PRIVATE_LIBUNWIND_LINK_COMMAND}
+            -r $<TARGET_OBJECTS:Runtime.PrivateLibunwind>
+            -o "${NATIVEAOT_PRIVATE_LIBUNWIND_OBJECT}"
     COMMAND ${NATIVEAOT_PRIVATE_LIBUNWIND_OBJCOPY_COMMAND}
             "--localize-symbols=${NATIVEAOT_PRIVATE_LIBUNWIND_SYMBOLS}"
             "${NATIVEAOT_PRIVATE_LIBUNWIND_OBJECT}"

@@ -103,7 +103,7 @@ GC_CONFIGURATION_KEYS
 bool ParseIndexOrRange(const char** config_string, size_t* start_index, size_t* end_index)
 {
     char* number_end;
-    size_t start = strtoul(*config_string, &number_end, 10);
+    size_t start = ::strtoul(*config_string, &number_end, 10);
 
     if (number_end == *config_string)
     {
@@ -116,7 +116,7 @@ bool ParseIndexOrRange(const char** config_string, size_t* start_index, size_t* 
     if (*number_end == '-')
     {
         char* range_end_start = number_end + 1;
-        end = strtoul(range_end_start, &number_end, 10);
+        end = ::strtoul(range_end_start, &number_end, 10);
         if (number_end == range_end_start)
         {
             // No number found, invalid format

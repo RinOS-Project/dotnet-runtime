@@ -109,10 +109,6 @@ struct StackOverflowTraceSnapshot
 // Include the .NET version string instead of linking because it is "static".
 #if __has_include("_version.c")
 #include "_version.c"
-// RinOS's generated _version.c exports version macros, not the static symbol
-// used by the in-process crash reporter. Keep this translation-unit-local
-// symbol so the generated-version contract remains valid on this target.
-static const char sccsid[] = "@(#)Version " VER_PRODUCTVERSION_STR;
 #else
 static char sccsid[] = "@(#)Version N/A";
 #endif

@@ -73,6 +73,7 @@ struct RinOsRxThunkMappingOwner
     void* baseAddress;
     size_t mappingSize;
     bool pendingRelease;
+    bool releaseInProgress;
     RinOsRxThunkMappingOwner* next;
 };
 
@@ -96,36 +97,81 @@ static void UnlockRxThunkMappingOwners()
 static void QueueRxThunkMappingRelease(RinOsRxThunkMappingOwner* owner)
 {
     owner->pendingRelease = true;
+    owner->releaseInProgress = false;
     owner->next = g_rxThunkMappingOwners;
     g_rxThunkMappingOwners = owner;
 }
 
-static bool RetryPendingRxThunkMappingReleases()
+static bool RemoveRxThunkMappingOwnerLocked(RinOsRxThunkMappingOwner* owner)
 {
-    LockRxThunkMappingOwners();
-    bool allReleased = true;
     RinOsRxThunkMappingOwner** ownerLink = &g_rxThunkMappingOwners;
     while (*ownerLink != NULL)
     {
-        RinOsRxThunkMappingOwner* owner = *ownerLink;
-        if (!owner->pendingRelease)
+        if (*ownerLink == owner)
         {
-            ownerLink = &owner->next;
-            continue;
+            *ownerLink = owner->next;
+            owner->next = NULL;
+            return true;
         }
-
-        if (!PalVirtualFreeChecked(owner->baseAddress,
-                                   (uintptr_t)owner->mappingSize))
-        {
-            allReleased = false;
-            ownerLink = &owner->next;
-            continue;
-        }
-
-        *ownerLink = owner->next;
-        delete owner;
+        ownerLink = &(*ownerLink)->next;
     }
-    UnlockRxThunkMappingOwners();
+    return false;
+}
+
+static bool RetryPendingRxThunkMappingReleases()
+{
+    bool allReleased = true;
+    for (;;)
+    {
+        RinOsRxThunkMappingOwner* owner = NULL;
+        LockRxThunkMappingOwners();
+        for (RinOsRxThunkMappingOwner* candidate = g_rxThunkMappingOwners;
+             candidate != NULL;
+             candidate = candidate->next)
+        {
+            if (candidate->pendingRelease && !candidate->releaseInProgress)
+            {
+                candidate->releaseInProgress = true;
+                owner = candidate;
+                break;
+            }
+        }
+        UnlockRxThunkMappingOwners();
+
+        if (owner == NULL)
+        {
+            break;
+        }
+
+        // PAL release may block or enter another allocator lock.  Never call
+        // it while holding the native owner spinlock.
+        const bool released = PalVirtualFreeChecked(
+            owner->baseAddress, (uintptr_t)owner->mappingSize);
+
+        bool removed = false;
+        LockRxThunkMappingOwners();
+        if (released)
+        {
+            removed = RemoveRxThunkMappingOwnerLocked(owner);
+        }
+        else
+        {
+            owner->releaseInProgress = false;
+            allReleased = false;
+        }
+        UnlockRxThunkMappingOwners();
+
+        if (removed)
+        {
+            delete owner;
+        }
+        else if (released)
+        {
+            // This is an ownership invariant failure.  Keep the audit result
+            // failed rather than treating an untracked release as success.
+            allReleased = false;
+        }
+    }
     return allReleased;
 }
 
@@ -168,7 +214,7 @@ static bool IsOwnedRxThunkPage(uintptr_t pageAddress, bool dataSection)
          owner != NULL;
          owner = owner->next)
     {
-        if (owner->pendingRelease)
+        if (owner->pendingRelease || owner->releaseInProgress)
         {
             continue;
         }
@@ -390,6 +436,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     owner->baseAddress = NULL;
     owner->mappingSize = mappingSize;
     owner->pendingRelease = false;
+    owner->releaseInProgress = false;
     owner->next = NULL;
 
     if (!RetryPendingRxThunkMappingReleases())
@@ -767,7 +814,7 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
     }
 
     RinOsRxThunkMappingOwner* owner = *ownerLink;
-    if (owner->pendingRelease)
+    if (owner->pendingRelease || owner->releaseInProgress)
     {
         // A previous PAL release failed.  Keep the owner queued for the
         // retry path; never submit the same address to the PAL twice while
@@ -775,15 +822,41 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
         UnlockRxThunkMappingOwners();
         return E_FAIL;
     }
-    *ownerLink = owner->next;
-    if (!PalVirtualFreeChecked(pThunksSection, (uintptr_t)mappingSize))
+
+    owner->releaseInProgress = true;
+    UnlockRxThunkMappingOwners();
+
+    // Do not enter the PAL while holding the owner spinlock.  The PAL may
+    // acquire VM/allocator locks and a failed release must leave this exact
+    // owner available for a later retry.
+    const bool released = PalVirtualFreeChecked(
+        pThunksSection, (uintptr_t)mappingSize);
+
+    bool removed = false;
+    LockRxThunkMappingOwners();
+    if (released)
     {
-        QueueRxThunkMappingRelease(owner);
-        UnlockRxThunkMappingOwners();
+        removed = RemoveRxThunkMappingOwnerLocked(owner);
+    }
+    else
+    {
+        owner->pendingRelease = true;
+        owner->releaseInProgress = false;
+    }
+    UnlockRxThunkMappingOwners();
+
+    if (!released)
+    {
         return E_FAIL;
     }
-
-    UnlockRxThunkMappingOwners();
+    if (!removed)
+    {
+        // The owner must still be present because releaseInProgress blocked
+        // every competing free/retry operation.  Do not leak it if that
+        // invariant is violated, but report the boundary failure.
+        delete owner;
+        return E_FAIL;
+    }
     delete owner;
     return S_OK;
 }

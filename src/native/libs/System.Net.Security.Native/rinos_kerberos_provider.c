@@ -107,6 +107,44 @@ static void provider_zero(void* pointer, size_t size)
     while (size-- != 0u) *bytes++ = 0u;
 }
 
+#define RINOS_KERBEROS_BUFFER_MAGIC UINT64_C(0x314646554f534e52)
+
+/* GSS release receives the public buffer length from managed/native code.
+ * That length is metadata, not an allocation authority: a malformed caller
+ * must not turn it into an out-of-bounds wipe. Keep the real capacity in a
+ * provider-owned prefix and recover it only through the provider magic. */
+typedef struct RinOsKerberosProviderBufferHeader {
+    uint64_t magic;
+    size_t capacity;
+} RinOsKerberosProviderBufferHeader;
+
+static uint8_t* provider_buffer_alloc(size_t capacity)
+{
+    RinOsKerberosProviderBufferHeader* header;
+    if (capacity > SIZE_MAX - sizeof(*header)) return NULL;
+    header = (RinOsKerberosProviderBufferHeader*)calloc(
+        1u, sizeof(*header) + capacity);
+    if (header == NULL) return NULL;
+    header->magic = RINOS_KERBEROS_BUFFER_MAGIC;
+    header->capacity = capacity;
+    return (uint8_t*)(header + 1);
+}
+
+static void provider_buffer_dispose(void* buffer)
+{
+    RinOsKerberosProviderBufferHeader* header;
+    if (buffer == NULL) return;
+    header = ((RinOsKerberosProviderBufferHeader*)buffer) - 1;
+    if (header->magic != RINOS_KERBEROS_BUFFER_MAGIC ||
+        header->capacity > SIZE_MAX - sizeof(*header))
+        return;
+    provider_zero(buffer, header->capacity);
+    header->magic = 0u;
+    header->capacity = 0u;
+    provider_zero(header, sizeof(*header));
+    free(header);
+}
+
 static uint32_t provider_unavailable(uint32_t* minor_status)
 {
     if (minor_status != NULL) *minor_status = 0u;
@@ -778,13 +816,13 @@ static int provider_spnego_wrap_init(const uint8_t* token, uint32_t token_size,
         total64 > RIN_AUTH_PROVIDER_MAX_TOKEN_SIZE)
         return 0;
     total = (uint32_t)total64;
-    bytes = (uint8_t*)calloc(1u, total);
+    bytes = provider_buffer_alloc(total);
     if (bytes == NULL) return 0;
     if (!provider_der_write_header(bytes, total, &offset, 0x60u,
                                    (uint32_t)application_content64) ||
         !provider_der_write_header(bytes, total, &offset, 0x06u,
                                    sizeof(g_provider_spnego_oid))) {
-        free(bytes);
+        provider_buffer_dispose(bytes);
         return 0;
     }
     memcpy(bytes + offset, g_provider_spnego_oid,
@@ -801,7 +839,7 @@ static int provider_spnego_wrap_init(const uint8_t* token, uint32_t token_size,
         !provider_der_write_header(bytes, total, &offset, 0x06u,
                                    sizeof(g_provider_kerberos_oid))) {
         provider_zero(bytes, total);
-        free(bytes);
+        provider_buffer_dispose(bytes);
         return 0;
     }
     memcpy(bytes + offset, g_provider_kerberos_oid,
@@ -813,7 +851,7 @@ static int provider_spnego_wrap_init(const uint8_t* token, uint32_t token_size,
             !provider_der_write_header(bytes, total, &offset, 0x04u,
                                        token_size)) {
             provider_zero(bytes, total);
-            free(bytes);
+            provider_buffer_dispose(bytes);
             return 0;
         }
         memcpy(bytes + offset, token, token_size);
@@ -825,7 +863,7 @@ static int provider_spnego_wrap_init(const uint8_t* token, uint32_t token_size,
             !provider_der_write_header(bytes, total, &offset, 0x04u,
                                        mic_size)) {
             provider_zero(bytes, total);
-            free(bytes);
+            provider_buffer_dispose(bytes);
             return 0;
         }
         memcpy(bytes + offset, mic, mic_size);
@@ -833,7 +871,7 @@ static int provider_spnego_wrap_init(const uint8_t* token, uint32_t token_size,
     }
     if (offset != total) {
         provider_zero(bytes, total);
-        free(bytes);
+        provider_buffer_dispose(bytes);
         return 0;
     }
     *output = bytes;
@@ -880,20 +918,20 @@ static int provider_spnego_wrap_response(
         total64 > RIN_AUTH_PROVIDER_MAX_TOKEN_SIZE)
         return 0;
     total = (uint32_t)total64;
-    bytes = (uint8_t*)calloc(1u, total);
+    bytes = provider_buffer_alloc(total);
     if (bytes == NULL) return 0;
     if (!provider_der_write_header(bytes, total, &offset, 0xa1u,
                                    (uint32_t)sequence_tlv64) ||
         !provider_der_write_header(bytes, total, &offset, 0x30u,
                                    (uint32_t)sequence_content64)) {
-        free(bytes);
+        provider_buffer_dispose(bytes);
         return 0;
     }
     if (!initiator &&
         (!provider_der_write_header(bytes, total, &offset, 0xa0u, 3u) ||
          !provider_der_write_header(bytes, total, &offset, 0x0au, 1u))) {
         provider_zero(bytes, total);
-        free(bytes);
+        provider_buffer_dispose(bytes);
         return 0;
     }
     if (!initiator) bytes[offset++] = (uint8_t)state;
@@ -903,7 +941,7 @@ static int provider_spnego_wrap_response(
          !provider_der_write_header(bytes, total, &offset, 0x06u,
                                     sizeof(g_provider_kerberos_oid)))) {
         provider_zero(bytes, total);
-        free(bytes);
+        provider_buffer_dispose(bytes);
         return 0;
     }
     if (include_mechanism) {
@@ -917,7 +955,7 @@ static int provider_spnego_wrap_response(
          !provider_der_write_header(bytes, total, &offset, 0x04u,
                                     token_size))) {
         provider_zero(bytes, total);
-        free(bytes);
+        provider_buffer_dispose(bytes);
         return 0;
     }
     if (token_tlv != 0u) {
@@ -930,7 +968,7 @@ static int provider_spnego_wrap_response(
             !provider_der_write_header(bytes, total, &offset, 0x04u,
                                        mic_size)) {
             provider_zero(bytes, total);
-            free(bytes);
+            provider_buffer_dispose(bytes);
             return 0;
         }
         memcpy(bytes + offset, mic, mic_size);
@@ -938,7 +976,7 @@ static int provider_spnego_wrap_response(
     }
     if (offset != total) {
         provider_zero(bytes, total);
-        free(bytes);
+        provider_buffer_dispose(bytes);
         return 0;
     }
     *output = bytes;
@@ -976,7 +1014,7 @@ static int provider_spnego_replace_output(RinAuthProviderBufferV1* output,
     if (!ok) {
         if (old_bytes != NULL) {
             provider_zero(old_bytes, (size_t)old_size);
-            free(old_bytes);
+            provider_buffer_dispose(old_bytes);
         }
         output->data = NULL;
         output->length = 0u;
@@ -984,7 +1022,7 @@ static int provider_spnego_replace_output(RinAuthProviderBufferV1* output,
     }
     if (old_bytes != NULL) {
         provider_zero(old_bytes, (size_t)old_size);
-        free(old_bytes);
+        provider_buffer_dispose(old_bytes);
     }
     output->data = wrapped;
     output->length = wrapped_size;
@@ -1813,7 +1851,7 @@ static uint32_t provider_operation(
     if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK) {
         if (operation_output != NULL) {
             provider_zero(operation_output, request->output_capacity);
-            free(operation_output);
+            provider_buffer_dispose(operation_output);
         }
         provider_zero(next_context, sizeof(next_context));
         /* Preserve the owner-defined GSS-relevant failure classification.
@@ -1869,7 +1907,7 @@ static uint32_t provider_operation(
          ~RIN_KERBEROS_OPERATION_KNOWN_RETURN_FLAGS) != 0u) {
         if (operation_output != NULL) {
             provider_zero(operation_output, request->output_capacity);
-            free(operation_output);
+            provider_buffer_dispose(operation_output);
         }
         provider_zero(next_context, sizeof(next_context));
         return RIN_AUTH_PROVIDER_UNAVAILABLE;
@@ -1890,7 +1928,7 @@ static uint32_t provider_operation(
     if ((operation_return_flags & ~allowed_return_flags) != 0u) {
         if (operation_output != NULL) {
             provider_zero(operation_output, request->output_capacity);
-            free(operation_output);
+            provider_buffer_dispose(operation_output);
         }
         provider_zero(next_context, sizeof(next_context));
         return RIN_AUTH_PROVIDER_UNAVAILABLE;
@@ -1901,7 +1939,7 @@ static uint32_t provider_operation(
                                    &error_code) != 1) {
             if (operation_output != NULL) {
                 provider_zero(operation_output, request->output_capacity);
-                free(operation_output);
+                provider_buffer_dispose(operation_output);
             }
             provider_zero(next_context, sizeof(next_context));
             return provider_unavailable(minor_status);
@@ -1925,7 +1963,7 @@ static uint32_t provider_operation(
             provider_context->generation != operation_generation) {
             if (operation_output != NULL) {
                 provider_zero(operation_output, request->output_capacity);
-                free(operation_output);
+                provider_buffer_dispose(operation_output);
             }
             provider_zero(next_context, sizeof(next_context));
             return RIN_AUTH_PROVIDER_UNAVAILABLE;
@@ -1948,7 +1986,7 @@ static uint32_t provider_operation(
         output->length = operation_output_size;
     } else if (operation_output != NULL) {
         provider_zero(operation_output, request->output_capacity);
-        free(operation_output);
+        provider_buffer_dispose(operation_output);
     }
     if (return_flags != NULL) *return_flags = operation_return_flags;
     provider_zero(next_context, sizeof(next_context));
@@ -2280,7 +2318,7 @@ static uint32_t provider_init_sec_context(
         if (mic_status != RIN_AUTH_PROVIDER_OK) {
             if (output->data != NULL) {
                 provider_zero(output->data, (size_t)output->length);
-                free(output->data);
+                provider_buffer_dispose(output->data);
                 output->data = NULL;
                 output->length = 0u;
             }
@@ -2308,7 +2346,7 @@ static uint32_t provider_init_sec_context(
             }
             if (output->data != NULL) {
                 provider_zero(output->data, (size_t)output->length);
-                free(output->data);
+                provider_buffer_dispose(output->data);
                 output->data = NULL;
                 output->length = 0u;
             }
@@ -2610,7 +2648,7 @@ static uint32_t provider_init_sec_context_ex(
         if (mic_status != RIN_AUTH_PROVIDER_OK) {
             if (output->data != NULL) {
                 provider_zero(output->data, (size_t)output->length);
-                free(output->data);
+                provider_buffer_dispose(output->data);
                 output->data = NULL;
                 output->length = 0u;
             }
@@ -2638,7 +2676,7 @@ static uint32_t provider_init_sec_context_ex(
             }
             if (output->data != NULL) {
                 provider_zero(output->data, (size_t)output->length);
-                free(output->data);
+                provider_buffer_dispose(output->data);
                 output->data = NULL;
                 output->length = 0u;
             }
@@ -2873,7 +2911,7 @@ static uint32_t provider_accept_sec_context(
         if (mic_status != RIN_AUTH_PROVIDER_OK) {
             if (output->data != NULL) {
                 provider_zero(output->data, (size_t)output->length);
-                free(output->data);
+                provider_buffer_dispose(output->data);
                 output->data = NULL;
                 output->length = 0u;
             }
@@ -2909,7 +2947,7 @@ static uint32_t provider_accept_sec_context(
                 }
                 if (output->data != NULL) {
                     provider_zero(output->data, (size_t)output->length);
-                    free(output->data);
+                    provider_buffer_dispose(output->data);
                     output->data = NULL;
                     output->length = 0u;
                 }
@@ -3129,7 +3167,7 @@ static uint32_t provider_get_mic(
             output != NULL ? (uint32_t)output->length : 0u)) {
         if (output != NULL && output->data != NULL) {
             provider_zero(output->data, (size_t)output->length);
-            free(output->data);
+            provider_buffer_dispose(output->data);
             output->data = NULL;
             output->length = 0u;
         }
@@ -3222,10 +3260,8 @@ static void provider_release_buffer(void* context, void* buffer,
                                     uint64_t length)
 {
     (void)context;
-    if (buffer != NULL) {
-        if (length <= SIZE_MAX) provider_zero(buffer, (size_t)length);
-        free(buffer);
-    }
+    (void)length;
+    provider_buffer_dispose(buffer);
 }
 
 /* Kerberos protocol names are diagnostic metadata only.  The assigned names
@@ -3390,7 +3426,7 @@ static uint32_t provider_display_status_value(
         length = prefix_length + 8u;
     }
 
-    bytes = (uint8_t*)malloc(length);
+    bytes = provider_buffer_alloc(length);
     if (bytes == NULL) return provider_unavailable(minor_status);
     memcpy(bytes, formatted, length);
     output->data = bytes;
@@ -3553,7 +3589,7 @@ static uint32_t provider_get_user(
     owner = provider_context->credential->owner;
     if (owner == NULL || owner->get_session_principal == NULL)
         return provider_unavailable(minor_status);
-    principal = (uint8_t*)calloc(1u, RINOS_KERBEROS_MAX_PRINCIPAL_SIZE);
+    principal = provider_buffer_alloc(RINOS_KERBEROS_MAX_PRINCIPAL_SIZE);
     if (principal == NULL) return provider_unavailable(minor_status);
     status = owner->get_session_principal(
         owner->context, minor_status, provider_context->owner_credential,
@@ -3561,7 +3597,7 @@ static uint32_t provider_get_user(
         &generation);
     if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK) {
         provider_zero(principal, RINOS_KERBEROS_MAX_PRINCIPAL_SIZE);
-        free(principal);
+        provider_buffer_dispose(principal);
         return provider_status_from_owner(status, minor_status);
     }
     /* An owner OK result is not sufficient to establish an identity.  Do not
@@ -3572,7 +3608,7 @@ static uint32_t provider_get_user(
         generation != provider_context->generation ||
         !provider_escaped_principal_valid(principal, principal_size)) {
         provider_zero(principal, RINOS_KERBEROS_MAX_PRINCIPAL_SIZE);
-        free(principal);
+        provider_buffer_dispose(principal);
         return provider_unavailable(minor_status);
     }
     output->data = principal;

@@ -23,6 +23,7 @@
 #include "thread.h"
 #include "threadstore.h"
 #include "threadstore.inl"
+#include "thread.inl"
 
 #include "MethodTable.h"
 #include "TypeManager.h"
@@ -476,12 +477,24 @@ FCIMPL2(Array *, RhpNewArrayFast, MethodTable * pArrayEEType, intptr_t numElemen
 }
 FCIMPLEND
 
+#ifdef HOST_WASM
+FCIMPL2(Array*, RhpNewPtrArrayFast, MethodTable* pArrayEEType, intptr_t numElements)
+{
+    return RhpNewArrayFast_IMPL(callersStackPointer, pArrayEEType, numElements);
+}
+FCIMPLEND
+#endif // HOST_WASM
+
 FCIMPL2(String *, RhNewString, MethodTable * pStringEEType, intptr_t numElements)
 {
     // NativeAOT strings use the array-compatible length/component layout. Reuse the
     // bounded allocator so negative lengths, overflow, fast-path limits, and OOM
     // handling remain identical to other variable-sized allocations.
+#ifdef HOST_WASM
+    return (String*)RhpNewArrayFast_IMPL(callersStackPointer, pStringEEType, numElements);
+#else
     return (String*)RhpNewArrayFast(pStringEEType, numElements);
+#endif
 }
 FCIMPLEND
 
@@ -640,8 +653,8 @@ static bool ValidateWriteBarrierDestination(Object ** destination)
     return false;
 }
 
-#if !defined (HOST_ARM64)
-FCIMPL2(void, RhpAssignRef, Object ** dst, Object * ref)
+#if !defined(HOST_WASM)
+FCIMPL2_RAW(void, RhpAssignRef, Object ** dst, Object * ref)
 {
     if (!ValidateWriteBarrierDestination(dst))
         return;
@@ -651,7 +664,7 @@ FCIMPL2(void, RhpAssignRef, Object ** dst, Object * ref)
 }
 FCIMPLEND
 
-FCIMPL2(void, RhpCheckedAssignRef, Object ** dst, Object * ref)
+FCIMPL2_RAW(void, RhpCheckedAssignRef, Object ** dst, Object * ref)
 {
     if (!ValidateWriteBarrierDestination(dst))
         return;
@@ -684,7 +697,7 @@ FCIMPL2(Object *, RhpCheckedXchg, Object ** location, Object * value)
 }
 FCIMPLEND
 
-FCIMPL1(HRESULT, RhAllocateThunksMapping, void ** ppThunksSection)
+EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void ** ppThunksSection)
 {
     if (ppThunksSection == nullptr)
         return E_INVALIDARG;
@@ -758,7 +771,6 @@ FCIMPL1(HRESULT, RhAllocateThunksMapping, void ** ppThunksSection)
     // translates any non-S_OK result to PlatformNotSupportedException.
     return E_NOTIMPL;
 }
-FCIMPLEND
 
 FCIMPL1(HRESULT, RhFreeThunksMapping, void* pThunksSection)
 {

@@ -1836,7 +1836,11 @@ static uint32_t provider_operation(
             return provider_defective_token(NULL);
     }
     if (request->output_capacity != 0u) {
-        operation_output = (uint8_t*)calloc(1u, request->output_capacity);
+        /* Operation output is published through the provider buffer ABI on
+         * success.  Use the same owned-capacity allocation as every other
+         * public buffer so error cleanup and release cannot interpret a raw
+         * calloc pointer as a provider allocation header. */
+        operation_output = provider_buffer_alloc(request->output_capacity);
         if (operation_output == NULL) return RIN_AUTH_PROVIDER_UNAVAILABLE;
     }
     status = owner->operation(
@@ -2342,7 +2346,7 @@ static uint32_t provider_init_sec_context(
                                           (uint32_t)mic_output.length)) {
             if (mic_output.data != NULL) {
                 provider_zero(mic_output.data, (size_t)mic_output.length);
-                free(mic_output.data);
+                provider_buffer_dispose(mic_output.data);
             }
             if (output->data != NULL) {
                 provider_zero(output->data, (size_t)output->length);
@@ -2370,7 +2374,7 @@ static uint32_t provider_init_sec_context(
             generate_spnego_mic ? (uint32_t)mic_output.length : 0u)) {
         if (mic_output.data != NULL) {
             provider_zero(mic_output.data, (size_t)mic_output.length);
-            free(mic_output.data);
+            provider_buffer_dispose(mic_output.data);
         }
         if (created_context) {
             provider_zero(provider_context, sizeof(*provider_context));
@@ -2383,7 +2387,7 @@ static uint32_t provider_init_sec_context(
         provider_context->spnego_mic_sent = 1u;
     if (mic_output.data != NULL) {
         provider_zero(mic_output.data, (size_t)mic_output.length);
-        free(mic_output.data);
+        provider_buffer_dispose(mic_output.data);
     }
     if (status != RIN_AUTH_PROVIDER_OK &&
         status != RIN_AUTH_PROVIDER_CONTINUE_NEEDED) {
@@ -2672,7 +2676,7 @@ static uint32_t provider_init_sec_context_ex(
                                           (uint32_t)mic_output.length)) {
             if (mic_output.data != NULL) {
                 provider_zero(mic_output.data, (size_t)mic_output.length);
-                free(mic_output.data);
+                provider_buffer_dispose(mic_output.data);
             }
             if (output->data != NULL) {
                 provider_zero(output->data, (size_t)output->length);
@@ -2700,7 +2704,7 @@ static uint32_t provider_init_sec_context_ex(
             generate_spnego_mic ? (uint32_t)mic_output.length : 0u)) {
         if (mic_output.data != NULL) {
             provider_zero(mic_output.data, (size_t)mic_output.length);
-            free(mic_output.data);
+            provider_buffer_dispose(mic_output.data);
         }
         if (created_context) {
             provider_zero(provider_context, sizeof(*provider_context));
@@ -2713,7 +2717,7 @@ static uint32_t provider_init_sec_context_ex(
         provider_context->spnego_mic_sent = 1u;
     if (mic_output.data != NULL) {
         provider_zero(mic_output.data, (size_t)mic_output.length);
-        free(mic_output.data);
+        provider_buffer_dispose(mic_output.data);
     }
     if (status != RIN_AUTH_PROVIDER_OK &&
         status != RIN_AUTH_PROVIDER_CONTINUE_NEEDED) {
@@ -2943,7 +2947,7 @@ static uint32_t provider_accept_sec_context(
                                               (uint32_t)mic_output.length)) {
                 if (mic_output.data != NULL) {
                     provider_zero(mic_output.data, (size_t)mic_output.length);
-                    free(mic_output.data);
+                    provider_buffer_dispose(mic_output.data);
                 }
                 if (output->data != NULL) {
                     provider_zero(output->data, (size_t)output->length);
@@ -2973,7 +2977,7 @@ spnego_accept_output:
             generate_spnego_mic ? (uint32_t)mic_output.length : 0u)) {
         if (mic_output.data != NULL) {
             provider_zero(mic_output.data, (size_t)mic_output.length);
-            free(mic_output.data);
+            provider_buffer_dispose(mic_output.data);
         }
         if (created_context) {
             provider_zero(provider_context, sizeof(*provider_context));
@@ -2984,7 +2988,7 @@ spnego_accept_output:
     }
     if (mic_output.data != NULL) {
         provider_zero(mic_output.data, (size_t)mic_output.length);
-        free(mic_output.data);
+        provider_buffer_dispose(mic_output.data);
     }
     if (status != RIN_AUTH_PROVIDER_OK &&
         status != RIN_AUTH_PROVIDER_CONTINUE_NEEDED) {

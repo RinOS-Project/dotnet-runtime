@@ -274,6 +274,17 @@ namespace ILCompiler.DependencyAnalysis
 
                 for (int i = 0; i < _sealedVTableEntries.Count; i++)
                 {
+                    // WASM function-table entries cannot carry the non-zero
+                    // relocation addend used for a shared dynamic-interface
+                    // instantiating thunk.  A null slot is fail-closed until
+                    // a signature-correct generic-context ABI is available;
+                    // never emit a bogus funclet relocation.
+                    if (factory.Target.IsWasm && isSharedDynamicInterfaceCastableImpl)
+                    {
+                        objData.EmitZeroPointer();
+                        continue;
+                    }
+
                     IMethodNode relocTarget = _sealedVTableEntries[i].Target;
 
                     int delta = isSharedDynamicInterfaceCastableImpl ? DispatchMapCodePointerFlags.RequiresInstantiatingThunkFlag : 0;

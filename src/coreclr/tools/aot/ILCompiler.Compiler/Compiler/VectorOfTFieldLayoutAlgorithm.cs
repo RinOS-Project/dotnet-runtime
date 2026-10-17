@@ -53,7 +53,12 @@ namespace ILCompiler
             {
                 ByteCountUnaligned = instanceFieldSize,
                 ByteCountAlignment = layoutFromMetadata.ByteCountAlignment,
-                FieldAlignment = layoutFromMetadata.FieldAlignment,
+                // NativeAOT WASM vectors are lowered to v128 and must retain
+                // the 16-byte alignment required by the WASM ABI.  Other
+                // targets keep the metadata-derived alignment.
+                FieldAlignment = targetDetails.IsWasm
+                    ? new LayoutInt(16)
+                    : layoutFromMetadata.FieldAlignment,
                 FieldSize = instanceFieldSize,
                 Offsets = layoutFromMetadata.Offsets,
                 IsVectorTOrHasVectorTFields = true,

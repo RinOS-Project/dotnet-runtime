@@ -1617,6 +1617,17 @@ static int product_currency_negative_pattern(const RinIcuDataLocaleRecord* recor
     return (int)pattern;
 }
 
+static int product_percent_negative_pattern(const RinIcuDataLocaleRecord* record)
+{
+    uint32_t pattern;
+    if (!record ||
+        !rin_icu_data_percent_negative_pattern_present(record->week_data))
+        return -1;
+    pattern = rin_icu_data_percent_negative_pattern(record->week_data);
+    if (pattern > RIN_ICU_DATA_PERCENT_NEGATIVE_PATTERN_MAX) return -1;
+    return (int)pattern;
+}
+
 static int product_percent_positive_pattern(const RinIcuDataLocaleRecord* record)
 {
     int percent_first;
@@ -2609,9 +2620,18 @@ int32_t GlobalizationNative_GetLocaleInfoInt(const UChar* locale, LocaleNumberDa
             }
             break;
         case LocaleNumber_NegativePercentFormat:
-            pattern = product_percent_positive_pattern(&record);
-            if (pattern < 0) return 0;
-            *value = pattern == 0 ? 0 : pattern == 1 ? 1 : pattern == 2 ? 2 : 7;
+            /* New records carry the exact CLDR negative subpattern projected
+             * to NumberFormatInfo.PercentNegativePattern.  Pre-projection
+             * RICUDB1 blobs retain the reviewed positive-pattern fallback;
+             * do not infer a new locale policy from an absent field. */
+            pattern = product_percent_negative_pattern(&record);
+            if (pattern < 0) {
+                pattern = product_percent_positive_pattern(&record);
+                if (pattern < 0) return 0;
+                *value = pattern == 0 ? 0 : pattern == 1 ? 1 : pattern == 2 ? 2 : 7;
+            } else {
+                *value = pattern;
+            }
             break;
         case LocaleNumber_PositivePercentFormat:
             pattern = product_percent_positive_pattern(&record);

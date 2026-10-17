@@ -751,13 +751,23 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void ** ppThunksSection)
             // invalidate the earlier allocation.  The owner was reserved
             // before the callback, so no post-callback allocation failure
             // can leave an untracked mapping behind.
-            if (result != E_INVALIDARG &&
-                (provider->capability_mask &
-                    RIN_NATIVEAOT_THUNK_CAP_MAPPING_RELEASE) != 0 &&
-                provider->free_thunks_mapping != nullptr)
+            if (result != E_INVALIDARG)
             {
-                (void)provider->free_thunks_mapping(
-                    provider->context, *ppThunksSection);
+                // Registration failed after the provider returned a new
+                // mapping.  Keep the exact provider/mapping pair retryable
+                // when cleanup itself fails (or the provider has no release
+                // capability); dropping the reserved owner here would leak
+                // executable memory and make a later provider replacement
+                // unsafe.
+                if (!TryReleasePortableThunkMapping(
+                        provider, *ppThunksSection))
+                {
+                    owner->mapping = *ppThunksSection;
+                    owner->provider = provider;
+                    QueuePendingPortableThunkMappingRelease(owner);
+                    *ppThunksSection = nullptr;
+                    return result;
+                }
             }
             *ppThunksSection = nullptr;
             delete owner;

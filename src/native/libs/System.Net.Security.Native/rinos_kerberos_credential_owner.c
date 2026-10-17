@@ -322,6 +322,9 @@ static uint32_t owner_operation(
         provider_result == NULL || return_flags == NULL ||
         request->struct_size != sizeof(*request) ||
         request->version != RIN_KERBEROS_OPERATION_ABI_VERSION ||
+        request->context_token_size != context_token_size ||
+        request->input_size != input_size ||
+        request->output_capacity != output_capacity ||
         !owner_decode_token(credential, &index, &token_generation) ||
         !owner_valid(owner) || !owner_lock(owner))
         return RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;

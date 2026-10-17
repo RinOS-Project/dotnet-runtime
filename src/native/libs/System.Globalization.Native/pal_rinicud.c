@@ -2576,10 +2576,17 @@ int32_t GlobalizationNative_GetLocaleInfoInt(const UChar* locale, LocaleNumberDa
             if (*value < 0) return 0;
             break;
         case LocaleNumber_ReadingLayout:
-            *value = strcmp(record.script, "Arab") == 0 ||
-                strcmp(record.language, "fa") == 0 ||
-                strcmp(record.language, "he") == 0 ||
-                strcmp(record.language, "ur") == 0;
+            /* Prefer the explicit CLDR layout/orientation projection.  The
+             * old script/language heuristic remains the compatibility path
+             * for pre-projection RICUDB1 blobs. */
+            if ((record.flags & RIN_ICU_DATA_FLAG_READING_LAYOUT_PRESENT) != 0u) {
+                *value = (record.flags & RIN_ICU_DATA_FLAG_READING_LAYOUT_RTL) != 0u;
+            } else {
+                *value = strcmp(record.script, "Arab") == 0 ||
+                    strcmp(record.language, "fa") == 0 ||
+                    strcmp(record.language, "he") == 0 ||
+                    strcmp(record.language, "ur") == 0;
+            }
             break;
         case LocaleNumber_NegativePercentFormat:
             pattern = product_percent_positive_pattern(&record);

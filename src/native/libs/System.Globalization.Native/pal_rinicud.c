@@ -1628,6 +1628,17 @@ static int product_percent_negative_pattern(const RinIcuDataLocaleRecord* record
     return (int)pattern;
 }
 
+static int product_decimal_negative_pattern(const RinIcuDataLocaleRecord* record)
+{
+    uint32_t pattern;
+    if (!record || !rin_icu_data_week_data_valid(record->week_data) ||
+        !rin_icu_data_decimal_negative_pattern_present(record->week_data))
+        return -1;
+    pattern = rin_icu_data_decimal_negative_pattern(record->week_data);
+    if (pattern > RIN_ICU_DATA_DECIMAL_NEGATIVE_PATTERN_MAX) return -1;
+    return (int)pattern;
+}
+
 static int product_percent_positive_pattern(const RinIcuDataLocaleRecord* record)
 {
     int percent_first;
@@ -2571,7 +2582,11 @@ int32_t GlobalizationNative_GetLocaleInfoInt(const UChar* locale, LocaleNumberDa
             *value = (int32_t)record.currency_digits;
             break;
         case LocaleNumber_NegativeNumberFormat:
-            *value = 1;
+            /* The official CLDR standard decimal negative subpattern is
+             * projected when representable.  Pre-projection RICUDB1 blobs
+             * retain the ICU/.NET default leading-minus policy. */
+            pattern = product_decimal_negative_pattern(&record);
+            *value = pattern < 0 ? 1 : pattern;
             break;
         case LocaleNumber_PositiveMonetaryNumberFormat:
             pattern = product_currency_positive_pattern(&record);

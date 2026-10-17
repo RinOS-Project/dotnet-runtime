@@ -95,9 +95,11 @@ bool RhInitializeFinalization()
         return false;
     g_lowMemoryNotification = PalCreateLowMemoryResourceNotification();
 
+#ifdef FEATURE_MULTITHREADING
     // Create the finalizer thread itself.
     if (!PalStartFinalizerThread(FinalizerStart, (void*)g_FinalizerEvent.GetOSEvent()))
         return false;
+#endif // FEATURE_MULTITHREADING
 
     return true;
 }

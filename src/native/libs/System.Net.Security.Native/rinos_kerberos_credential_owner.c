@@ -306,8 +306,12 @@ static uint32_t owner_operation(
      * cleanup into an arbitrary write. */
     if (output_capacity > RIN_KERBEROS_OPERATION_MAX_OUTPUT_SIZE ||
         next_context_capacity > RIN_KERBEROS_OPERATION_MAX_CONTEXT_TOKEN_SIZE ||
+        context_token_size > RIN_KERBEROS_OPERATION_MAX_CONTEXT_TOKEN_SIZE ||
+        input_size > RIN_KERBEROS_OPERATION_MAX_INPUT_SIZE ||
         (output_capacity != 0u && output == NULL) ||
-        (next_context_capacity != 0u && next_context_token == NULL))
+        (next_context_capacity != 0u && next_context_token == NULL) ||
+        (context_token_size != 0u && context_token == NULL) ||
+        (input_size != 0u && input == NULL))
         return RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
     if (output != NULL && output_capacity != 0u)
         owner_zero(output, output_capacity);

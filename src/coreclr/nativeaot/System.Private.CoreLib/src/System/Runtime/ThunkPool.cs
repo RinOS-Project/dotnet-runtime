@@ -794,6 +794,26 @@ namespace System.Runtime
             mapping._releaseRetryQueued = true;
         }
 
+        private static void InvalidateCachedMapping(ThunkMapping mapping)
+        {
+            if (!ReferenceEquals(s_currentMapping, mapping))
+                return;
+
+            // A provider block that fails validation must never remain the next
+            // allocation candidate.  Otherwise every caller retries the same
+            // malformed address and the native mapping is leaked indefinitely.
+            for (int i = 0; i < s_currentlyMappedThunkBlocks.Length; i++)
+                s_currentlyMappedThunkBlocks[i] = IntPtr.Zero;
+            s_currentlyMappedThunkBlocksIndex = Constants.NumThunkBlocksPerMapping;
+            s_currentMapping = null;
+
+            // Blocks already leased to a heap still own the mapping.  Their
+            // normal ReleaseBlock path will perform the final native release;
+            // an unleased mapping can be released immediately.
+            if (mapping._outstandingBlockCount == 0)
+                TryReleaseMapping(mapping);
+        }
+
         private static bool TryReleaseMapping(ThunkMapping mapping)
         {
             if (mapping == null)
@@ -878,7 +898,15 @@ namespace System.Runtime
                     throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
 
                 nextThunksBlock = s_currentlyMappedThunkBlocks[s_currentlyMappedThunkBlocksIndex];
-                ValidateThunkBlockPair(nextThunksBlock, out dataAddress);
+                try
+                {
+                    ValidateThunkBlockPair(nextThunksBlock, out dataAddress);
+                }
+                catch
+                {
+                    InvalidateCachedMapping(mapping);
+                    throw;
+                }
                 s_currentlyMappedThunkBlocksIndex++;
                 mapping._outstandingBlockCount++;
 #if DEBUG

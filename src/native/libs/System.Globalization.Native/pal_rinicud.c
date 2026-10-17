@@ -2531,7 +2531,10 @@ int32_t GlobalizationNative_GetLocaleInfoInt(const UChar* locale, LocaleNumberDa
             *value = product_locale_language_id(record.locale_id);
             return *value != 0 || strcmp(record.locale_id, "root") == 0;
         case LocaleNumber_MeasurementSystem:
-            *value = (strcmp(record.region, "US") == 0 || strcmp(record.region, "LR") == 0 || strcmp(record.region, "MM") == 0) ? 1 : 0;
+            /* The source is CLDR supplementalData/measurementData.  The
+             * fixed RICUDB1 record carries only the default UMS_US bit;
+             * UMS_UK is intentionally the same 0 result as UMS_SI here. */
+            *value = (record.flags & RIN_ICU_DATA_FLAG_MEASUREMENT_US) != 0u;
             break;
         case LocaleNumber_FirstDayofWeek:
             *value = product_first_day_of_week(&record);

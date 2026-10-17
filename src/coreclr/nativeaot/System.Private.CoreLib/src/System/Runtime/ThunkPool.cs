@@ -734,6 +734,31 @@ namespace System.Runtime
             }
         }
 
+        private static unsafe void InitializeThunkDataBlock(IntPtr dataAddress)
+        {
+            if (dataAddress == IntPtr.Zero ||
+                ((nuint)(nint)dataAddress & Constants.PageSizeMask) != 0)
+            {
+                throw new PlatformNotSupportedException(SR.PlatformNotSupported_DynamicEntrypoint);
+            }
+
+            // Every thunk in the page must be present in the free list before
+            // the block is published to a heap. The final pointer-sized cell
+            // is reserved for the common stub address and is intentionally
+            // left untouched here; the heap that leases the block publishes
+            // that value after it has selected its common stub.
+            IntPtr current = dataAddress;
+            for (int i = 0; i < Constants.NumThunksPerBlock; i++)
+            {
+                IntPtr next = Constants.AddOffsetChecked(
+                    current, (nuint)Constants.ThunkDataSize);
+                *((IntPtr*)current) =
+                    i == Constants.NumThunksPerBlock - 1 ? IntPtr.Zero : next;
+                *((IntPtr*)(current + IntPtr.Size)) = IntPtr.Zero;
+                current = next;
+            }
+        }
+
         private static void RemoveReleaseRetry(ThunkMapping mapping)
         {
             if (mapping == null || !mapping._releaseRetryQueued)
@@ -889,22 +914,22 @@ namespace System.Runtime
                             currentThunksBlock, (nuint)Constants.ThunkBlockSize);
                     }
 
-                    // Setup the first block before publishing the mapping in
-                    // the managed cache.  If checked arithmetic or the
-                    // provider layout validation fails, the native owner must
-                    // be released and no partially initialized block may be
-                    // returned by a later allocation.
-                    for (int i = 0; i < Constants.NumThunksPerBlock; i++)
+                    // Setup every data block before publishing the mapping in
+                    // the managed cache. Initializing only the first block
+                    // strands the remaining blocks: their zero free-list
+                    // link makes the first allocation from each one expand a
+                    // new mapping instead of consuming the already leased
+                    // page. If checked arithmetic or provider validation
+                    // fails, the native owner must be released and no
+                    // partially initialized block may be published.
+                    for (int blockIndex = 0;
+                         blockIndex < Constants.NumThunkBlocksPerMapping;
+                         blockIndex++)
                     {
-                        IntPtr nextDataAddress = Constants.AddOffsetChecked(
-                            dataAddress, (nuint)Constants.ThunkDataSize);
-                        if (i == (Constants.NumThunksPerBlock - 1))
-                            *((IntPtr*)(dataAddress)) = IntPtr.Zero;
-                        else
-                            *((IntPtr*)(dataAddress)) = nextDataAddress;
-
-                        *((IntPtr*)(dataAddress + IntPtr.Size)) = IntPtr.Zero;
-                        dataAddress = nextDataAddress;
+                        ValidateThunkBlockPair(
+                            s_currentlyMappedThunkBlocks[blockIndex],
+                            out dataAddress);
+                        InitializeThunkDataBlock(dataAddress);
                     }
                 }
                 catch

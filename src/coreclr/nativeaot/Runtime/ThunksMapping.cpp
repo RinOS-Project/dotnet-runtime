@@ -74,6 +74,7 @@ struct RinOsRxThunkMappingOwner
     size_t mappingSize;
     bool pendingRelease;
     bool releaseInProgress;
+    bool releaseAttempted;
     RinOsRxThunkMappingOwner* next;
 };
 
@@ -98,6 +99,7 @@ static void QueueRxThunkMappingRelease(RinOsRxThunkMappingOwner* owner)
 {
     owner->pendingRelease = true;
     owner->releaseInProgress = false;
+    owner->releaseAttempted = false;
     owner->next = g_rxThunkMappingOwners;
     g_rxThunkMappingOwners = owner;
 }
@@ -121,6 +123,22 @@ static bool RemoveRxThunkMappingOwnerLocked(RinOsRxThunkMappingOwner* owner)
 static bool RetryPendingRxThunkMappingReleases()
 {
     bool allReleased = true;
+
+    // A failed PAL release stays pending, but it must not be retried in a
+    // tight loop by this same allocation attempt.  Reset the per-pass marker
+    // once, then give each owner at most one PAL call before returning.
+    LockRxThunkMappingOwners();
+    for (RinOsRxThunkMappingOwner* owner = g_rxThunkMappingOwners;
+         owner != NULL;
+         owner = owner->next)
+    {
+        if (owner->pendingRelease)
+        {
+            owner->releaseAttempted = false;
+        }
+    }
+    UnlockRxThunkMappingOwners();
+
     for (;;)
     {
         RinOsRxThunkMappingOwner* owner = NULL;
@@ -129,9 +147,12 @@ static bool RetryPendingRxThunkMappingReleases()
              candidate != NULL;
              candidate = candidate->next)
         {
-            if (candidate->pendingRelease && !candidate->releaseInProgress)
+            if (candidate->pendingRelease &&
+                !candidate->releaseInProgress &&
+                !candidate->releaseAttempted)
             {
                 candidate->releaseInProgress = true;
+                candidate->releaseAttempted = true;
                 owner = candidate;
                 break;
             }
@@ -157,6 +178,8 @@ static bool RetryPendingRxThunkMappingReleases()
         else
         {
             owner->releaseInProgress = false;
+            // Keep releaseAttempted set until the next retry pass resets it.
+            // This prevents a permanently failing PAL from spinning here.
             allReleased = false;
         }
         UnlockRxThunkMappingOwners();
@@ -437,6 +460,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     owner->mappingSize = mappingSize;
     owner->pendingRelease = false;
     owner->releaseInProgress = false;
+    owner->releaseAttempted = false;
     owner->next = NULL;
 
     if (!RetryPendingRxThunkMappingReleases())
@@ -824,6 +848,7 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
     }
 
     owner->releaseInProgress = true;
+    owner->releaseAttempted = true;
     UnlockRxThunkMappingOwners();
 
     // Do not enter the PAL while holding the owner spinlock.  The PAL may

@@ -1095,13 +1095,17 @@ bool PalStartBackgroundWork(_In_ BackgroundCallback callback, _In_opt_ void* pCa
 
 bool PalSetCurrentThreadName(const char* name)
 {
+    if (name == nullptr)
+    {
+        return false;
+    }
+
     // Ignore requests to set the main thread name because
     // it causes the value returned by Process.ProcessName to change.
     if ((pid_t)PalGetCurrentOSThreadId() != getpid())
     {
         int setNameResult = minipal_set_thread_name(pthread_self(), name);
-        (void)setNameResult; // used
-        assert(setNameResult == 0);
+        return setNameResult == 0;
     }
     return true;
 }

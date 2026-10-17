@@ -92,11 +92,36 @@ namespace Microsoft.Win32.SafeHandles
         }
 
         /// <summary>
-        ///  Returns the handle for the given credentials.
-        ///  An empty username requests the provider's session-bound default
-        ///  credentials. It must not be represented by an empty handle: GSS
-        ///  providers use that handle value for GSS_C_NO_CREDENTIAL, which
-        ///  would bypass the RinOS auth-provider acquisition boundary.
+        /// Acquires the provider's authenticated session-bound default
+        /// initiator credential. This is the only path which may omit a
+        /// desired name; the native provider resolves the live session owner.
+        /// </summary>
+        public static SafeGssCredHandle CreateDefault(Interop.NetSecurityNative.PackageType packageType)
+        {
+            if (packageType == Interop.NetSecurityNative.PackageType.NTLM && !s_IsNtlmInstalled.Value)
+            {
+                throw new Interop.NetSecurityNative.GssApiException(
+                    Interop.NetSecurityNative.Status.GSS_S_BAD_MECH,
+                    0,
+                    SR.net_gssapi_ntlm_missing_plugin);
+            }
+
+            SafeGssCredHandle? retHandle;
+            Interop.NetSecurityNative.Status status = Interop.NetSecurityNative.InitiateCredSpNego(
+                out Interop.NetSecurityNative.Status minorStatus, null, out retHandle);
+            if (status != Interop.NetSecurityNative.Status.GSS_S_COMPLETE)
+            {
+                retHandle?.Dispose();
+                throw new Interop.NetSecurityNative.GssApiException(status, minorStatus);
+            }
+
+            return retHandle;
+        }
+
+        /// <summary>
+        /// Returns the handle for explicitly supplied credentials. An empty
+        /// name is not an alias for DefaultCredentials: callers must select
+        /// the session-bound CreateDefault path explicitly.
         /// </summary>
         public static SafeGssCredHandle Create(string username, string password, Interop.NetSecurityNative.PackageType packageType)
         {
@@ -108,39 +133,27 @@ namespace Microsoft.Win32.SafeHandles
                     SR.net_gssapi_ntlm_missing_plugin);
             }
 
+            if (string.IsNullOrEmpty(username))
+            {
+                throw new Interop.NetSecurityNative.GssApiException(
+                    Interop.NetSecurityNative.Status.GSS_S_BAD_NAME, 0);
+            }
+
             SafeGssCredHandle? retHandle = null;
             Interop.NetSecurityNative.Status status;
             Interop.NetSecurityNative.Status minorStatus;
 
-            if (string.IsNullOrEmpty(username))
+            using SafeGssNameHandle userHandle = SafeGssNameHandle.CreateUser(username);
+            if (string.IsNullOrEmpty(password))
             {
-                if (!string.IsNullOrEmpty(password))
-                {
-                    throw new Interop.NetSecurityNative.GssApiException(
-                        Interop.NetSecurityNative.Status.GSS_S_BAD_NAME, 0);
-                }
-
-                // GSS_C_NO_NAME asks the provider for the current session's
-                // default initiator credentials. RinOS providers must bind
-                // this to the kernel credential/session owner; no username,
-                // password, or synthetic token is supplied here.
                 status = Interop.NetSecurityNative.InitiateCredSpNego(
-                    out minorStatus, null, out retHandle);
+                    out minorStatus, userHandle, out retHandle);
             }
             else
             {
-                using SafeGssNameHandle userHandle = SafeGssNameHandle.CreateUser(username);
-                if (string.IsNullOrEmpty(password))
-                {
-                    status = Interop.NetSecurityNative.InitiateCredSpNego(
-                        out minorStatus, userHandle, out retHandle);
-                }
-                else
-                {
-                    status = Interop.NetSecurityNative.InitiateCredWithPassword(
-                        out minorStatus, packageType, userHandle, password,
-                        Encoding.UTF8.GetByteCount(password), out retHandle);
-                }
+                status = Interop.NetSecurityNative.InitiateCredWithPassword(
+                    out minorStatus, packageType, userHandle, password,
+                    Encoding.UTF8.GetByteCount(password), out retHandle);
             }
 
             if (status != Interop.NetSecurityNative.Status.GSS_S_COMPLETE)

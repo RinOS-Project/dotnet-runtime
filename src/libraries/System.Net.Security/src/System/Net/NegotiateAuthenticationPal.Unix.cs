@@ -196,9 +196,7 @@ namespace System.Net
 
                 if (NetEventSource.Log.IsEnabled()) NetEventSource.Info(this, $"Peer SPN-> '{_spn}'");
 
-                if (clientOptions.Credential == CredentialCache.DefaultNetworkCredentials ||
-                    string.IsNullOrWhiteSpace(clientOptions.Credential.UserName) ||
-                    string.IsNullOrWhiteSpace(clientOptions.Credential.Password))
+                if (clientOptions.Credential == CredentialCache.DefaultNetworkCredentials)
                 {
                     if (NetEventSource.Log.IsEnabled()) NetEventSource.Info(this, "using DefaultCredentials");
 
@@ -214,7 +212,7 @@ namespace System.Net
                         throw new Interop.NetSecurityNative.GssApiException(Interop.NetSecurityNative.Status.GSS_S_BAD_NAME, 0, SR.net_nego_not_supported_empty_target_with_defaultcreds);
                     }
 
-                    _credentialsHandle = SafeGssCredHandle.Create(string.Empty, string.Empty, _packageType);
+                    _credentialsHandle = SafeGssCredHandle.CreateDefault(_packageType);
                 }
                 else
                 {
@@ -244,9 +242,7 @@ namespace System.Net
 
                 if (NetEventSource.Log.IsEnabled()) NetEventSource.Info(this, $"Peer SPN-> '{_spn}'");
 
-                if (serverOptions.Credential == CredentialCache.DefaultNetworkCredentials ||
-                    string.IsNullOrWhiteSpace(serverOptions.Credential.UserName) ||
-                    string.IsNullOrWhiteSpace(serverOptions.Credential.Password))
+                if (serverOptions.Credential == CredentialCache.DefaultNetworkCredentials)
                 {
                     if (NetEventSource.Log.IsEnabled()) NetEventSource.Info(this, "using DefaultCredentials");
                     _credentialsHandle = SafeGssCredHandle.CreateAcceptor();

@@ -1606,6 +1606,17 @@ static int product_currency_positive_pattern(const RinIcuDataLocaleRecord* recor
     return separated ? 3 : 1;
 }
 
+static int product_currency_negative_pattern(const RinIcuDataLocaleRecord* record)
+{
+    uint32_t pattern;
+    if (!record ||
+        !rin_icu_data_currency_negative_pattern_present(record->week_data))
+        return -1;
+    pattern = rin_icu_data_currency_negative_pattern(record->week_data);
+    if (pattern > RIN_ICU_DATA_CURRENCY_NEGATIVE_PATTERN_MAX) return -1;
+    return (int)pattern;
+}
+
 static int product_percent_positive_pattern(const RinIcuDataLocaleRecord* record)
 {
     int percent_first;
@@ -2558,17 +2569,26 @@ int32_t GlobalizationNative_GetLocaleInfoInt(const UChar* locale, LocaleNumberDa
             *value = pattern;
             break;
         case LocaleNumber_NegativeMonetaryNumberFormat:
-            pattern = product_currency_positive_pattern(&record);
-            if (pattern < 0 && strcmp(record.locale_id, "root") == 0) pattern = 0;
-            if (pattern < 0) return 0;
-            if (pattern == 0) {
-                *value = strcmp(record.region, "US") == 0 ? 0 : 1;
-            } else if (pattern == 1) {
-                *value = 5;
-            } else if (pattern == 2) {
-                *value = 9;
+            /* New records carry the exact CLDR negative subpattern projected
+             * to NumberFormatInfo.CurrencyNegativePattern.  Pre-projection
+             * RICUDB1 blobs retain the reviewed positive-pattern fallback;
+             * do not infer a new locale policy from an absent field. */
+            pattern = product_currency_negative_pattern(&record);
+            if (pattern < 0) {
+                pattern = product_currency_positive_pattern(&record);
+                if (pattern < 0 && strcmp(record.locale_id, "root") == 0) pattern = 0;
+                if (pattern < 0) return 0;
+                if (pattern == 0) {
+                    *value = strcmp(record.region, "US") == 0 ? 0 : 1;
+                } else if (pattern == 1) {
+                    *value = 5;
+                } else if (pattern == 2) {
+                    *value = 9;
+                } else {
+                    *value = 8;
+                }
             } else {
-                *value = 8;
+                *value = pattern;
             }
             break;
         case LocaleNumber_FirstWeekOfYear:

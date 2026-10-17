@@ -659,9 +659,15 @@ function InitializeBuildTool() {
     # selected dotnet so the existing /nr:false and /m:1 policy remains the
     # only process coordination boundary.  Keep normal builds on the upstream
     # dotnet entrypoint.
-    $sdkDirectory = Join-Path $dotnetRoot 'sdk'
-    $directMsbuildDll = Get-ChildItem -LiteralPath $sdkDirectory -Filter 'MSBuild.dll' -File -Recurse -ErrorAction SilentlyContinue |
-      Select-Object -First 1 -ExpandProperty FullName
+    # Resolve the direct host from the exact SDK selected by global.json.
+    # Recursively taking the first MSBuild.dll is unsafe when a checkout or
+    # shared SDK root contains more than one version: filesystem enumeration
+    # order is not the runtime toolset contract, and a different MSBuild
+    # version can load incompatible task assemblies before the project is
+    # evaluated.  Keep the path pinned to the same version used by
+    # InitializeDotNetCli above.
+    $dotnetSdkVersion = $GlobalJson.tools.dotnet
+    $directMsbuildDll = Join-Path $dotnetRoot "sdk\$dotnetSdkVersion\MSBuild.dll"
     if ($env:RINOS_DOTNET_DISABLE_BUILD_SERVERS -eq '1' -and
         $env:RINOS_DOTNET_FORCE_DOTNET_MSBUILD_VERB -ne '1' -and
         $directMsbuildDll -and (Test-Path -LiteralPath $directMsbuildDll)) {

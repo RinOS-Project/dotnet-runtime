@@ -810,6 +810,7 @@ static int provider_spnego_wrap_init(const uint8_t* token, uint32_t token_size,
     (void)token;
     if (output == NULL || output_size == NULL ||
         token_size > RIN_AUTH_PROVIDER_MAX_TOKEN_SIZE ||
+        (token_size != 0u && token == NULL) ||
         (!provider_spnego_mic_is_valid(mic, mic_size) && mic_size != 0u) ||
         init_sequence_content64 > UINT32_MAX || init_sequence_tlv64 > UINT32_MAX ||
         negotiation_field64 > UINT32_MAX || application_content64 > UINT32_MAX ||
@@ -912,6 +913,7 @@ static int provider_spnego_wrap_response(
 
     if (output == NULL || output_size == NULL ||
         token_size > RIN_AUTH_PROVIDER_MAX_TOKEN_SIZE ||
+        (token_size != 0u && token == NULL) ||
         (!provider_spnego_mic_is_valid(mic, mic_size) && mic_size != 0u) ||
         state > 3u ||
         sequence_content64 > UINT32_MAX || sequence_tlv64 > UINT32_MAX ||

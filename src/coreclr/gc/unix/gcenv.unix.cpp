@@ -1153,7 +1153,16 @@ uint64_t GetAvailablePhysicalMemory()
     long pageSize = sysconf(_SC_PAGE_SIZE);
     if (availablePages > 0 && pageSize > 0)
     {
-        available = (uint64_t)availablePages * (uint64_t)pageSize;
+        const uint64_t availablePageCount = (uint64_t)availablePages;
+        const uint64_t pageBytes = (uint64_t)pageSize;
+        // A malformed or future-expanded product snapshot must not wrap the
+        // available-memory value and make GC believe an enormous amount of
+        // memory is free.  Keep the existing zero/fail-closed result when the
+        // multiplication cannot be represented by the PAL's uint64_t ABI.
+        if (pageBytes != 0 && availablePageCount <= UINT64_MAX / pageBytes)
+        {
+            available = availablePageCount * pageBytes;
+        }
     }
 #else // Linux
     static volatile bool tryReadMemInfo = true;

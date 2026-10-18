@@ -837,7 +837,16 @@ ep_rt_queue_job (
 	void *job_func,
 	void *params)
 {
-    EP_UNREACHABLE ("Not implemented in NativeAOT");
+    STATIC_CONTRACT_NOTHROW;
+
+    /* NativeAOT has no queued-job owner ABI here.  Do not substitute a new
+     * thread for a queue operation: EventPipe's caller owns queue lifetime,
+     * ordering, and shutdown semantics.  An unexpected call therefore fails
+     * closed instead of terminating the process or claiming that the job was
+     * accepted. */
+    (void)job_func;
+    (void)params;
+    return false;
 }
 
 static

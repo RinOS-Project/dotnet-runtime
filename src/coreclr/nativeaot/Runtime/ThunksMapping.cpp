@@ -897,6 +897,16 @@ static size_t g_thunkDataMappingCount = 0;
 static bool g_fixedPoolThunkReservationReleasePending = false;
 static volatile int32_t g_fixedPoolThunkMappingLock = 0;
 
+// Keep failed cleanup distinct from an ordinary owner release.  A mapping
+// whose validation failed was never published to the managed owner, so it is
+// safe for the next allocator call to retry its decommit.  A published
+// mapping with a failed release must remain owned by RhFreeThunksMapping and
+// must not be reclaimed by an unrelated allocator call.
+static const uint8_t kFixedPoolThunkMappingFree = 0;
+static const uint8_t kFixedPoolThunkMappingInUse = 1;
+static const uint8_t kFixedPoolThunkMappingReleasePending = 2;
+static const uint8_t kFixedPoolThunkMappingAllocationCleanupPending = 3;
+
 static void LockFixedPoolThunkMappings()
 {
     while (PalInterlockedCompareExchange(
@@ -909,6 +919,51 @@ static void LockFixedPoolThunkMappings()
 static void UnlockFixedPoolThunkMappings()
 {
     VolatileStore<volatile int32_t>(&g_fixedPoolThunkMappingLock, 0);
+}
+
+static bool RetryPendingFixedPoolThunkDecommits(size_t thunkDataMappingSize)
+{
+    if (g_thunkDataMappingInUse == NULL)
+    {
+        return true;
+    }
+
+    bool succeeded = true;
+    for (size_t index = 0; index < g_thunkDataMappingCount; index++)
+    {
+        if (g_thunkDataMappingInUse[index] !=
+            kFixedPoolThunkMappingAllocationCleanupPending)
+        {
+            continue;
+        }
+
+        if (g_pThunkStubData == 0 || thunkDataMappingSize == 0 ||
+            index > SIZE_MAX / thunkDataMappingSize)
+        {
+            succeeded = false;
+            continue;
+        }
+
+        size_t blockOffset = thunkDataMappingSize * index;
+        if (blockOffset >= g_thunkStubDataSize ||
+            thunkDataMappingSize > g_thunkStubDataSize - blockOffset)
+        {
+            succeeded = false;
+            continue;
+        }
+
+        void* pThunkDataBlock = (int8_t*)g_pThunkStubData + blockOffset;
+        if (VirtualFree(pThunkDataBlock, thunkDataMappingSize, MEM_DECOMMIT))
+        {
+            g_thunkDataMappingInUse[index] = kFixedPoolThunkMappingFree;
+        }
+        else
+        {
+            succeeded = false;
+        }
+    }
+
+    return succeeded;
 }
 
 FCDECL0(int, RhpGetThunkBlockCount);
@@ -976,6 +1031,16 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         g_fixedPoolThunkReservationReleasePending = false;
     }
 
+    // Failed cleanup after a validation error did not publish a managed
+    // owner.  Retry those exact committed ranges before selecting or
+    // publishing another mapping; failure stays fail-closed and leaves the
+    // cleanup-pending state for the next attempt.
+    if (!RetryPendingFixedPoolThunkDecommits(thunkDataMappingSize))
+    {
+        UnlockFixedPoolThunkMappings();
+        return E_FAIL;
+    }
+
     if (g_pThunkStubData == NULL)
     {
         g_pThunkStubData = (uintptr_t)VirtualAlloc(NULL, thunkDataSize, MEM_RESERVE, PAGE_READWRITE);
@@ -1020,7 +1085,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     size_t mappingIndex = thunkDataMappingCount;
     for (size_t index = 0; index < thunkDataMappingCount; index++)
     {
-        if (g_thunkDataMappingInUse[index] == 0)
+        if (g_thunkDataMappingInUse[index] == kFixedPoolThunkMappingFree)
         {
             mappingIndex = index;
             break;
@@ -1044,12 +1109,20 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
     void* pThunks = RhpGetThunkStubsBlockAddress(pThunkDataBlock);
     if (pThunks == NULL || RhpGetThunkDataBlockAddress(pThunks) != pThunkDataBlock)
     {
-        VirtualFree(pThunkDataBlock, thunkDataMappingSize, MEM_DECOMMIT);
+        if (VirtualFree(pThunkDataBlock, thunkDataMappingSize, MEM_DECOMMIT))
+        {
+            g_thunkDataMappingInUse[mappingIndex] = kFixedPoolThunkMappingFree;
+        }
+        else
+        {
+            g_thunkDataMappingInUse[mappingIndex] =
+                kFixedPoolThunkMappingAllocationCleanupPending;
+        }
         UnlockFixedPoolThunkMappings();
         return E_FAIL;
     }
 
-    g_thunkDataMappingInUse[mappingIndex] = 1;
+    g_thunkDataMappingInUse[mappingIndex] = kFixedPoolThunkMappingInUse;
     *ppThunksSection = pThunks;
     UnlockFixedPoolThunkMappings();
     return S_OK;
@@ -1133,7 +1206,10 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
         return E_INVALIDARG;
     }
 
-    if (g_thunkDataMappingInUse[mappingIndex] == 0)
+    uint8_t mappingState = g_thunkDataMappingInUse[mappingIndex];
+    if (mappingState == kFixedPoolThunkMappingAllocationCleanupPending ||
+        (mappingState != kFixedPoolThunkMappingInUse &&
+         mappingState != kFixedPoolThunkMappingReleasePending))
     {
         UnlockFixedPoolThunkMappings();
         return E_INVALIDARG;
@@ -1145,11 +1221,13 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
     // and is not accidentally torn down here.
     if (!VirtualFree(pThunkDataBlock, thunkDataMappingSize, MEM_DECOMMIT))
     {
+        g_thunkDataMappingInUse[mappingIndex] =
+            kFixedPoolThunkMappingReleasePending;
         UnlockFixedPoolThunkMappings();
         return E_FAIL;
     }
 
-    g_thunkDataMappingInUse[mappingIndex] = 0;
+    g_thunkDataMappingInUse[mappingIndex] = kFixedPoolThunkMappingFree;
     UnlockFixedPoolThunkMappings();
     return S_OK;
 }

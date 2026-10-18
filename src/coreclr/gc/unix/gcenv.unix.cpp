@@ -945,7 +945,41 @@ bool GCToOSInterface::SetThreadAffinity(uint16_t procNo)
 //  true if the priority boost was successful, false otherwise.
 bool GCToOSInterface::BoostThreadPriority()
 {
-    // [LOCALGC TODO] Thread priority for unix
+#if defined(TARGET_RINOS)
+    // RinOS maps SCHED_RR priorities 25..49 to its bounded HIGH scheduler
+    // class.  Use the same product mapping as NativeAOT's background-work
+    // owner, but verify the kernel-published value before reporting success.
+    int originalPolicy = SCHED_OTHER;
+    sched_param originalParameters = {};
+    if (pthread_getschedparam(pthread_self(), &originalPolicy, &originalParameters) != 0)
+    {
+        return false;
+    }
+
+    if (originalPolicy == SCHED_RR && originalParameters.sched_priority >= 25)
+    {
+        return true;
+    }
+
+    sched_param requestedParameters = originalParameters;
+    requestedParameters.sched_priority = 25;
+    if (pthread_setschedparam(pthread_self(), SCHED_RR, &requestedParameters) != 0)
+    {
+        return false;
+    }
+
+    int appliedPolicy = SCHED_OTHER;
+    sched_param appliedParameters = {};
+    if (pthread_getschedparam(pthread_self(), &appliedPolicy, &appliedParameters) == 0 &&
+        appliedPolicy == SCHED_RR && appliedParameters.sched_priority >= 25)
+    {
+        return true;
+    }
+
+    // Do not leave a partially applied boost behind if the scheduler cannot
+    // publish the requested state through its query ABI.
+    (void)pthread_setschedparam(pthread_self(), originalPolicy, &originalParameters);
+#endif
     return false;
 }
 

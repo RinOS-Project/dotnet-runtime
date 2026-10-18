@@ -145,6 +145,16 @@ static RinOSMappingRecord* rinos_mapping_take_owner(RinOSDoubleMapper* owner)
     return result;
 }
 
+static void rinos_mapping_restore(RinOSMappingRecord* record)
+{
+    if (record == NULL)
+        return;
+    pthread_mutex_lock(&s_rinosMappingLock);
+    record->next = s_rinosMappings;
+    s_rinosMappings = record;
+    pthread_mutex_unlock(&s_rinosMappingLock);
+}
+
 static bool rinos_mapping_in_requested_range(void* address, size_t size,
                                               const void* rangeStart,
                                               const void* rangeEnd)
@@ -166,13 +176,19 @@ static bool rinos_mapping_in_requested_range(void* address, size_t size,
 
 static bool rinos_release_mapping(RinOSMappingRecord* record)
 {
-    bool success = true;
     if (record == NULL)
         return false;
     if (rin_shm_dt(record->handle, record->address) != 0)
-        success = false;
+    {
+        // Keep the record and its owner alive.  Detach can fail transiently
+        // while the product VM is unwinding; dropping the record here would
+        // make a retry impossible and could leave an address/handle pair
+        // outside the lifetime tracker.
+        rinos_mapping_restore(record);
+        return false;
+    }
     free(record);
-    return success;
+    return true;
 }
 #endif // TARGET_RINOS
 
@@ -313,9 +329,11 @@ void VMToOSInterface::DestroyDoubleMemoryMapper(void *mapperHandle)
         RinOSMappingRecord* record = rinos_mapping_take_owner(mapper);
         if (record == NULL)
             break;
-        (void)rinos_release_mapping(record);
+        if (!rinos_release_mapping(record))
+            return;
     }
-    (void)rin_shm_dt(mapper->ownerHandle, NULL);
+    if (rin_shm_dt(mapper->ownerHandle, NULL) != 0)
+        return;
     free(mapper);
 #elif !defined(TARGET_APPLE)
     close((int)(size_t)mapperHandle);
@@ -478,7 +496,7 @@ bool VMToOSInterface::ReleaseDoubleMappedMemory(void *mapperHandle, void* pStart
     if (record == NULL || record->offset != (uint64_t)offset)
     {
         if (record != NULL)
-            (void)rinos_release_mapping(record);
+            rinos_mapping_restore(record);
         return false;
     }
     return rinos_release_mapping(record);

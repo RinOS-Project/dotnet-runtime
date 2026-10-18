@@ -1031,16 +1031,6 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         g_fixedPoolThunkReservationReleasePending = false;
     }
 
-    // Failed cleanup after a validation error did not publish a managed
-    // owner.  Retry those exact committed ranges before selecting or
-    // publishing another mapping; failure stays fail-closed and leaves the
-    // cleanup-pending state for the next attempt.
-    if (!RetryPendingFixedPoolThunkDecommits(thunkDataMappingSize))
-    {
-        UnlockFixedPoolThunkMappings();
-        return E_FAIL;
-    }
-
     if (g_pThunkStubData == NULL)
     {
         g_pThunkStubData = (uintptr_t)VirtualAlloc(NULL, thunkDataSize, MEM_RESERVE, PAGE_READWRITE);
@@ -1078,6 +1068,17 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         // The fixed-pool geometry is process-wide.  A provider that changes
         // its block count or size after reservation cannot safely address the
         // existing pool with the new layout.
+        UnlockFixedPoolThunkMappings();
+        return E_FAIL;
+    }
+
+    // Failed cleanup after a validation error did not publish a managed
+    // owner.  Retry those exact committed ranges only after the current
+    // provider geometry has been proven identical to the reserved pool;
+    // failure stays fail-closed and leaves the cleanup-pending state for the
+    // next attempt.
+    if (!RetryPendingFixedPoolThunkDecommits(thunkDataMappingSize))
+    {
         UnlockFixedPoolThunkMappings();
         return E_FAIL;
     }

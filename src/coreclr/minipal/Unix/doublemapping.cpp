@@ -26,6 +26,12 @@
 #include "minipal.h"
 #include "minipal/cpufeatures.h"
 
+#if defined(TARGET_RINOS)
+#include <pthread.h>
+#include <rin/ipc/shm_abi.h>
+#include <rin/runtime.h>
+#endif
+
 #ifndef TARGET_APPLE
 #if !defined(TARGET_WASI)
 #include <link.h>
@@ -53,6 +59,123 @@ static const off_t MaxDoubleMappedSize = UINT_MAX;
 
 #endif // TARGET_APPLE
 
+#if defined(TARGET_RINOS)
+struct RinOSDoubleMapper
+{
+    char name[RIN_SHM_NAME_MAX];
+    uint64_t size;
+    int ownerHandle;
+};
+
+struct RinOSMappingRecord
+{
+    RinOSDoubleMapper* owner;
+    int handle;
+    void* address;
+    size_t size;
+    uint64_t offset;
+    RinOSMappingRecord* next;
+};
+
+static pthread_mutex_t s_rinosMappingLock = PTHREAD_MUTEX_INITIALIZER;
+static RinOSMappingRecord* s_rinosMappings = NULL;
+static uint64_t s_rinosMapperSequence = 0;
+
+static bool rinos_mapping_add(RinOSDoubleMapper* owner, int handle,
+                              void* address, size_t size, uint64_t offset)
+{
+    RinOSMappingRecord* record =
+        (RinOSMappingRecord*)malloc(sizeof(RinOSMappingRecord));
+    if (record == NULL)
+        return false;
+
+    record->owner = owner;
+    record->handle = handle;
+    record->address = address;
+    record->size = size;
+    record->offset = offset;
+    pthread_mutex_lock(&s_rinosMappingLock);
+    record->next = s_rinosMappings;
+    s_rinosMappings = record;
+    pthread_mutex_unlock(&s_rinosMappingLock);
+    return true;
+}
+
+static RinOSMappingRecord* rinos_mapping_take(void* address, size_t size,
+                                               RinOSDoubleMapper* owner)
+{
+    RinOSMappingRecord* result = NULL;
+    RinOSMappingRecord** cursor;
+    pthread_mutex_lock(&s_rinosMappingLock);
+    cursor = &s_rinosMappings;
+    while (*cursor != NULL)
+    {
+        RinOSMappingRecord* candidate = *cursor;
+        if (candidate->address == address && candidate->size == size &&
+            (owner == NULL || candidate->owner == owner))
+        {
+            *cursor = candidate->next;
+            result = candidate;
+            break;
+        }
+        cursor = &candidate->next;
+    }
+    pthread_mutex_unlock(&s_rinosMappingLock);
+    return result;
+}
+
+static RinOSMappingRecord* rinos_mapping_take_owner(RinOSDoubleMapper* owner)
+{
+    RinOSMappingRecord* result = NULL;
+    RinOSMappingRecord** cursor;
+    pthread_mutex_lock(&s_rinosMappingLock);
+    cursor = &s_rinosMappings;
+    while (*cursor != NULL)
+    {
+        RinOSMappingRecord* candidate = *cursor;
+        if (candidate->owner == owner)
+        {
+            *cursor = candidate->next;
+            result = candidate;
+            break;
+        }
+        cursor = &candidate->next;
+    }
+    pthread_mutex_unlock(&s_rinosMappingLock);
+    return result;
+}
+
+static bool rinos_mapping_in_requested_range(void* address, size_t size,
+                                              const void* rangeStart,
+                                              const void* rangeEnd)
+{
+    uintptr_t begin = (uintptr_t)address;
+    uintptr_t end = begin + size;
+    uintptr_t requestedBegin = (uintptr_t)rangeStart;
+    uintptr_t requestedEnd = (uintptr_t)rangeEnd;
+    if (end < begin)
+        return false;
+    if (rangeStart != NULL && rangeEnd != NULL && requestedBegin == requestedEnd)
+        return begin == requestedBegin;
+    if (rangeStart != NULL && begin < requestedBegin)
+        return false;
+    if (rangeEnd != NULL && end > requestedEnd)
+        return false;
+    return true;
+}
+
+static bool rinos_release_mapping(RinOSMappingRecord* record)
+{
+    bool success = true;
+    if (record == NULL)
+        return false;
+    if (rin_shm_dt(record->handle, record->address) != 0)
+        success = false;
+    free(record);
+    return success;
+}
+#endif // TARGET_RINOS
+
 bool VMToOSInterface::CreateDoubleMemoryMapper(void** pHandle, size_t *pMaxExecutableCodeSize)
 {
     if (minipal_detect_rosetta())
@@ -63,17 +186,35 @@ bool VMToOSInterface::CreateDoubleMemoryMapper(void** pHandle, size_t *pMaxExecu
 
 #ifndef TARGET_APPLE
 
+#if defined(TARGET_RINOS)
+    RinOSDoubleMapper* mapper =
+        (RinOSDoubleMapper*)malloc(sizeof(RinOSDoubleMapper));
+    uint64_t sequence;
+    if (mapper == NULL)
+        return false;
+    sequence = __atomic_add_fetch(&s_rinosMapperSequence, 1,
+                                  __ATOMIC_RELAXED);
+    snprintf(mapper->name, sizeof(mapper->name),
+             ".rin.dotnet.dm.%llu.%llu",
+             (unsigned long long)getpid(), (unsigned long long)sequence);
+    mapper->size = RIN_SHM_MAX_SIZE;
+    mapper->ownerHandle = rin_shm_get(
+        mapper->name, (uint32_t)mapper->size,
+        RIN_SHM_FLAG_CREAT | RIN_SHM_FLAG_EXCL |
+            RIN_SHM_FLAG_UNLINK_ON_CLOSE);
+    if (mapper->ownerHandle < 0)
+    {
+        free(mapper);
+        return false;
+    }
+    *pMaxExecutableCodeSize = (size_t)mapper->size;
+    *pHandle = mapper;
+    return true;
+#else
 #ifdef TARGET_FREEBSD
     int fd = shm_open(SHM_ANON, O_RDWR | O_CREAT, S_IRWXU);
 #elif defined(TARGET_LINUX)
     int fd = memfd_create("doublemapper", MFD_CLOEXEC);
-#elif defined(TARGET_RINOS)
-    // RinOS exposes named shared memory through rin_shm_* rather than a POSIX
-    // shm_open file descriptor.  The current ABI is read/write-only and does
-    // not provide the executable alias required by this allocator.  Return
-    // before the generic fd/ftruncate path so the unsupported target never
-    // performs invalid syscalls or accidentally reaches a host fallback.
-    return false;
 #else
     int fd = -1;
 
@@ -151,6 +292,7 @@ bool VMToOSInterface::CreateDoubleMemoryMapper(void** pHandle, size_t *pMaxExecu
 
     *pMaxExecutableCodeSize = maxDoubleMappedMemorySize;
     *pHandle = (void*)(size_t)fd;
+#endif // TARGET_RINOS
 #else // !TARGET_APPLE
 
     *pMaxExecutableCodeSize = SIZE_MAX;
@@ -162,7 +304,20 @@ bool VMToOSInterface::CreateDoubleMemoryMapper(void** pHandle, size_t *pMaxExecu
 
 void VMToOSInterface::DestroyDoubleMemoryMapper(void *mapperHandle)
 {
-#ifndef TARGET_APPLE
+#if defined(TARGET_RINOS)
+    RinOSDoubleMapper* mapper = (RinOSDoubleMapper*)mapperHandle;
+    if (mapper == NULL)
+        return;
+    for (;;)
+    {
+        RinOSMappingRecord* record = rinos_mapping_take_owner(mapper);
+        if (record == NULL)
+            break;
+        (void)rinos_release_mapping(record);
+    }
+    (void)rin_shm_dt(mapper->ownerHandle, NULL);
+    free(mapper);
+#elif !defined(TARGET_APPLE)
     close((int)(size_t)mapperHandle);
 #endif
 }
@@ -204,6 +359,36 @@ bool IsMapJitFlagNeeded()
 
 void* VMToOSInterface::ReserveDoubleMappedMemory(void *mapperHandle, size_t offset, size_t size, const void *rangeStart, const void* rangeEnd)
 {
+#if defined(TARGET_RINOS)
+    RinOSDoubleMapper* mapper = (RinOSDoubleMapper*)mapperHandle;
+    void* address;
+    int handle;
+    if (mapper == NULL || size == 0u ||
+        offset > mapper->size || size > mapper->size - offset)
+        return NULL;
+    handle = rin_shm_get(mapper->name, (uint32_t)mapper->size, 0u);
+    if (handle < 0)
+        return NULL;
+    address = rin_shm_at_range(
+        handle, (void*)rangeStart, (uint64_t)offset, (uint64_t)size,
+        RIN_SHM_PROT_READ | RIN_SHM_PROT_WRITE);
+    if (address == NULL || !rinos_mapping_in_requested_range(
+                                address, size, rangeStart, rangeEnd))
+    {
+        if (address != NULL)
+            (void)rin_shm_dt(handle, address);
+        else
+            (void)rin_shm_dt(handle, NULL);
+        return NULL;
+    }
+    if (!rinos_mapping_add(mapper, handle, address, size,
+                           (uint64_t)offset))
+    {
+        (void)rin_shm_dt(handle, address);
+        return NULL;
+    }
+    return address;
+#else
     int fd = (int)(size_t)mapperHandle;
 
     bool isUnlimitedRange = (rangeStart == NULL) && (rangeEnd == NULL);
@@ -253,21 +438,51 @@ void* VMToOSInterface::ReserveDoubleMappedMemory(void *mapperHandle, size_t offs
         result = NULL;
     }
     return result;
+#endif // TARGET_RINOS
 }
 
 void *VMToOSInterface::CommitDoubleMappedMemory(void* pStart, size_t size, bool isExecutable)
 {
+#if defined(TARGET_RINOS)
+    if (pStart == NULL || size == 0u || rin_shm_protect(
+            pStart, (uint64_t)size,
+            isExecutable ? (RIN_SHM_PROT_READ | RIN_SHM_PROT_EXEC)
+                         : (RIN_SHM_PROT_READ | RIN_SHM_PROT_WRITE)) != 0)
+        return NULL;
+    return pStart;
+#else
     if (mprotect(pStart, size, isExecutable ? (PROT_READ | PROT_EXEC) : (PROT_READ | PROT_WRITE)) == -1)
     {
         return NULL;
     }
 
     return pStart;
+#endif // TARGET_RINOS
 }
 
 bool VMToOSInterface::ReleaseDoubleMappedMemory(void *mapperHandle, void* pStart, size_t offset, size_t size)
 {
-#ifndef TARGET_APPLE
+#if defined(TARGET_RINOS)
+    RinOSDoubleMapper* mapper = (RinOSDoubleMapper*)mapperHandle;
+    RinOSMappingRecord* record;
+    void* rw;
+    if (mapper == NULL || pStart == NULL || size == 0u)
+        return false;
+    rw = GetRWMapping(mapper, pStart, offset, size);
+    if (rw == NULL)
+        return false;
+    memset(rw, 0, size);
+    if (!ReleaseRWMapping(rw, size))
+        return false;
+    record = rinos_mapping_take(pStart, size, mapper);
+    if (record == NULL || record->offset != (uint64_t)offset)
+    {
+        if (record != NULL)
+            (void)rinos_release_mapping(record);
+        return false;
+    }
+    return rinos_release_mapping(record);
+#elif !defined(TARGET_APPLE)
     int fd = (int)(size_t)mapperHandle;
     if (mmap(pStart, size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, offset) == MAP_FAILED)
     {
@@ -275,12 +490,39 @@ bool VMToOSInterface::ReleaseDoubleMappedMemory(void *mapperHandle, void* pStart
     }
     memset(pStart, 0, size);
 #endif // TARGET_APPLE
+#endif // TARGET_RINOS
     return munmap(pStart, size) != -1;
 }
 
 void* VMToOSInterface::GetRWMapping(void *mapperHandle, void* pStart, size_t offset, size_t size)
 {
-#ifndef TARGET_APPLE
+#if defined(TARGET_RINOS)
+    RinOSDoubleMapper* mapper = (RinOSDoubleMapper*)mapperHandle;
+    void* address;
+    int handle;
+    (void)pStart;
+    if (mapper == NULL || size == 0u ||
+        offset > mapper->size || size > mapper->size - offset)
+        return NULL;
+    handle = rin_shm_get(mapper->name, (uint32_t)mapper->size, 0u);
+    if (handle < 0)
+        return NULL;
+    address = rin_shm_at_range(handle, NULL, (uint64_t)offset,
+                               (uint64_t)size,
+                               RIN_SHM_PROT_READ | RIN_SHM_PROT_WRITE);
+    if (address == NULL)
+    {
+        (void)rin_shm_dt(handle, NULL);
+        return NULL;
+    }
+    if (!rinos_mapping_add(mapper, handle, address, size,
+                           (uint64_t)offset))
+    {
+        (void)rin_shm_dt(handle, address);
+        return NULL;
+    }
+    return address;
+#elif !defined(TARGET_APPLE)
     int fd = (int)(size_t)mapperHandle;
     void* result = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, offset);
     if (result == MAP_FAILED)
@@ -318,7 +560,14 @@ void* VMToOSInterface::GetRWMapping(void *mapperHandle, void* pStart, size_t off
 
 bool VMToOSInterface::ReleaseRWMapping(void* pStart, size_t size)
 {
+#if defined(TARGET_RINOS)
+    RinOSMappingRecord* record = rinos_mapping_take(pStart, size, NULL);
+    if (record == NULL)
+        return false;
+    return rinos_release_mapping(record);
+#else
     return munmap(pStart, size) != -1;
+#endif // TARGET_RINOS
 }
 
 #ifndef TARGET_APPLE
@@ -332,6 +581,10 @@ struct TemplateThunkMappingData
     bool imageTemplates;
     int templatesCreated;
     off_t nonImageTemplateCurrent;
+#if defined(TARGET_RINOS)
+    void* rinTemplateStorage;
+    size_t rinTemplateStorageSize;
+#endif
 };
 
 struct InitializeTemplateThunkLocals
@@ -415,6 +668,10 @@ TemplateThunkMappingData *InitializeTemplateThunkMappingData(void* pTemplate)
     locals.data.imageTemplates = false;
     locals.data.nonImageTemplateCurrent = 0;
     locals.data.templatesCreated = 0;
+#if defined(TARGET_RINOS)
+    locals.data.rinTemplateStorage = NULL;
+    locals.data.rinTemplateStorageSize = 0;
+#endif
 
 #ifdef FEATURE_MAP_THUNKS_FROM_IMAGE
     if (dladdr(pTemplate, &locals.info) != 0)
@@ -432,9 +689,6 @@ TemplateThunkMappingData *InitializeTemplateThunkMappingData(void* pTemplate)
 #elif defined(TARGET_LINUX)
         int fd = memfd_create("doublemapper-template", MFD_CLOEXEC);
 #elif defined(TARGET_RINOS)
-        // The current RinOS shared-memory ABI cannot provide the executable
-        // alias required by this template path.  Keep the image/template
-        // fallback fail-closed until that product ABI is specified.
         int fd = -1;
 #else
         int fd = -1;
@@ -473,10 +727,37 @@ TemplateThunkMappingData *InitializeTemplateThunkMappingData(void* pTemplate)
                 locals.data.imageTemplates = false;
             }
         }
+#if defined(TARGET_RINOS)
+        else
+        {
+            const off_t maxFileSize = MAX_TEMPLATE_THUNK_TYPES * 0x10000;
+            void* storage = mmap(NULL, (size_t)maxFileSize,
+                                 PROT_READ | PROT_WRITE,
+                                 MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+            if (storage != MAP_FAILED)
+            {
+                locals.data.rinTemplateStorage = storage;
+                locals.data.rinTemplateStorageSize = (size_t)maxFileSize;
+                locals.data.addrOfStartOfSection = storage;
+                locals.data.addrOfEndOfSection =
+                    ((uint8_t*)storage) + maxFileSize;
+                locals.data.imageTemplates = false;
+            }
+        }
+#endif
     }
 
 
     TemplateThunkMappingData *pAllocatedData = (TemplateThunkMappingData*)malloc(sizeof(TemplateThunkMappingData));
+    if (pAllocatedData == NULL)
+    {
+#if defined(TARGET_RINOS)
+        if (locals.data.rinTemplateStorage != NULL)
+            munmap(locals.data.rinTemplateStorage,
+                   locals.data.rinTemplateStorageSize);
+#endif
+        return NULL;
+    }
     *pAllocatedData = locals.data;
     TemplateThunkMappingData *pExpectedNull = NULL; 
     if (__atomic_compare_exchange_n (&s_pThunkData, &pExpectedNull, pAllocatedData, false, __ATOMIC_RELEASE, __ATOMIC_RELAXED))
@@ -485,6 +766,11 @@ TemplateThunkMappingData *InitializeTemplateThunkMappingData(void* pTemplate)
     }
     else
     {
+#if defined(TARGET_RINOS)
+        if (pAllocatedData->rinTemplateStorage != NULL)
+            munmap(pAllocatedData->rinTemplateStorage,
+                   pAllocatedData->rinTemplateStorageSize);
+#endif
         free(pAllocatedData);
         return __atomic_load_n(&s_pThunkData, __ATOMIC_ACQUIRE);
     }
@@ -511,10 +797,13 @@ void* VMToOSInterface::CreateTemplate(void* pImageTemplate, size_t templateSize,
         return NULL;
 
     TemplateThunkMappingData* pThunkData = __atomic_load_n(&s_pThunkData, __ATOMIC_ACQUIRE);
-    if (s_pThunkData == NULL)
+    if (pThunkData == NULL)
     {
         pThunkData = InitializeTemplateThunkMappingData(pImageTemplate);
     }
+
+    if (pThunkData == NULL)
+        return NULL;
 
     // Unable to create template mapping region
     if (pThunkData->addrOfStartOfSection == NULL)
@@ -527,6 +816,23 @@ void* VMToOSInterface::CreateTemplate(void* pImageTemplate, size_t templateSize,
 
     if (!pThunkData->imageTemplates)
     {
+#if defined(TARGET_RINOS)
+        if (pThunkData->rinTemplateStorage == NULL)
+            return NULL;
+        off_t locationInFileToStoreGeneratedCode = __atomic_fetch_add(
+            (off_t*)&pThunkData->nonImageTemplateCurrent,
+            (off_t)templateSize, __ATOMIC_SEQ_CST);
+        if (locationInFileToStoreGeneratedCode < 0 ||
+            (uint64_t)locationInFileToStoreGeneratedCode >
+                pThunkData->rinTemplateStorageSize ||
+            templateSize > pThunkData->rinTemplateStorageSize -
+                (size_t)locationInFileToStoreGeneratedCode)
+            return NULL;
+        uint8_t* storage = (uint8_t*)pThunkData->rinTemplateStorage +
+                           locationInFileToStoreGeneratedCode;
+        codePageGenerator(storage, storage, templateSize);
+        return storage;
+#else
         // Need to allocate a memory mapped region to fill in the data
         off_t locationInFileToStoreGeneratedCode = __atomic_fetch_add((off_t*)&pThunkData->nonImageTemplateCurrent, (off_t)templateSize, __ATOMIC_SEQ_CST);
         void* mappedMemory = mmap(NULL, templateSize, PROT_READ | PROT_WRITE, MAP_SHARED, pThunkData->fdImage, locationInFileToStoreGeneratedCode);
@@ -540,6 +846,7 @@ void* VMToOSInterface::CreateTemplate(void* pImageTemplate, size_t templateSize,
         {
             return NULL;
         }
+#endif // TARGET_RINOS
     }
     else
     {
@@ -592,10 +899,13 @@ void* VMToOSInterface::AllocateThunksFromTemplate(void* pTemplate, size_t templa
     return (void*)addr;
 #else
     TemplateThunkMappingData* pThunkData = __atomic_load_n(&s_pThunkData, __ATOMIC_ACQUIRE);
-    if (s_pThunkData == NULL)
+    if (pThunkData == NULL)
     {
         pThunkData = InitializeTemplateThunkMappingData(pTemplate);
     }
+
+    if (pThunkData == NULL)
+        return NULL;
 
     if (pThunkData->addrOfStartOfSection == NULL)
     {
@@ -615,6 +925,24 @@ void* VMToOSInterface::AllocateThunksFromTemplate(void* pTemplate, size_t templa
     size_t sectionOffset = (uint8_t*)pTemplate - (uint8_t*)pThunkData->addrOfStartOfSection;
     off_t fileOffset = pThunkData->offsetInFileOfStartOfSection + sectionOffset;
 
+#if defined(TARGET_RINOS)
+    void *pStart = mmap(pStartSpecification, templateSize * 2,
+                        PROT_READ | PROT_WRITE,
+                        MAP_ANONYMOUS | MAP_PRIVATE |
+                            (pStartSpecification != NULL ? MAP_FIXED : 0),
+                        -1, 0);
+    if (pStart == MAP_FAILED)
+        return NULL;
+    if (dataPageGenerator)
+        dataPageGenerator(((uint8_t*)pStart) + templateSize, templateSize);
+    memcpy(pStart, pTemplate, templateSize);
+    if (mprotect(pStart, templateSize, PROT_READ | PROT_EXEC) != 0)
+    {
+        munmap(pStart, templateSize * 2);
+        return NULL;
+    }
+    return pStart;
+#else
     void *pStart = mmap(pStartSpecification, templateSize * 2, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | (pStartSpecification != NULL ? MAP_FIXED : 0), -1, 0);
     if (pStart == MAP_FAILED)
     {
@@ -635,6 +963,7 @@ void* VMToOSInterface::AllocateThunksFromTemplate(void* pTemplate, size_t templa
     }
 
     return pStart;
+#endif // TARGET_RINOS
 #endif
 }
 

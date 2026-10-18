@@ -85,6 +85,7 @@ if(CLR_CMAKE_TARGET_RINOS AND NOT RINOS_CROSS_COMPONENTS_HOST)
         "${RINOS_RUNTIME_ROOT}/libs/rinruntime/rin_cxx_abi_extra.cpp"
         "${RINOS_RUNTIME_ROOT}/libs/rinruntime/rin_coreclr_tls_init.cpp"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/rinruntime/src/service.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/rinruntime/src/platform.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/rin_user_allocator.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/malloc.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/environment_runtime.c"

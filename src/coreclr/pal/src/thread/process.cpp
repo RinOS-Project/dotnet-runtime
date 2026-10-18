@@ -1145,7 +1145,8 @@ GetProcessIdDisambiguationKey(DWORD processId, UINT64 *disambiguationKey)
     * number as the key. */
     uint64_t instanceCookie = 0;
     if (processId == 0 ||
-        rin_process_instance_cookie((uint32_t)processId, &instanceCookie) != 0)
+        rin_process_instance_cookie((uint32_t)processId, &instanceCookie) != 0 ||
+        instanceCookie == 0)
     {
         return FALSE;
     }

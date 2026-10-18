@@ -1398,19 +1398,32 @@ static void provider_context_release(
 static int provider_credential_owner_valid(
     const RinKerberosCredentialOwnerV1* owner)
 {
-    return owner != NULL &&
-           owner->struct_size == sizeof(*owner) &&
-           owner->version == RIN_KERBEROS_CREDENTIAL_OWNER_ABI_VERSION &&
-           owner->reserved0 == 0u && owner->reserved1 == 0u &&
-           (owner->capability_mask &
-                RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES) ==
-               RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES &&
-           (owner->capability_mask &
-                ~RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES) == 0u &&
-           owner->acquire_session_initiator != NULL &&
-           owner->acquire_acceptor_keytab != NULL &&
-           owner->release_credential != NULL &&
-           owner->get_session_principal != NULL;
+    const uint32_t capabilities =
+        owner != NULL ? owner->capability_mask : 0u;
+    if (owner == NULL || owner->struct_size != sizeof(*owner) ||
+        owner->version != RIN_KERBEROS_CREDENTIAL_OWNER_ABI_VERSION ||
+        owner->reserved0 != 0u || owner->reserved1 != 0u ||
+        (capabilities & RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES) ==
+            0u ||
+        (capabilities & ~RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES) !=
+            0u || owner->release_credential == NULL)
+        return 0;
+
+    /* The two credential roles are independent.  A session may have an
+     * initiator ccache without a service keytab, or a service may expose only
+     * its acceptor keytab.  Rejecting such an owner here would hide a valid
+     * role before the role-specific acquisition callback can return the
+     * correct NO_CREDENTIAL result. */
+    if ((capabilities & RIN_KERBEROS_CREDENTIAL_OWNER_CAP_SESSION_INITIATOR) !=
+            0u &&
+        (owner->acquire_session_initiator == NULL ||
+         owner->get_session_principal == NULL))
+        return 0;
+    if ((capabilities & RIN_KERBEROS_CREDENTIAL_OWNER_CAP_ACCEPTOR_KEYTAB) !=
+            0u &&
+        owner->acquire_acceptor_keytab == NULL)
+        return 0;
+    return 1;
 }
 
 static int provider_operation_owner_valid(
@@ -1539,7 +1552,10 @@ static uint32_t provider_acquire_acceptor_cred(
     (void)context;
     if (output == NULL) return provider_unavailable(minor_status);
     *output = NULL;
-    if (owner == NULL || owner->acquire_acceptor_keytab == NULL)
+    if (owner == NULL ||
+        (owner->capability_mask &
+             RIN_KERBEROS_CREDENTIAL_OWNER_CAP_ACCEPTOR_KEYTAB) == 0u ||
+        owner->acquire_acceptor_keytab == NULL)
         return provider_unavailable(minor_status);
     credential = (RinOsKerberosProviderCredential*)calloc(
         1u, sizeof(*credential));
@@ -1585,6 +1601,8 @@ static uint32_t provider_initiate_cred_spnego(
     /* Named credentials require a product policy that is not part of the
      * current owner ABI. Never substitute a username or fixed token. */
     if (desired_name != NULL || owner == NULL ||
+        (owner->capability_mask &
+             RIN_KERBEROS_CREDENTIAL_OWNER_CAP_SESSION_INITIATOR) == 0u ||
         owner->acquire_session_initiator == NULL)
         return provider_unavailable(minor_status);
     credential = (RinOsKerberosProviderCredential*)calloc(

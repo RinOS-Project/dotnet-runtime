@@ -47,15 +47,36 @@ char* SystemNative_GetUnixRelease(void)
 
 int32_t SystemNative_GetUnixVersion(char* version, int* capacity)
 {
-    struct utsname _utsname;
-    if (uname(&_utsname) != -1)
+    if (version == NULL || capacity == NULL)
     {
-        int r = snprintf(version, (size_t)(*capacity), "%s %s %s", _utsname.sysname, _utsname.release, _utsname.version);
-        if (r > *capacity)
-        {
-            *capacity = r + 1;
-            return -1;
-        }
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (*capacity <= 0)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    struct utsname _utsname;
+    if (uname(&_utsname) == -1)
+    {
+        return -1;
+    }
+
+    int r = snprintf(version, (size_t)(*capacity), "%s %s %s", _utsname.sysname, _utsname.release, _utsname.version);
+    if (r < 0)
+    {
+        errno = EIO;
+        return -1;
+    }
+
+    if (r >= *capacity)
+    {
+        *capacity = r + 1;
+        errno = ERANGE;
+        return -1;
     }
 
     return 0;

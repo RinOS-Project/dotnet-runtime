@@ -264,6 +264,9 @@ void PalHijack(Thread* pThreadToHijack);
 HijackFunc* PalGetHijackTarget(_In_ HijackFunc* defaultHijackTarget);
 #endif
 
+// On a failed template allocation, newThunksOut is normally NULL.  If PAL
+// release also fails after a mapping was created, it retains that mapping so
+// the NativeAOT owner can queue a checked retry rather than losing ownership.
 UInt32_BOOL PalAllocateThunksFromTemplate(_In_ HANDLE hTemplateModule, uint32_t templateRva, size_t templateSize, _Outptr_result_bytebuffer_(templateSize) void** newThunksOut);
 UInt32_BOOL PalFreeThunksFromTemplate(_In_ void *pBaseAddress, size_t templateSize);
 

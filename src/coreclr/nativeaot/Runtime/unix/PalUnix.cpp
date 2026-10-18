@@ -651,6 +651,22 @@ void PalAttachThread(void* thread)
 
 #if !defined(FEATURE_PORTABLE_HELPERS) && !defined(FEATURE_RX_THUNKS)
 
+/* A template allocation can fail after the mapping has been created (for
+ * example when publishing the code half RX is rejected).  The PAL free
+ * operation is itself fallible on RinOS because it validates the product
+ * user-VA and accounting contract.  Keep the mapping address visible to the
+ * NativeAOT owner when that cleanup fails so the owner can retain it on its
+ * retry list instead of reporting a leak as an ordinary allocation failure. */
+static void PreserveTemplateMappingAfterReleaseFailure(
+    void* mapping, size_t mappingSize, void** newThunksOut)
+{
+    if (mapping != nullptr && newThunksOut != nullptr &&
+        !PalVirtualFreeChecked(mapping, mappingSize))
+    {
+        *newThunksOut = mapping;
+    }
+}
+
 UInt32_BOOL PalAllocateThunksFromTemplate(HANDLE hTemplateModule, uint32_t templateRva, size_t templateSize, void** newThunksOut)
 {
     if (newThunksOut == nullptr)
@@ -742,10 +758,8 @@ UInt32_BOOL PalAllocateThunksFromTemplate(HANDLE hTemplateModule, uint32_t templ
 
     if (!PalVirtualProtect(mapping, mappingSize, PAGE_READWRITE))
     {
-        // Release through the same PAL boundary used by every other thunk
-        // mapping failure.  A direct munmap here would bypass target-specific
-        // user-VA validation and the RinOS W^X/accounting contract.
-        PalVirtualFree(mapping, mappingSize);
+        PreserveTemplateMappingAfterReleaseFailure(
+            mapping, mappingSize, newThunksOut);
         return UInt32_FALSE;
     }
 #endif
@@ -753,7 +767,8 @@ UInt32_BOOL PalAllocateThunksFromTemplate(HANDLE hTemplateModule, uint32_t templ
     memcpy(mapping, (const void*)templateAddress, templateSize);
     if (!PalVirtualProtect(mapping, templateSize, PAGE_EXECUTE_READ))
     {
-        PalVirtualFree(mapping, mappingSize);
+        PreserveTemplateMappingAfterReleaseFailure(
+            mapping, mappingSize, newThunksOut);
         return UInt32_FALSE;
     }
 

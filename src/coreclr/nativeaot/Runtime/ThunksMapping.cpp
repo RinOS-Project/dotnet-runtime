@@ -1301,6 +1301,20 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
 
         if (!PalAllocateThunksFromTemplate((HANDLE)pModuleBase, templateRva, templateSize, &pThunkMap))
         {
+            if (pThunkMap != NULL)
+            {
+                // The PAL reports a retained mapping when its failure cleanup
+                // also fails.  Preserve the exact address/size pair on the
+                // native retry list before returning; deleting the owner here
+                // would make the mapping permanently unreachable.
+                dynamicOwner->baseAddress = pThunkMap;
+                dynamicOwner->mappingSize = templateSize;
+                dynamicOwner->pendingRelease = true;
+                dynamicOwner->next = g_templateThunkMappingOwners;
+                g_templateThunkMappingOwners = dynamicOwner;
+                UnlockTemplateThunkMappingOwners();
+                return E_FAIL;
+            }
             delete dynamicOwner;
             UnlockTemplateThunkMappingOwners();
             return E_OUTOFMEMORY;

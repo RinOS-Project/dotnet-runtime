@@ -490,7 +490,6 @@ bool VMToOSInterface::ReleaseDoubleMappedMemory(void *mapperHandle, void* pStart
     }
     memset(pStart, 0, size);
 #endif // TARGET_APPLE
-#endif // TARGET_RINOS
     return munmap(pStart, size) != -1;
 }
 

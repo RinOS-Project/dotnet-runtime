@@ -198,6 +198,7 @@ int32_t SystemNative_GetRinOSCredentialIdentity(char* identity, int32_t* capacit
     int32_t written;
     int32_t offset;
     uint32_t index;
+    int error;
 
     if (identity == NULL || capacity == NULL || *capacity <= 0)
     {
@@ -205,9 +206,15 @@ int32_t SystemNative_GetRinOSCredentialIdentity(char* identity, int32_t* capacit
         return -1;
     }
 
-    if (__rin_credentials_get(&credentials) != 0)
+    error = __rin_credentials_get(&credentials);
+    if (error != 0)
     {
-        errno = EIO;
+        /* Preserve the product syscall/ABI failure.  Collapsing an
+         * unavailable session snapshot into EIO makes the managed
+         * DefaultCredentials pool boundary indistinguishable from a
+         * malformed identity and can accidentally encourage a caller to
+         * reuse a stale/fixed identity. */
+        errno = error;
         return -1;
     }
 

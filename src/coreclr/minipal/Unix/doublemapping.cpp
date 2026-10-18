@@ -69,9 +69,11 @@ bool VMToOSInterface::CreateDoubleMemoryMapper(void** pHandle, size_t *pMaxExecu
     int fd = memfd_create("doublemapper", MFD_CLOEXEC);
 #elif defined(TARGET_RINOS)
     // RinOS exposes named shared memory through rin_shm_* rather than a POSIX
-    // shm_open file descriptor.  Until the executable allocator is connected
-    // to that ABI, fail closed and let it use its non-double-mapped path.
-    int fd = -1;
+    // shm_open file descriptor.  The current ABI is read/write-only and does
+    // not provide the executable alias required by this allocator.  Return
+    // before the generic fd/ftruncate path so the unsupported target never
+    // performs invalid syscalls or accidentally reaches a host fallback.
+    return false;
 #else
     int fd = -1;
 
@@ -430,6 +432,9 @@ TemplateThunkMappingData *InitializeTemplateThunkMappingData(void* pTemplate)
 #elif defined(TARGET_LINUX)
         int fd = memfd_create("doublemapper-template", MFD_CLOEXEC);
 #elif defined(TARGET_RINOS)
+        // The current RinOS shared-memory ABI cannot provide the executable
+        // alias required by this template path.  Keep the image/template
+        // fallback fail-closed until that product ABI is specified.
         int fd = -1;
 #else
         int fd = -1;

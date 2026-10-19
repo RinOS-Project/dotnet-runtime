@@ -41,7 +41,10 @@ set_source_files_properties(${EventingHeaders} PROPERTIES GENERATED TRUE)
 
 add_custom_target(eventing_headers DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/eventing_headers.timestamp)
 
-if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
+# WASI uses the PAL dummy event provider (the target runtime is generated with
+# FEATURE_EVENT_TRACE), so do not add the host-side ETW provider generator on
+# a Windows-hosted WASI cross build. Both targets are named eventprovider.
+if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS AND NOT CLR_CMAKE_TARGET_WASI)
   add_subdirectory(EtwProvider)
 endif()
 

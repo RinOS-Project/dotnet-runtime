@@ -839,6 +839,24 @@ ep_rt_queue_job (
 {
     STATIC_CONTRACT_NOTHROW;
 
+#if defined(TARGET_BROWSER)
+    /* Browser single-threaded EventPipe is driven by the JavaScript event
+     * loop.  This is the same owner used by CoreCLR's browser PAL: the
+     * callback returns a non-zero value when the job is complete and the
+     * browser-side queue retains/reschedules it while it returns zero.  Do
+     * not run the callback inline here; queue lifetime and re-scheduling are
+     * owned by System.Native.Browser. */
+    typedef size_t (*ep_rt_browser_job_callback_t)(void *data);
+    extern void SystemJS_DiagnosticServerQueueJob(
+        ep_rt_browser_job_callback_t callback, void *data);
+
+    if (job_func == NULL)
+        return false;
+
+    SystemJS_DiagnosticServerQueueJob(
+        reinterpret_cast<ep_rt_browser_job_callback_t>(job_func), params);
+    return true;
+#else
     /* NativeAOT has no queued-job owner ABI here.  Do not substitute a new
      * thread for a queue operation: EventPipe's caller owns queue lifetime,
      * ordering, and shutdown semantics.  An unexpected call therefore fails
@@ -847,6 +865,7 @@ ep_rt_queue_job (
     (void)job_func;
     (void)params;
     return false;
+#endif
 }
 
 static

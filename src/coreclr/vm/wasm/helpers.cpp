@@ -4,6 +4,7 @@
 
 #include <interpretershared.h>
 #include <interpexec.h>
+#include "../../debug/ee/debugger.h"
 #include "callhelpers.hpp"
 #include "stringthunkhash.h"
 #include "pregeneratedstringthunks.h"
@@ -1138,8 +1139,10 @@ void _DacGlobals::Initialize()
     /* no-op on wasm */
 }
 
-// Incorrectly typed temporary symbol to satisfy the linker.
-int g_pDebugger;
+// WASM does not link the desktop debugger owner, but the shared debugger
+// declarations still require the correctly typed null global.  Keep this
+// boundary explicit instead of exporting an ABI-incompatible integer symbol.
+Debugger *g_pDebugger = nullptr;
 
 void InvokeCalliStub(PCODE ftn, InterpreterCalliCookie cookie, int8_t *pArgs, int8_t *pRet, Object** pContinuationRet)
 {

@@ -11,9 +11,9 @@ namespace System.Threading
 {
     internal static class WasiEventLoop
     {
-        // TODO: if the Pollable never resolves and and the Task is abandoned
-        // it will be leaked and stay in this list forever.
-        // it will also keep the Pollable handle alive and prevent it from being disposed
+        // A poll is otherwise unbounded. Keep a bounded wake-up so an abandoned Task can
+        // be noticed even when its pollable never becomes ready.
+        private const ulong AbandonedTaskSweepNanoseconds = 1_000_000_000;
         private static readonly List<PollableHolder> s_pollables = new();
         private static readonly List<PollHook> s_hooks = new();
         private static bool s_checkScheduled;
@@ -31,12 +31,12 @@ namespace System.Threading
         internal static Task RegisterWasiPollable(Pollable pollable, bool ownsPollable, CancellationToken cancellationToken)
         {
             // this will register the pollable holder into s_pollables
-            var holder = new PollableHolder(pollable, ownsPollable, cancellationToken);
+            var holder = new PollableHolder(pollable, ownsPollable, cancellationToken, out Task task);
             s_pollables.Add(holder);
 
             ScheduleCheck();
 
-            return holder.taskCompletionSource.Task;
+            return task;
         }
 
         internal static void RegisterWasiPollHook(object? state, Func<object?, IList<int>> beforePollHook, Action<object?> onResolveCallback, CancellationToken cancellationToken)
@@ -119,10 +119,14 @@ namespace System.Threading
             for (int i = 0; i < s_pollables.Count; i++)
             {
                 var holder = s_pollables[i];
-                if (!holder.isDisposed)
+                if (!holder.isDisposed && holder.HasLiveTask)
                 {
                     holders.Add(holder);
                     pending.Add(holder.pollable);
+                }
+                else
+                {
+                    holder.DisposeAbandoned();
                 }
             }
             for (int i = 0; i < s_hooks.Count; i++)
@@ -146,6 +150,13 @@ namespace System.Threading
 
             if (pending.Count > 0)
             {
+                // The WASI poll operation has no timeout. Add a short-lived timer so
+                // dead Task/CompletionState cycles are collected from s_pollables even
+                // when the application pollable itself never resolves.
+                int abandonedTaskSweepIndex = pending.Count;
+                Pollable abandonedTaskSweepPollable = MonotonicClockInterop.SubscribeDuration(AbandonedTaskSweepNanoseconds);
+                pending.Add(abandonedTaskSweepPollable);
+
                 var resolvedPollableIndex = -1;
                 // if there is CPU-bound work to do, we should not block on PollInterop.Poll below
                 // so we will append pollable resolved in 0ms
@@ -159,9 +170,18 @@ namespace System.Threading
 
                 // this could block, this is blocking WASI API call
                 // FIXME: this will also block soft-debugger ability to pause the execution. Solutions: A) upgrade to WASIp3 B) register debugger connection's pollable
-                var readyIndexes = IPollImports.Poll(pending);
+                uint[] readyIndexes;
+                try
+                {
+                    readyIndexes = IPollImports.Poll(pending);
+                }
+                finally
+                {
+                    abandonedTaskSweepPollable.Dispose();
+                }
 
                 var holdersCount = holders.Count;
+                var hooksCount = hooks.Count;
                 for (int i = 0; i < readyIndexes.Length; i++)
                 {
                     uint readyIndex = readyIndexes[i];
@@ -170,10 +190,14 @@ namespace System.Threading
                         var holder = holders[(int)readyIndex];
                         holder.ResolveAndDispose();
                     }
-                    else if (resolvedPollableIndex != readyIndex)
+                    else if (readyIndex < holdersCount + hooksCount)
                     {
                         var hook = hooks[(int)readyIndex-holdersCount];
                         hook.Resolve();
+                    }
+                    else if (readyIndex == (uint)abandonedTaskSweepIndex || readyIndex == (uint)resolvedPollableIndex)
+                    {
+                        // Internal wake-up pollables have no user callback.
                     }
                 }
 
@@ -204,23 +228,28 @@ namespace System.Threading
             public bool isDisposed;
             public bool ownsPollable;
             public readonly Pollable pollable;
-            public readonly TaskCompletionSource taskCompletionSource;
             public readonly CancellationTokenRegistration cancellationTokenRegistration;
             public readonly CancellationToken cancellationToken;
+            private readonly WeakReference<CompletionState> completionState;
 
-            public PollableHolder(Pollable pollable, bool ownsPollable, CancellationToken cancellationToken)
+            public PollableHolder(Pollable pollable, bool ownsPollable, CancellationToken cancellationToken, out Task task)
             {
                 this.pollable = pollable;
                 this.ownsPollable = ownsPollable;
                 this.cancellationToken = cancellationToken;
 
-                // this means that taskCompletionSource.Task.AsyncState -> this;
-                // which means PollableHolder will be alive until the Task alive
-                taskCompletionSource = new TaskCompletionSource(this);
+                // Keep the completion source in the Task's state cycle, not in this
+                // holder. That lets the holder observe that the caller dropped the
+                // Task instead of keeping the abandoned Task alive forever.
+                var state = new CompletionState();
+                completionState = new WeakReference<CompletionState>(state);
+                task = state.taskCompletionSource.Task;
 
                 // static method is used to avoid allocating a delegate
                 cancellationTokenRegistration = cancellationToken.Register(CancelAndDispose, this);
             }
+
+            public bool HasLiveTask => completionState.TryGetTarget(out _);
 
             public void ResolveAndDispose()
             {
@@ -235,7 +264,24 @@ namespace System.Threading
                     pollable.Dispose();
                 }
                 cancellationTokenRegistration.Dispose();
-                taskCompletionSource.TrySetResult();
+                if (completionState.TryGetTarget(out CompletionState? state))
+                {
+                    state.taskCompletionSource.TrySetResult(null);
+                }
+            }
+
+            public void DisposeAbandoned()
+            {
+                if (isDisposed)
+                {
+                    return;
+                }
+
+                isDisposed = true;
+                if (ownsPollable){
+                    pollable.Dispose();
+                }
+                cancellationTokenRegistration.Dispose();
             }
 
             // for GC of abandoned Tasks or for cancellation
@@ -253,7 +299,20 @@ namespace System.Threading
                     self.pollable.Dispose();
                 }
                 self.cancellationTokenRegistration.Dispose();
-                self.taskCompletionSource.TrySetCanceled(self.cancellationToken);
+                if (self.completionState.TryGetTarget(out CompletionState? state))
+                {
+                    state.taskCompletionSource.TrySetCanceled(self.cancellationToken);
+                }
+            }
+        }
+
+        private sealed class CompletionState
+        {
+            public readonly TaskCompletionSource<object?> taskCompletionSource;
+
+            public CompletionState()
+            {
+                taskCompletionSource = new TaskCompletionSource<object?>(this, TaskCreationOptions.RunContinuationsAsynchronously);
             }
         }
 

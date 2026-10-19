@@ -52,7 +52,13 @@ set(PRERELEASE 1)
 # conditionals. CMake is intentionally not cross-compiling in that mode, so
 # use the actual host identity instead of allowing the RinOS target OS to
 # select HOST_UNIX/POSIX implementations.
-if(CLR_CROSS_COMPONENTS_BUILD AND NOT CMAKE_CROSSCOMPILING)
+if(CLR_CMAKE_TARGET_OS STREQUAL "wasi")
+    # The WASI runtime is compiled with the WASI SDK even when the build host
+    # is Windows. Treat WASI as the native runtime host for HOST_* feature
+    # selection; otherwise HOST_WINDOWS and HOST_UNIX are both defined and
+    # minipal selects Windows headers for the WASI target.
+    set(CLR_CMAKE_HOST_OS ${CLR_CMAKE_TARGET_OS})
+elseif(CLR_CROSS_COMPONENTS_BUILD AND NOT CMAKE_CROSSCOMPILING)
     set(CLR_CMAKE_HOST_OS ${CMAKE_HOST_SYSTEM_NAME})
 elseif(CMAKE_CROSSCOMPILING)
     set(CLR_CMAKE_HOST_OS ${CMAKE_HOST_SYSTEM_NAME})

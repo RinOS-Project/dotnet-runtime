@@ -207,9 +207,9 @@ endif(NOT CLR_CROSS_COMPONENTS_BUILD)
 # Above projects do not build with these compile options
 # All of the compiler options are specified in file compileoptions.cmake
 # Do not add any new options here. They should be added in compileoptions.cmake
-if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
+if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS AND NOT CLR_CMAKE_TARGET_WASI)
   add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Zl>) # omit default library name in .OBJ
-endif(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
+endif(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS AND NOT CLR_CMAKE_TARGET_WASI)
 
 #--------------------------------
 # Definition directives
@@ -379,7 +379,7 @@ if(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS OR CLR_CMAKE_TARGET_WASI)
   endfunction()
 
   add_subdirectory(nativeresources)
-endif(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
+endif(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS OR CLR_CMAKE_TARGET_WASI)
 
 add_subdirectory(utilcode)
 add_subdirectory(inc)

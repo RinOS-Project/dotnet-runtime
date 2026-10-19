@@ -1253,6 +1253,8 @@ struct RinOsTemplateThunkMappingOwner
     void* baseAddress;
     size_t mappingSize;
     bool pendingRelease;
+    bool releaseInProgress;
+    bool releaseAttempted;
     RinOsTemplateThunkMappingOwner* next;
 };
 
@@ -1273,6 +1275,24 @@ static void UnlockTemplateThunkMappingOwners()
     VolatileStore<volatile int32_t>(&g_templateThunkMappingOwnerLock, 0);
 }
 
+static bool RemoveTemplateThunkMappingOwnerLocked(
+    RinOsTemplateThunkMappingOwner* owner)
+{
+    RinOsTemplateThunkMappingOwner** ownerLink =
+        &g_templateThunkMappingOwners;
+    while (*ownerLink != NULL)
+    {
+        if (*ownerLink == owner)
+        {
+            *ownerLink = owner->next;
+            owner->next = NULL;
+            return true;
+        }
+        ownerLink = &(*ownerLink)->next;
+    }
+    return false;
+}
+
 /* A dynamic template mapping can be allocated successfully and then fail the
  * platform call-target publication step. The managed API receives no mapping
  * in that case, so losing a failed PAL release here would leak an executable
@@ -1281,26 +1301,77 @@ static void UnlockTemplateThunkMappingOwners()
 static bool RetryPendingTemplateThunkReleases()
 {
     bool allReleased = true;
-    RinOsTemplateThunkMappingOwner** ownerLink =
-        &g_templateThunkMappingOwners;
-    while (*ownerLink != NULL)
+
+    // A failed PAL release stays pending, but it must not be retried in a
+    // tight loop by this same allocation attempt. Reset the per-pass marker
+    // once, then give each owner at most one PAL call before returning.
+    LockTemplateThunkMappingOwners();
+    for (RinOsTemplateThunkMappingOwner* owner =
+             g_templateThunkMappingOwners;
+         owner != NULL;
+         owner = owner->next)
     {
-        RinOsTemplateThunkMappingOwner* owner = *ownerLink;
-        if (!owner->pendingRelease)
+        if (owner->pendingRelease)
         {
-            ownerLink = &owner->next;
-            continue;
+            owner->releaseAttempted = false;
+        }
+    }
+    UnlockTemplateThunkMappingOwners();
+
+    while (true)
+    {
+        RinOsTemplateThunkMappingOwner* owner = NULL;
+
+        // PAL release may take VM, image, or unwind locks. Never call it
+        // while holding the registry lock; reserve one owner and publish the
+        // in-progress state before leaving the critical section instead.
+        LockTemplateThunkMappingOwners();
+        for (RinOsTemplateThunkMappingOwner* candidate =
+                 g_templateThunkMappingOwners;
+             candidate != NULL;
+             candidate = candidate->next)
+        {
+            if (candidate->pendingRelease &&
+                !candidate->releaseInProgress &&
+                !candidate->releaseAttempted)
+            {
+                candidate->releaseInProgress = true;
+                candidate->releaseAttempted = true;
+                owner = candidate;
+                break;
+            }
+        }
+        UnlockTemplateThunkMappingOwners();
+
+        if (owner == NULL)
+        {
+            break;
         }
 
-        if (!PalFreeThunksFromTemplate(owner->baseAddress, owner->mappingSize))
+        bool released = PalFreeThunksFromTemplate(
+            owner->baseAddress, owner->mappingSize);
+
+        LockTemplateThunkMappingOwners();
+        bool removed = false;
+        if (released)
+        {
+            removed = RemoveTemplateThunkMappingOwnerLocked(owner);
+        }
+        else
+        {
+            owner->releaseInProgress = false;
+            allReleased = false;
+        }
+        UnlockTemplateThunkMappingOwners();
+
+        if (removed)
+        {
+            delete owner;
+        }
+        else if (released)
         {
             allReleased = false;
-            ownerLink = &owner->next;
-            continue;
         }
-
-        *ownerLink = owner->next;
-        delete owner;
     }
     return allReleased;
 }
@@ -1331,13 +1402,12 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         return E_FAIL;
     }
 
-    LockTemplateThunkMappingOwners();
-
     if (!RetryPendingTemplateThunkReleases())
     {
-        UnlockTemplateThunkMappingOwners();
         return E_FAIL;
     }
+
+    LockTemplateThunkMappingOwners();
 
 #ifndef TARGET_APPLE // Apple platforms cannot use the initial template
     if (g_pThunksTemplateAddress == NULL)
@@ -1389,6 +1459,8 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
                 dynamicOwner->baseAddress = pThunkMap;
                 dynamicOwner->mappingSize = templateSize;
                 dynamicOwner->pendingRelease = true;
+                dynamicOwner->releaseInProgress = false;
+                dynamicOwner->releaseAttempted = false;
                 dynamicOwner->next = g_templateThunkMappingOwners;
                 g_templateThunkMappingOwners = dynamicOwner;
                 UnlockTemplateThunkMappingOwners();
@@ -1414,21 +1486,36 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         thunkBlockSize,
         thunkBlocksPerMapping))
     {
+        bool releasedAfterMarkFailure = false;
         if (!usingTemplate)
         {
             dynamicOwner->baseAddress = pThunkMap;
             dynamicOwner->mappingSize = templateSize;
             dynamicOwner->pendingRelease = true;
+            dynamicOwner->releaseInProgress = true;
+            dynamicOwner->releaseAttempted = true;
             dynamicOwner->next = g_templateThunkMappingOwners;
             g_templateThunkMappingOwners = dynamicOwner;
-            if (PalFreeThunksFromTemplate(pThunkMap, templateSize))
+
+            UnlockTemplateThunkMappingOwners();
+            releasedAfterMarkFailure = PalFreeThunksFromTemplate(
+                pThunkMap, templateSize);
+            LockTemplateThunkMappingOwners();
+            if (releasedAfterMarkFailure)
             {
-                g_templateThunkMappingOwners = dynamicOwner->next;
-                delete dynamicOwner;
+                RemoveTemplateThunkMappingOwnerLocked(dynamicOwner);
+            }
+            else
+            {
+                dynamicOwner->releaseInProgress = false;
             }
         }
 
         UnlockTemplateThunkMappingOwners();
+        if (!usingTemplate && releasedAfterMarkFailure)
+        {
+            delete dynamicOwner;
+        }
         return E_FAIL;
     }
 
@@ -1443,6 +1530,8 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         dynamicOwner->baseAddress = pThunkMap;
         dynamicOwner->mappingSize = templateSize;
         dynamicOwner->pendingRelease = false;
+        dynamicOwner->releaseInProgress = false;
+        dynamicOwner->releaseAttempted = false;
         dynamicOwner->next = g_templateThunkMappingOwners;
         g_templateThunkMappingOwners = dynamicOwner;
     }
@@ -1519,22 +1608,33 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
         UnlockTemplateThunkMappingOwners();
         return E_FAIL;
     }
-    *ownerLink = owner->next;
-    if (!PalFreeThunksFromTemplate(pThunksSection, templateSize))
-    {
-        // Heap teardown may not retain a usable managed retry handle. Keep
-        // the native owner on the allocation retry queue as well, so a later
-        // allocation can release the mapping without leaking it indefinitely.
-        owner->pendingRelease = true;
-        owner->next = g_templateThunkMappingOwners;
-        g_templateThunkMappingOwners = owner;
-        UnlockTemplateThunkMappingOwners();
-        return E_FAIL;
-    }
-
+    // Heap teardown may not retain a usable managed retry handle. Keep the
+    // exact owner queued while the PAL release runs outside the registry
+    // lock, so a later allocation can retry it without a second submission.
+    owner->pendingRelease = true;
+    owner->releaseInProgress = true;
     UnlockTemplateThunkMappingOwners();
-    delete owner;
-    return S_OK;
+
+    bool released = PalFreeThunksFromTemplate(pThunksSection, templateSize);
+    bool ownerRemoved = false;
+
+    LockTemplateThunkMappingOwners();
+    if (released)
+    {
+        ownerRemoved = RemoveTemplateThunkMappingOwnerLocked(owner);
+    }
+    else
+    {
+        owner->releaseInProgress = false;
+    }
+    UnlockTemplateThunkMappingOwners();
+
+    if (released && ownerRemoved)
+    {
+        delete owner;
+        return S_OK;
+    }
+    return E_FAIL;
 }
 
 #endif // FEATURE_RX_THUNKS

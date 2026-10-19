@@ -1733,7 +1733,11 @@ static uint32_t provider_release_cred(void* context, uint32_t* minor_status,
     if (credential->active_contexts != 0u)
         return provider_unavailable(minor_status);
     pending_status = provider_release_pending_credential(credential, minor_status);
-    if (credential->pending_release_credential != NULL)
+    /* A release failure remains visible even when the owner consumed the
+     * opaque handle before reporting the error.  The handle is then no
+     * longer retryable, but the provider must not erase the failure by
+     * releasing the primary credential and returning success. */
+    if (pending_status != RIN_AUTH_PROVIDER_OK)
         return pending_status;
     if (credential->owner_credential != NULL) {
         status = credential->owner->release_credential(
@@ -2136,7 +2140,11 @@ static uint32_t provider_refresh_initiator_credential(
         return provider_unavailable(minor_status);
 
     status = provider_release_pending_credential(credential, &cleanup_minor);
-    if (credential->pending_release_credential != NULL)
+    /* Do not continue a refresh after a failed pending-handle cleanup.  A
+     * provider-owned opaque capability may have been consumed even when the
+     * owner reports an error, so treating a NULL pending slot as success
+     * would allow a stale refresh path to proceed. */
+    if (status != RIN_AUTH_PROVIDER_OK)
         return status;
 
     /* Capture the generation of the handle that actually produced the

@@ -554,7 +554,12 @@ namespace System.Net.Security
                 }
 
                 RinSslHandle handle = GetHandle(context);
-                if (!handle.ClientCertificateConfigured &&
+                // CertificateContext is the server identity in server mode;
+                // CreateHandle has already attached its server signer before
+                // the first handshake call.  Only a client session may bind
+                // that context through the client-certificate path.
+                if (!sslAuthenticationOptions.IsServer &&
+                    !handle.ClientCertificateConfigured &&
                     ((created && sslAuthenticationOptions.CertificateContext is not null) ||
                      Interop.RinTls.ClientCertificateRequested(handle)))
                 {

@@ -79,7 +79,10 @@ static int rinos_gss_kerberos_owner_valid(const RinAuthProviderV1* provider)
     owner = rin_kerberos_credential_owner_get_v1();
     operation_owner = rin_kerberos_operation_owner_get_v1();
     return owner != NULL && operation_owner != NULL &&
-        owner->struct_size == sizeof(*owner) &&
+        /* V1 is a versioned callback table.  An owner may append fields for
+         * a later producer without changing the prefix consumed here; only
+         * a truncated prefix is unsafe. */
+        owner->struct_size >= sizeof(*owner) &&
         owner->version == RIN_KERBEROS_CREDENTIAL_OWNER_ABI_VERSION &&
         owner->reserved0 == 0u &&
         owner->reserved1 == 0u &&
@@ -92,7 +95,7 @@ static int rinos_gss_kerberos_owner_valid(const RinAuthProviderV1* provider)
         owner->acquire_acceptor_keytab != NULL &&
         owner->release_credential != NULL &&
         owner->get_session_principal != NULL &&
-        operation_owner->struct_size == sizeof(*operation_owner) &&
+        operation_owner->struct_size >= sizeof(*operation_owner) &&
         operation_owner->version ==
             RIN_KERBEROS_OPERATION_OWNER_ABI_VERSION &&
         operation_owner->reserved0 == 0u &&
@@ -132,7 +135,10 @@ static const RinAuthProviderV1* rinos_gss_provider(void)
 
     provider = rin_auth_provider_get_v1();
     if (provider == NULL ||
-        provider->struct_size != sizeof(*provider) ||
+        /* The provider ABI is a versioned prefix.  Accept compatible
+         * appended fields, but never read a table shorter than this PAL's
+         * required callback prefix. */
+        provider->struct_size < sizeof(*provider) ||
         provider->version != RIN_AUTH_PROVIDER_ABI_VERSION ||
         provider->reserved0 != 0u ||
         (provider->package_mask & RIN_AUTH_PROVIDER_KNOWN_PACKAGES) == 0u ||

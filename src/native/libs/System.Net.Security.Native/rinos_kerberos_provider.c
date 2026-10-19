@@ -1445,7 +1445,7 @@ static int provider_credential_owner_valid(
 {
     const uint32_t capabilities =
         owner != NULL ? owner->capability_mask : 0u;
-    if (owner == NULL || owner->struct_size != sizeof(*owner) ||
+    if (owner == NULL || owner->struct_size < sizeof(*owner) ||
         owner->version != RIN_KERBEROS_CREDENTIAL_OWNER_ABI_VERSION ||
         owner->reserved0 != 0u || owner->reserved1 != 0u ||
         (capabilities & RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES) ==
@@ -1475,7 +1475,7 @@ static int provider_operation_owner_valid(
     const RinKerberosOperationOwnerV1* owner)
 {
     return owner != NULL &&
-           owner->struct_size == sizeof(*owner) &&
+           owner->struct_size >= sizeof(*owner) &&
            owner->version == RIN_KERBEROS_OPERATION_OWNER_ABI_VERSION &&
            owner->reserved0 == 0u && owner->operation != NULL;
 }

@@ -489,17 +489,19 @@ unsigned FuncEvalFrame::GetFrameAttribs_Impl(void)
 {
     LIMITED_METHOD_DAC_CONTRACT;
 
-    // WASM does not support the native thread-hijack path.  A func-eval frame
-    // is therefore always non-resumable on this ABI.
-    return FRAME_ATTR_NONE;
+    // WASM does not support the native thread-hijack path.  It can still
+    // construct a FuncEvalFrame for interpreter/exception processing, where
+    // the frame is deliberately non-resumable.
+    return GetDebuggerEval()->m_evalUsesHijack ? FRAME_ATTR_RESUMABLE : FRAME_ATTR_NONE;
 }
 
 TADDR FuncEvalFrame::GetReturnAddressPtr_Impl()
 {
     LIMITED_METHOD_DAC_CONTRACT;
 
-    // There is no native return address on the WASM path.
-    return 0;
+    // There is no native return address for the non-hijack WASM path.  Keep
+    // the same null contract used by the desktop implementation.
+    return GetDebuggerEval()->m_evalUsesHijack ? PTR_HOST_MEMBER_TADDR(FuncEvalFrame, this, m_ReturnAddress) : 0;
 }
 
 void FuncEvalFrame::UpdateRegDisplay_Impl(const PREGDISPLAY pRD, bool updateFloats)
@@ -509,7 +511,13 @@ void FuncEvalFrame::UpdateRegDisplay_Impl(const PREGDISPLAY pRD, bool updateFloa
     UNREFERENCED_PARAMETER(updateFloats);
 
     // A WASM func-eval is not installed by hijacking a native register
-    // context. Leave the existing register display untouched.
+    // context.  Leave the existing register display untouched, matching the
+    // non-hijack branch in the common debugger implementation.
+    if (!GetDebuggerEval()->m_evalUsesHijack)
+        return;
+
+    // The native hijack register layout has no WASM equivalent yet.  Keep the
+    // boundary fail-closed rather than fabricating register locations.
 }
 
 void InlinedCallFrame::UpdateRegDisplay_Impl(const PREGDISPLAY pRD, bool updateFloats)

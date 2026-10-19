@@ -231,7 +231,14 @@ ds_server_init (void)
 			ep_raise_error ();
 		}
 #else
-		ep_rt_queue_job ((void *)server_loop_tick, NULL);
+		if (!ep_rt_queue_job ((void *)server_loop_tick, NULL)) {
+			// A missing single-threaded queue owner cannot service diagnostics.
+			// Fail initialization and close the configured ports instead of
+			// reporting a live server with no callback owner.
+			ds_ipc_stream_factory_close_ports (NULL);
+			DS_LOG_ERROR_0 ("Failed to queue diagnostic server job.");
+			ep_raise_error ();
+		}
 #endif
 	}
 

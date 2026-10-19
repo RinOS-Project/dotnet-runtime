@@ -192,7 +192,13 @@ session_create_streaming_thread (EventPipeSession *session)
 #else
 	ep_session_inc_ref (session);
 	if (!ep_rt_queue_job ((void *)streaming_loop_tick, (void *)session)) {
-		// Drop the reference acquired for the job when queue allocation fails.
+		// A single-threaded owner may reject the job when its queue is absent or
+		// exhausted.  Do not leave the session enabled with no worker to observe
+		// the shutdown flag: that would make session_disable_streaming_thread
+		// wait forever.  Publish the same completion signal as a worker that has
+		// already stopped, then drop the reference acquired for the job.
+		ep_session_set_streaming_enabled (session, false);
+		ep_rt_wait_event_set (&session->rt_thread_shutdown_event);
 		ep_session_dec_ref (session);
 	}
 #endif

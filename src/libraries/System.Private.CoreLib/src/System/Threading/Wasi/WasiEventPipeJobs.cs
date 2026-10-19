@@ -14,7 +14,6 @@ namespace System.Threading
         private const int PumpIntervalMs = 100;
         private static bool s_pumpRunning;
 
-        [ErrorHandler(typeof(QCallExceptionStatusMarshaller), ErrorLocation.HiddenLastParameter)]
         [LibraryImport(RuntimeHelpers.QCall, EntryPoint = "EventPipeInternal_WasiRunJobs")]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static partial bool RunJobs();

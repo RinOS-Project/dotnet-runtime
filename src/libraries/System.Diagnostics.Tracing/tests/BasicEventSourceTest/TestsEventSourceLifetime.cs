@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics.Tracing;
 using System.Reflection;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace BasicEventSourceTests
@@ -33,6 +34,51 @@ namespace BasicEventSourceTests
             Assert.Null(wrEventSource.Target);
             Assert.Null(wrProvider.Target);
             TestUtilities.CheckNoEventSourcesRunning("Stop");
+        }
+
+        [ConditionalFact(typeof(PlatformDetection), nameof(PlatformDetection.IsNotMonoRuntime))]
+        public async Task RuntimeProviderListener_RepeatedSubscriptions_DoNotLeakSessions()
+        {
+            const int Iterations = 80;
+            const EventKeywords GCKeyword = (EventKeywords)0x1;
+
+            for (int i = 0; i < Iterations; i++)
+            {
+                using var listener = new RuntimeProviderListener(GCKeyword);
+                if (i % 2 == 0)
+                    await Task.Delay(1);
+            }
+
+            await Task.Delay(500);
+            using var finalListener = new RuntimeProviderListener(GCKeyword);
+            for (int attempt = 0; attempt < 50 && !finalListener.ReceivedEvent; attempt++)
+            {
+                GC.Collect();
+                await Task.Delay(100);
+            }
+
+            Assert.True(finalListener.ReceivedEvent, "A new runtime-provider subscription received no events.");
+        }
+
+        private sealed class RuntimeProviderListener : EventListener
+        {
+            private readonly EventKeywords _keywords;
+            public volatile bool ReceivedEvent;
+
+            public RuntimeProviderListener(EventKeywords keywords)
+            {
+                _keywords = keywords;
+                foreach (EventSource source in EventSource.GetSources())
+                    OnEventSourceCreated(source);
+            }
+
+            protected override void OnEventSourceCreated(EventSource source)
+            {
+                if (source.Name == "Microsoft-Windows-DotNETRuntime" && _keywords != 0)
+                    EnableEvents(source, EventLevel.Informational, _keywords);
+            }
+
+            protected override void OnEventWritten(EventWrittenEventArgs eventData) => ReceivedEvent = true;
         }
 
         private void ExerciseEventSource(WeakReference wrProvider, WeakReference wrEventSource)

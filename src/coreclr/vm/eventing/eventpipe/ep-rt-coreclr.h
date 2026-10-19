@@ -313,12 +313,22 @@ ep_rt_init_finish (void)
 	STATIC_CONTRACT_NOTHROW;
 }
 
+#if defined(TARGET_WASI) && defined(PERFTRACING_DISABLE_THREADS)
+bool ep_rt_coreclr_wasi_queue_job(size_t (*cb)(void *data), void *data);
+bool ep_rt_coreclr_wasi_run_jobs(void);
+#endif
+
 static
 inline
 void
 ep_rt_shutdown (void)
 {
 	STATIC_CONTRACT_NOTHROW;
+#if defined(TARGET_WASI) && defined(PERFTRACING_DISABLE_THREADS)
+	// No managed event-loop iterations run after shutdown; release queued session
+	// references and finish trace files once before the runtime exits.
+	ep_rt_coreclr_wasi_run_jobs();
+#endif
 }
 
 static
@@ -1095,6 +1105,8 @@ ep_rt_queue_job (
 	// In single-threaded mode the job runs on the browser event loop
 	SystemJS_DiagnosticServerQueueJob ((ep_rt_job_cb_t)job_func, params);
 	return true;
+#elif defined(TARGET_WASI)
+	return ep_rt_coreclr_wasi_queue_job ((size_t (*)(void *))job_func, params);
 #else
 	EP_UNREACHABLE ("Not implemented on this platform");
 	return false;

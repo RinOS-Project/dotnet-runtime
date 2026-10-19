@@ -94,6 +94,10 @@ extern "C" BOOL QCALLTYPE EventPipeInternal_WaitForSessionSignal(
     UINT64 sessionID,
     INT32 timeoutMs);
 
+#if defined(TARGET_WASI) && defined(PERFTRACING_DISABLE_THREADS)
+extern "C" CLR_BOOL QCALLTYPE EventPipeInternal_WasiRunJobs(QCallExceptionStatus* qcallError);
+#endif
+
 #endif // FEATURE_PERFTRACING
 
 #endif // __EVENTPIPEINTERNAL_H__

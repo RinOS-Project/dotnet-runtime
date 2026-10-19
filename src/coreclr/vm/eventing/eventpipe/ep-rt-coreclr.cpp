@@ -169,4 +169,61 @@ ep_rt_coreclr_sample_profiler_write_sampling_event_for_threads (
 	return;
 }
 
+#if defined(TARGET_WASI) && defined(PERFTRACING_DISABLE_THREADS)
+// WASI has no host event loop to schedule EventPipe jobs on, so retain jobs
+// until the managed WasiEventLoop pumps them.
+struct WasiEventPipeJob
+{
+	size_t (*Callback)(void *data);
+	void *Data;
+	WasiEventPipeJob *Next;
+};
+
+static WasiEventPipeJob *s_wasiJobsHead = nullptr;
+static WasiEventPipeJob *s_wasiJobsTail = nullptr;
+
+static void WasiAppendJob(WasiEventPipeJob *job)
+{
+	job->Next = nullptr;
+	if (s_wasiJobsTail != nullptr)
+		s_wasiJobsTail->Next = job;
+	else
+		s_wasiJobsHead = job;
+	s_wasiJobsTail = job;
+}
+
+bool ep_rt_coreclr_wasi_queue_job(size_t (*cb)(void *data), void *data)
+{
+	_ASSERTE(cb != nullptr);
+	WasiEventPipeJob *job = new (nothrow) WasiEventPipeJob();
+	if (job == nullptr)
+		return false;
+
+	job->Callback = cb;
+	job->Data = data;
+	WasiAppendJob(job);
+	return true;
+}
+
+bool ep_rt_coreclr_wasi_run_jobs(void)
+{
+	// Detach the current list so jobs queued while running execute on the next pump.
+	WasiEventPipeJob *job = s_wasiJobsHead;
+	s_wasiJobsHead = nullptr;
+	s_wasiJobsTail = nullptr;
+
+	while (job != nullptr)
+	{
+		WasiEventPipeJob *next = job->Next;
+		if (job->Callback(job->Data) != 0)
+			delete job;
+		else
+			WasiAppendJob(job);
+		job = next;
+	}
+
+	return s_wasiJobsHead != nullptr;
+}
+#endif // TARGET_WASI && PERFTRACING_DISABLE_THREADS
+
 #endif /* ENABLE_PERFTRACING */

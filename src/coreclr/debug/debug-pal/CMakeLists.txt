@@ -24,12 +24,9 @@ if(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
 endif(CLR_CMAKE_HOST_WIN32 AND NOT CLR_CMAKE_TARGET_RINOS)
 
 if(CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
-    if (NOT CLR_CMAKE_TARGET_WASI)
-        # ds-ipc-pal-socket.c needs UNIX/TCP sockets; re-enable once
-        # WASI PERFTRACING is wired. Tracked by https://github.com/dotnet/runtime/issues/130383
-
-        set(DEBUG_PAL_REFEREENCE_DIAGNOSTICSERVER ON)
-    endif()
+    # WASI uses the TCP diagnostic-server PAL flavor. Listen and connect ports
+    # remain disabled until a wasi:sockets transport is validated.
+    set(DEBUG_PAL_REFEREENCE_DIAGNOSTICSERVER ON)
 
     add_definitions(-DPAL_IMPLEMENTATION)
     add_definitions(-D_POSIX_C_SOURCE=200809L)

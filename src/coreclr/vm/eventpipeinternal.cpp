@@ -288,4 +288,17 @@ extern "C" BOOL QCALLTYPE EventPipeInternal_WaitForSessionSignal(UINT64 sessionI
     return result;
 }
 
+#if defined(TARGET_WASI) && defined(PERFTRACING_DISABLE_THREADS)
+extern "C" CLR_BOOL QCALLTYPE EventPipeInternal_WasiRunJobs(QCallExceptionStatus* qcallError)
+{
+    QCALL_CONTRACT;
+
+    bool pending = false;
+    BEGIN_QCALL;
+    pending = EventPipeAdapter::RunWasiJobs();
+    END_QCALL;
+    return pending ? TRUE : FALSE;
+}
+#endif
+
 #endif // FEATURE_PERFTRACING

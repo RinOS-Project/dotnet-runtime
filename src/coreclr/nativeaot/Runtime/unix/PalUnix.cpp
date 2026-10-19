@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 #include <errno.h>
+#include <limits.h>
 #include <cwchar>
 #include <sal.h>
 #include "config.h"

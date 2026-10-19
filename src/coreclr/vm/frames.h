@@ -568,7 +568,7 @@ private:
 #ifdef _DEBUG
     friend LONG WINAPI CLRVectoredExceptionHandlerShim(PEXCEPTION_POINTERS pExceptionInfo);
 #endif
-#ifdef HOST_64BIT
+#if defined(HOST_64BIT) || defined(TARGET_WASM)
     friend Thread * JIT_InitPInvokeFrame(InlinedCallFrame *pFrame);
 #endif
     friend struct ExInfo;

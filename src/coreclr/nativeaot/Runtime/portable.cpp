@@ -328,7 +328,7 @@ static RinOsPortableThunkMappingOwner* BeginPortableThunkMappingRelease(
     return nullptr;
 }
 
-static void FinishPortableThunkMappingRelease(
+static bool FinishPortableThunkMappingRelease(
     RinOsPortableThunkMappingOwner* released, bool success)
 {
     LockPortableThunkMappingOwners();
@@ -336,16 +336,27 @@ static void FinishPortableThunkMappingRelease(
     {
         released->releaseInProgress = false;
         UnlockPortableThunkMappingOwners();
-        return;
+        return false;
     }
 
     RinOsPortableThunkMappingOwner** link = &g_portableThunkMappingOwners;
     while (*link != nullptr && *link != released)
         link = &(*link)->next;
-    if (*link == released)
-        *link = released->next;
+    if (*link != released)
+    {
+        /* BeginPortableThunkMappingRelease marks the owner busy before the
+         * provider callback.  A successful callback with no matching owner
+         * therefore means that the registry invariant was violated (or that
+         * a competing cleanup removed the owner).  Do not delete an unknown
+         * record here: that could double-free the owner while reporting a
+         * successful release to managed code. */
+        UnlockPortableThunkMappingOwners();
+        return false;
+    }
+    *link = released->next;
     UnlockPortableThunkMappingOwners();
     delete released;
+    return true;
 }
 
 #if defined(FEATURE_PORTABLE_HELPERS)
@@ -800,7 +811,11 @@ FCIMPL1(HRESULT, RhFreeThunksMapping, void* pThunksSection)
     {
         HRESULT result = (HRESULT)provider->free_thunks_mapping(
             provider->context, pThunksSection);
-        FinishPortableThunkMappingRelease(owner, result == S_OK);
+        if (result == S_OK &&
+            !FinishPortableThunkMappingRelease(owner, true))
+            return E_FAIL;
+        if (result != S_OK)
+            (void)FinishPortableThunkMappingRelease(owner, false);
         return result;
     }
 

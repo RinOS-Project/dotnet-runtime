@@ -2806,7 +2806,15 @@ int32_t GlobalizationNative_EnumCalendarInfo(EnumCalendarInfoCallback callback, 
         if (format_length <= 0) return 0;
         pattern_length = copy_utf8(product_format, strlen(product_format), pattern, (int32_t)(sizeof(pattern) / sizeof(pattern[0])));
     }
-    if (pattern_length <= 0) return 0;
+    /* copy_utf8() reports the number of UTF-16 code units written but does
+     * not reserve a terminator.  The callback contract below appends one, so
+     * reject an exactly-full conversion before writing pattern[pattern_length].
+     * This is normally unreachable with the bounded RICUDB1 date fields, but
+     * keeping the guard here makes a malformed/extended service response fail
+     * closed instead of turning a data-length error into a stack overwrite. */
+    if (pattern_length <= 0 ||
+        pattern_length >= (int32_t)(sizeof(pattern) / sizeof(pattern[0])))
+        return 0;
     pattern[pattern_length] = 0;
     callback(pattern, context);
     return 1;

@@ -202,7 +202,14 @@ bool VMToOSInterface::CreateDoubleMemoryMapper(void** pHandle, size_t *pMaxExecu
 
 #ifndef TARGET_APPLE
 
-#if defined(TARGET_RINOS)
+#if defined(TARGET_WASI)
+    // WASI 0.2 has no POSIX shared-memory object API.  Double mapping is an
+    // optional executable-memory optimization; do not link against
+    // shm_open/shm_unlink or manufacture a mapper handle on this target.
+    (void)pHandle;
+    (void)pMaxExecutableCodeSize;
+    return false;
+#elif defined(TARGET_RINOS)
     RinOSDoubleMapper* mapper =
         (RinOSDoubleMapper*)malloc(sizeof(RinOSDoubleMapper));
     uint64_t sequence;
@@ -308,7 +315,7 @@ bool VMToOSInterface::CreateDoubleMemoryMapper(void** pHandle, size_t *pMaxExecu
 
     *pMaxExecutableCodeSize = maxDoubleMappedMemorySize;
     *pHandle = (void*)(size_t)fd;
-#endif // TARGET_RINOS
+#endif // TARGET_WASI / TARGET_RINOS
 #else // !TARGET_APPLE
 
     *pMaxExecutableCodeSize = SIZE_MAX;

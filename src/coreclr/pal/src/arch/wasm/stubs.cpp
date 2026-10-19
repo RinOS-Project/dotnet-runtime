@@ -330,6 +330,19 @@ GetThreadContext(IN HANDLE hThread, IN OUT LPCONTEXT lpContext)
     return FALSE;
 }
 
+// WASI has no native memory-probe or signal-recovery contract.  Returning
+// FALSE is the safe result for diagnostics callers; claiming that an
+// arbitrary linear-memory range is probeable would turn a bounds failure into
+// an unsafe access.
+extern "C" PALIMPORT BOOL PALAPI
+PAL_ProbeMemory(PVOID pBuffer, DWORD cbBuffer, BOOL fWriteAccess)
+{
+    (void)pBuffer;
+    (void)cbBuffer;
+    (void)fWriteAccess;
+    return FALSE;
+}
+
 // FlushInstructionCache: no-op on WASI. wasm has no separate I-cache to flush.
 extern "C" PALIMPORT BOOL PALAPI
 FlushInstructionCache(IN HANDLE hProcess, IN LPCVOID lpBaseAddress, IN SIZE_T dwSize)

@@ -2117,6 +2117,8 @@ static uint32_t provider_refresh_initiator_credential(
     uint32_t current_principal_size = 0u;
     uint64_t current_generation = 0u;
     uint64_t replacement_generation = 0u;
+    int replacement_identity_matches = 0;
+    uint8_t current_principal[RINOS_KERBEROS_MAX_PRINCIPAL_SIZE] = {};
     uint8_t replacement_principal[RINOS_KERBEROS_MAX_PRINCIPAL_SIZE] = {};
 
     if (minor_status != NULL) *minor_status = 0u;
@@ -2143,17 +2145,20 @@ static uint32_t provider_refresh_initiator_credential(
      * is not sufficient for the comparison below. */
     status = owner->get_session_principal(
         owner->context, &replacement_minor, credential->owner_credential,
-        replacement_principal, sizeof(replacement_principal),
+        current_principal, sizeof(current_principal),
         &current_principal_size, &current_generation);
-    provider_zero(replacement_principal, sizeof(replacement_principal));
     if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK ||
         replacement_minor != 0u || current_principal_size == 0u ||
+        current_principal_size > sizeof(current_principal) ||
         current_generation == 0u ||
         (provider_context->generation != 0u &&
-         provider_context->generation != current_generation))
+         provider_context->generation != current_generation)) {
+        provider_zero(current_principal, sizeof(current_principal));
+        provider_zero(replacement_principal, sizeof(replacement_principal));
         return status == RIN_KERBEROS_CREDENTIAL_OWNER_OK
                    ? provider_unavailable(minor_status)
                    : provider_status_from_owner(status, minor_status);
+    }
 
     status = owner->acquire_session_initiator(
         owner->context, minor_status, NULL, &replacement);
@@ -2166,6 +2171,8 @@ static uint32_t provider_refresh_initiator_credential(
             if (replacement != NULL)
                 credential->pending_release_credential = replacement;
         }
+        provider_zero(current_principal, sizeof(current_principal));
+        provider_zero(replacement_principal, sizeof(replacement_principal));
         return status == RIN_KERBEROS_CREDENTIAL_OWNER_OK
                    ? provider_unavailable(minor_status)
                    : provider_status_from_owner(status, minor_status);
@@ -2175,26 +2182,41 @@ static uint32_t provider_refresh_initiator_credential(
      * return a new opaque capability for the same still-expired ccache
      * generation; accepting that capability would make a stale session
      * credential look like a successful ticket refresh.  Query only the
-     * bounded non-secret principal metadata and require a newer generation
-     * before replacing the old handle.  The principal bytes never leave this
-     * function and are scrubbed before any branch returns. */
+     * bounded non-secret principal metadata and require both an exact
+     * principal match and a newer generation before replacing the old handle.
+     * The principal bytes never leave this function and are scrubbed before
+     * any branch returns. */
     status = owner->get_session_principal(
         owner->context, &replacement_minor, replacement,
         replacement_principal, sizeof(replacement_principal),
         &replacement_principal_size, &replacement_generation);
-    provider_zero(replacement_principal, sizeof(replacement_principal));
+    if (status == RIN_KERBEROS_CREDENTIAL_OWNER_OK &&
+        replacement_minor == 0u && replacement_principal_size != 0u &&
+        replacement_principal_size <= sizeof(replacement_principal) &&
+        replacement_generation != 0u) {
+        replacement_identity_matches =
+            replacement_principal_size == current_principal_size &&
+            memcmp(replacement_principal, current_principal,
+                   current_principal_size) == 0;
+    }
     if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK ||
         replacement_minor != 0u || replacement_principal_size == 0u ||
+        replacement_principal_size > sizeof(replacement_principal) ||
         replacement_generation == 0u ||
-        replacement_generation == current_generation) {
+        replacement_generation == current_generation ||
+        !replacement_identity_matches) {
         const uint32_t release_status = owner->release_credential(
             owner->context, &cleanup_minor, &replacement);
         if (replacement != NULL)
             credential->pending_release_credential = replacement;
+        provider_zero(current_principal, sizeof(current_principal));
+        provider_zero(replacement_principal, sizeof(replacement_principal));
         if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK)
             return provider_status_from_owner(status, minor_status);
         if (release_status != RIN_KERBEROS_CREDENTIAL_OWNER_OK ||
             replacement != NULL)
+            return provider_unavailable(minor_status);
+        if (!replacement_identity_matches)
             return provider_unavailable(minor_status);
         /* The authenticated owner still exposes the old generation.  Do not
          * replay the initial token against it; surface the real expiry. */
@@ -2203,6 +2225,8 @@ static uint32_t provider_refresh_initiator_credential(
     }
 
     old_credential = credential->owner_credential;
+    provider_zero(current_principal, sizeof(current_principal));
+    provider_zero(replacement_principal, sizeof(replacement_principal));
     status = owner->release_credential(
         owner->context, minor_status, &old_credential);
     if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK ||

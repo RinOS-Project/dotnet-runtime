@@ -877,9 +877,10 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
     if (!removed)
     {
         // The owner must still be present because releaseInProgress blocked
-        // every competing free/retry operation.  Do not leak it if that
-        // invariant is violated, but report the boundary failure.
-        delete owner;
+        // every competing free/retry operation.  The mapping has already
+        // been released, but the registry no longer proves ownership of this
+        // local pointer.  Do not delete an unknown owner: an invariant
+        // failure must not become a second native-owner free.
         return E_FAIL;
     }
     delete owner;
@@ -1487,6 +1488,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         thunkBlocksPerMapping))
     {
         bool releasedAfterMarkFailure = false;
+        bool ownerRemovedAfterMarkFailure = false;
         if (!usingTemplate)
         {
             dynamicOwner->baseAddress = pThunkMap;
@@ -1503,7 +1505,8 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
             LockTemplateThunkMappingOwners();
             if (releasedAfterMarkFailure)
             {
-                RemoveTemplateThunkMappingOwnerLocked(dynamicOwner);
+                ownerRemovedAfterMarkFailure =
+                    RemoveTemplateThunkMappingOwnerLocked(dynamicOwner);
             }
             else
             {
@@ -1512,7 +1515,8 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         }
 
         UnlockTemplateThunkMappingOwners();
-        if (!usingTemplate && releasedAfterMarkFailure)
+        if (!usingTemplate && releasedAfterMarkFailure &&
+            ownerRemovedAfterMarkFailure)
         {
             delete dynamicOwner;
         }

@@ -17,6 +17,9 @@
 #error "The initial RinOS CoreCLR PAL supports x86_64 only"
 #endif
 
+#include <stdint.h>
+#include <rin/memory/address_space_abi.h>
+
 #define RINOS_PAL_TARGET_NAME "RinOS"
 #define RINOS_PAL_TARGET_RID "rinos-x64"
 #define RINOS_PAL_RUNTIME_ROOT "/System/Dotnet"
@@ -33,13 +36,13 @@
 /* Inclusive lower bound for user mappings.  Keep this in lockstep with the
  * kernel's RIN_USER_ADDR_BASE so CoreCLR cannot accept a low-page mapping that
  * the target VMM rejects. */
-#define RINOS_PAL_USER_ADDRESS_MIN ((uintptr_t)0x0000000000010000ULL)
+#define RINOS_PAL_USER_ADDRESS_MIN ((uintptr_t)RIN_USER_ADDR_BASE)
 
 /* Exclusive upper bound for user mappings.  This is the product address-space
  * contract, not a host Linux canonical-address guess.  Keep it in the PAL
  * contract so GetSystemInfo/VirtualQuery and the GC/JIT see the same limit as
  * the kernel's native x86_64 user-space policy. */
-#define RINOS_PAL_USER_ADDRESS_LIMIT ((uintptr_t)0x00007FFFFFF00000ULL)
+#define RINOS_PAL_USER_ADDRESS_LIMIT ((uintptr_t)RIN_USER_ADDR_TOP_EXCLUSIVE)
 
 /* RinOS has no Linux /proc or ptrace contract.  Cross-process register
  * inspection stays explicitly unavailable until a RinOS debugger ABI exists;

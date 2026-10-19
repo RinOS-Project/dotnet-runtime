@@ -356,6 +356,66 @@ int32_t CryptoNative_RinTlsClientCertificateRequested(void* handle)
         ? 1 : 0;
 }
 
+static int rinos_tls_get_client_certificate_authorities(
+    rinos_tls_adapter* adapter, const uint8_t** authorities,
+    rin_size_t* authorities_length)
+{
+    rintls_client_certificate_request request;
+
+    if (authorities) *authorities = RIN_NULL;
+    if (authorities_length) *authorities_length = 0u;
+    if (!adapter || !authorities || !authorities_length)
+        return RINTLS_ERR_MEMORY;
+
+    rintls_memset(&request, 0, sizeof(request));
+    request.struct_size = (u32)sizeof(request);
+    if (rintls_get_client_certificate_request(adapter->context, &request) !=
+        RINTLS_OK)
+        return RINTLS_ERR_CERTIFICATE;
+
+    *authorities = (const uint8_t*)request.certificate_authorities;
+    *authorities_length = (rin_size_t)request.certificate_authorities_size;
+    return RINTLS_OK;
+}
+
+int32_t CryptoNative_RinTlsGetClientCertificateAuthoritiesLength(
+    void* handle, int32_t* length)
+{
+    rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;
+    const uint8_t* authorities = RIN_NULL;
+    rin_size_t authorities_length = 0u;
+    int result;
+
+    if (length) *length = 0;
+    if (!adapter || !length) return RINTLS_ERR_MEMORY;
+    result = rinos_tls_get_client_certificate_authorities(
+        adapter, &authorities, &authorities_length);
+    if (result != RINTLS_OK) return result;
+    if (authorities_length > 0x7fffffffU) return RINTLS_ERR_MEMORY;
+    *length = (int32_t)authorities_length;
+    return RINTLS_OK;
+}
+
+int32_t CryptoNative_RinTlsCopyClientCertificateAuthorities(
+    void* handle, uint8_t* destination, int32_t capacity)
+{
+    rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;
+    const uint8_t* authorities = RIN_NULL;
+    rin_size_t authorities_length = 0u;
+    int result;
+
+    if (!adapter || capacity < 0 || (capacity != 0 && !destination))
+        return RINTLS_ERR_MEMORY;
+    result = rinos_tls_get_client_certificate_authorities(
+        adapter, &authorities, &authorities_length);
+    if (result != RINTLS_OK) return result;
+    if (authorities_length > (rin_size_t)capacity)
+        return RINTLS_ERR_MEMORY;
+    if (authorities_length != 0u)
+        rintls_memcpy(destination, authorities, authorities_length);
+    return RINTLS_OK;
+}
+
 int32_t CryptoNative_RinTlsPendingOutputLength(void* handle)
 {
     rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;

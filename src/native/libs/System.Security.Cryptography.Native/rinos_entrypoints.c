@@ -146,6 +146,10 @@ int32_t CryptoNative_RinTlsSetServerCertificate(
     void* handle, const uint8_t* certificate_list, int32_t certificate_list_length,
     void* signer, void* signer_opaque);
 int32_t CryptoNative_RinTlsClientCertificateRequested(void* handle);
+int32_t CryptoNative_RinTlsGetClientCertificateAuthoritiesLength(
+    void* handle, int32_t* length);
+int32_t CryptoNative_RinTlsCopyClientCertificateAuthorities(
+    void* handle, uint8_t* destination, int32_t capacity);
 int32_t CryptoNative_RinTlsGetApplicationProtocolLength(void* handle,
                                                         int32_t* length);
 int32_t CryptoNative_RinTlsCopyApplicationProtocol(void* handle,
@@ -261,6 +265,8 @@ static const Entry s_cryptoNative[] =
     DllImportEntry(CryptoNative_RinTlsSetClientCertificate)
     DllImportEntry(CryptoNative_RinTlsSetServerCertificate)
     DllImportEntry(CryptoNative_RinTlsClientCertificateRequested)
+    DllImportEntry(CryptoNative_RinTlsGetClientCertificateAuthoritiesLength)
+    DllImportEntry(CryptoNative_RinTlsCopyClientCertificateAuthorities)
     DllImportEntry(CryptoNative_RinTlsGetApplicationProtocolLength)
     DllImportEntry(CryptoNative_RinTlsCopyApplicationProtocol)
     DllImportEntry(CryptoNative_RinTlsPendingOutputLength)

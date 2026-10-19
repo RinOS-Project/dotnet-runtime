@@ -55,6 +55,16 @@ internal static partial class Interop
             IntPtr handle);
 
         [LibraryImport(Libraries.CryptoNative,
+            EntryPoint = "CryptoNative_RinTlsGetClientCertificateAuthoritiesLength")]
+        private static partial int GetClientCertificateAuthoritiesLengthNative(
+            IntPtr handle, out int length);
+
+        [LibraryImport(Libraries.CryptoNative,
+            EntryPoint = "CryptoNative_RinTlsCopyClientCertificateAuthorities")]
+        private static unsafe partial int CopyClientCertificateAuthoritiesNative(
+            IntPtr handle, byte* destination, int capacity);
+
+        [LibraryImport(Libraries.CryptoNative,
             EntryPoint = "CryptoNative_RinTlsPendingOutputLength")]
         private static partial int PendingOutputLengthNative(IntPtr handle);
 
@@ -233,6 +243,22 @@ internal static partial class Interop
 
         internal static bool ClientCertificateRequested(RinSslHandle handle)
             => ClientCertificateRequestedNative(handle.DangerousGetHandle()) != 0;
+
+        internal static int GetClientCertificateAuthoritiesLength(
+            RinSslHandle handle, out int length)
+            => GetClientCertificateAuthoritiesLengthNative(
+                handle.DangerousGetHandle(), out length);
+
+        internal static unsafe int CopyClientCertificateAuthorities(
+            RinSslHandle handle, Span<byte> destination)
+        {
+            fixed (byte* destinationPtr = destination)
+            {
+                return CopyClientCertificateAuthoritiesNative(
+                    handle.DangerousGetHandle(), destinationPtr,
+                    destination.Length);
+            }
+        }
 
         internal static int PendingOutputLength(RinSslHandle handle)
             => PendingOutputLengthNative(handle.DangerousGetHandle());

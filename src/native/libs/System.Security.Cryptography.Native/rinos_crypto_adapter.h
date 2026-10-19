@@ -164,6 +164,10 @@ PALEXPORT int32_t CryptoNative_RinTlsSetServerCertificate(
     void* handle, const uint8_t* certificate_list,
     int32_t certificate_list_length, void* signer, void* signer_opaque);
 PALEXPORT int32_t CryptoNative_RinTlsClientCertificateRequested(void* handle);
+PALEXPORT int32_t CryptoNative_RinTlsGetClientCertificateAuthoritiesLength(
+    void* handle, int32_t* length);
+PALEXPORT int32_t CryptoNative_RinTlsCopyClientCertificateAuthorities(
+    void* handle, uint8_t* destination, int32_t capacity);
 PALEXPORT int32_t CryptoNative_RinTlsPendingOutputLength(void* handle);
 PALEXPORT int32_t CryptoNative_RinTlsReadOutput(
     void* handle, uint8_t* destination, int32_t capacity);

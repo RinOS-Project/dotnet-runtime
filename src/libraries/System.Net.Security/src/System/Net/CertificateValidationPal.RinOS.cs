@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net.Security;
 using System.Security.Authentication;
@@ -17,6 +18,7 @@ namespace System.Net
         private const int MaxPeerCertificateBytes = 8 * 1024;
         private const int MaxPeerCertificateChainBytes = 64 * 1024;
         private const int MaxPeerCertificates = 5;
+        private const int MaxCertificateAuthoritiesBytes = 64 * 1024;
 
         internal static SslPolicyErrors VerifyCertificateProperties(
             SafeDeleteContext? securityContext,
@@ -216,8 +218,83 @@ namespace System.Net
             => securityContext is RinSslHandle handle && handle.ClientCertificateConfigured;
 
         internal static string[] GetRequestCertificateAuthorities(
-            SafeDeleteContext _)
-            => Array.Empty<string>();
+            SafeDeleteContext securityContext)
+        {
+            if (securityContext is not RinSslHandle handle ||
+                !Interop.RinTls.ClientCertificateRequested(handle))
+            {
+                return Array.Empty<string>();
+            }
+
+            int result = Interop.RinTls.GetClientCertificateAuthoritiesLength(
+                handle, out int length);
+            if (result == -4)
+            {
+                // A request may have been consumed or the peer may have sent
+                // no request metadata. Do not manufacture an issuer list.
+                return Array.Empty<string>();
+            }
+            if (result != 0 || length < 0)
+            {
+                throw new AuthenticationException(
+                    result != 0
+                        ? $"RinTLS certificate-authority error {result}."
+                        : "RinTLS returned an invalid certificate-authority size.");
+            }
+            if (length == 0)
+            {
+                return Array.Empty<string>();
+            }
+            if (length < sizeof(ushort) || length > MaxCertificateAuthoritiesBytes)
+            {
+                throw new AuthenticationException(
+                    "RinTLS certificate-authority vector exceeds the managed size limit.");
+            }
+
+            byte[] encoded = new byte[length];
+            result = Interop.RinTls.CopyClientCertificateAuthorities(handle,
+                                                                       encoded);
+            if (result != 0)
+            {
+                throw new AuthenticationException(
+                    $"RinTLS certificate-authority copy error {result}.");
+            }
+
+            int listLength = (encoded[0] << 8) | encoded[1];
+            if (listLength != encoded.Length - sizeof(ushort))
+            {
+                throw new AuthenticationException(
+                    "RinTLS certificate-authority vector has an invalid length.");
+            }
+
+            var issuers = new List<string>();
+            int offset = sizeof(ushort);
+            while (offset < encoded.Length)
+            {
+                if (encoded.Length - offset < sizeof(ushort))
+                {
+                    throw new AuthenticationException(
+                        "RinTLS certificate-authority entry is truncated.");
+                }
+
+                int issuerLength = (encoded[offset] << 8) |
+                                   encoded[offset + 1];
+                offset += sizeof(ushort);
+                if (issuerLength == 0 ||
+                    issuerLength > encoded.Length - offset)
+                {
+                    throw new AuthenticationException(
+                        "RinTLS certificate-authority entry has an invalid DER length.");
+                }
+
+                X500DistinguishedName issuer = new X500DistinguishedName(
+                    encoded.AsSpan(offset, issuerLength));
+                issuers.Add(issuer.Name);
+                offset += issuerLength;
+            }
+
+            return issuers.ToArray();
+        }
 
         static partial void CheckSupportsStore(StoreLocation storeLocation,
                                                ref bool hasSupport)

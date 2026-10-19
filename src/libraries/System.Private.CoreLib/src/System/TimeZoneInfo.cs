@@ -63,7 +63,9 @@ namespace System
         private static CachedData GetCachedData()
         {
             CachedData cachedData = s_cachedData;
+#if TARGET_RINOS
             cachedData.EnsureRinOSTimeZoneDataFresh();
+#endif
             return cachedData;
         }
 
@@ -80,11 +82,11 @@ namespace System
         {
             private TimeZoneInfo? _localTimeZone;
 
+#if TARGET_RINOS
             private volatile uint _rinOSTimeZoneGeneration;
 
             internal void EnsureRinOSTimeZoneDataFresh()
             {
-#if TARGET_RINOS
                 uint generation = Interop.Sys.GetTimeZoneGeneration();
                 if (generation == 0u || generation == _rinOSTimeZoneGeneration)
                     return;
@@ -104,8 +106,8 @@ namespace System
                     _dateTimeNowCache = null;
                     _rinOSTimeZoneGeneration = generation;
                 }
-#endif
             }
+#endif
 
             private TimeZoneInfo CreateLocal()
             {
@@ -139,7 +141,9 @@ namespace System
             {
                 get
                 {
+#if TARGET_RINOS
                     EnsureRinOSTimeZoneDataFresh();
+#endif
                     return _localTimeZone ?? CreateLocal();
                 }
             }

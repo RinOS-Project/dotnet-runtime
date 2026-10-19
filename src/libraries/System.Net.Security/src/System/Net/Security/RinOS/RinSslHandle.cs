@@ -36,6 +36,13 @@ namespace System.Net.Security
         internal void MarkClientCertificateConfigured()
             => _clientCertificateConfigured = true;
 
+        // SetClientCertificate/SetServerCertificate own the callback only
+        // after the native call succeeds.  A rejected registration must not
+        // leave a GCHandle attached: the session may report the failure and
+        // be retried before its SafeHandle is disposed.
+        internal void DetachCertificateSignerState()
+            => ReleaseClientCertificateState();
+
         private void ReleaseClientCertificateState()
         {
             if (_certificateSignerState.IsAllocated)

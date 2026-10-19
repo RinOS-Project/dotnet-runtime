@@ -194,6 +194,12 @@ static void WasiAppendJob(WasiEventPipeJob *job)
 
 bool ep_rt_coreclr_wasi_queue_job(size_t (*cb)(void *data), void *data)
 {
+	// A malformed queue request must not become a deferred null call.  This
+	// path is also used by shutdown-adjacent code, where an assertion alone is
+	// not a safe release-build failure mode.
+	if (cb == nullptr)
+		return false;
+
 	_ASSERTE(cb != nullptr);
 	WasiEventPipeJob *job = new (nothrow) WasiEventPipeJob();
 	if (job == nullptr)

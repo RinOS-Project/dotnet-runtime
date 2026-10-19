@@ -1310,6 +1310,51 @@ static int provider_name_valid(const RinOsKerberosProviderName* name)
            name->size <= RIN_KERBEROS_PROVIDER_MAX_TARGET_NAME_SIZE;
 }
 
+/* RinOS does not have a caller-selected credential namespace.  A named
+ * initiator credential is therefore permitted only when its provider-owned
+ * principal is exactly the authenticated session principal returned by the
+ * same owner handle.  This keeps GSS_C_NO_NAME (DefaultCredentials) and a
+ * named acquisition on one real session credential path; it never turns a
+ * requested name into a username, password, token, or fabricated handle. */
+static uint32_t provider_validate_named_session_credential(
+    const RinKerberosCredentialOwnerV1* owner, void* owner_credential,
+    const RinOsKerberosProviderName* desired_name, uint32_t* minor_status)
+{
+    uint8_t principal[RINOS_KERBEROS_MAX_PRINCIPAL_SIZE] = {};
+    uint32_t principal_size = 0u;
+    uint64_t generation = 0u;
+    uint32_t owner_minor = 0u;
+    uint32_t status = RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
+    int matches = 0;
+
+    if (minor_status != NULL) *minor_status = 0u;
+    if (owner == NULL || owner_credential == NULL ||
+        !provider_name_valid(desired_name) ||
+        owner->get_session_principal == NULL)
+        return RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
+
+    status = owner->get_session_principal(
+        owner->context, &owner_minor, owner_credential, principal,
+        sizeof(principal), &principal_size, &generation);
+    if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK || owner_minor != 0u ||
+        principal_size == 0u ||
+        principal_size > RINOS_KERBEROS_MAX_PRINCIPAL_SIZE || generation == 0u) {
+        if (status == RIN_KERBEROS_CREDENTIAL_OWNER_OK)
+            status = RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
+        goto cleanup;
+    }
+
+    matches = principal_size == desired_name->size &&
+              memcmp(principal, desired_name->bytes, principal_size) == 0;
+    status = matches ? RIN_KERBEROS_CREDENTIAL_OWNER_OK
+                     : RIN_KERBEROS_CREDENTIAL_OWNER_NO_CREDENTIAL;
+
+cleanup:
+    provider_zero(principal, sizeof(principal));
+    if (minor_status != NULL) *minor_status = owner_minor;
+    return status;
+}
+
 static int provider_operation_valid(uint16_t operation)
 {
     switch (operation) {
@@ -1595,12 +1640,12 @@ static uint32_t provider_initiate_cred_spnego(
     RinOsKerberosProviderCredential* credential;
     void* owner_credential = NULL;
     uint32_t status;
+    uint32_t named_status;
+    uint32_t cleanup_minor = 0u;
     (void)context;
     if (output == NULL) return provider_unavailable(minor_status);
     *output = NULL;
-    /* Named credentials require a product policy that is not part of the
-     * current owner ABI. Never substitute a username or fixed token. */
-    if (desired_name != NULL || owner == NULL ||
+    if (owner == NULL ||
         (owner->capability_mask &
              RIN_KERBEROS_CREDENTIAL_OWNER_CAP_SESSION_INITIATOR) == 0u ||
         owner->acquire_session_initiator == NULL)
@@ -1628,6 +1673,38 @@ static uint32_t provider_initiate_cred_spnego(
         free(credential);
         return provider_unavailable(minor_status);
     }
+
+    if (desired_name != NULL) {
+        /* Acquire the real session handle first, then authorize a named
+         * request against its bounded non-secret principal.  The owner is
+         * still the authority for the ccache and generation. */
+        named_status = provider_validate_named_session_credential(
+            owner, owner_credential,
+            (const RinOsKerberosProviderName*)desired_name, minor_status);
+        if (named_status != RIN_KERBEROS_CREDENTIAL_OWNER_OK) {
+            uint32_t release_status = owner->release_credential(
+                owner->context, &cleanup_minor, &owner_credential);
+            if (owner_credential != NULL) {
+                provider_initialize_credential(
+                    credential, owner,
+                    RIN_KERBEROS_OPERATION_CREDENTIAL_INITIATOR,
+                    owner_credential);
+                *output = credential;
+                if (release_status == RIN_KERBEROS_CREDENTIAL_OWNER_OK)
+                    return provider_unavailable(minor_status);
+                return provider_status_from_owner(release_status,
+                                                  &cleanup_minor);
+            } else {
+                provider_zero(credential, sizeof(*credential));
+                free(credential);
+            }
+            if (release_status != RIN_KERBEROS_CREDENTIAL_OWNER_OK)
+                return provider_status_from_owner(release_status,
+                                                  &cleanup_minor);
+            return provider_status_from_owner(named_status, minor_status);
+        }
+    }
+
     provider_initialize_credential(
         credential, owner, RIN_KERBEROS_OPERATION_CREDENTIAL_INITIATOR,
         owner_credential);

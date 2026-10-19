@@ -68,8 +68,18 @@ extern uint32_t rin_system_timezone_generation(void)
 char* SystemNative_GetDefaultTimeZone(void)
 {
     char timezone_name[128] = { 0 };
-    if (rin_system_timezone_get && rin_system_timezone_get(timezone_name, sizeof(timezone_name)))
-        return strdup(timezone_name);
+    size_t length = 0;
+    if (rin_system_timezone_get &&
+        rin_system_timezone_get(timezone_name, sizeof(timezone_name)))
+    {
+        /* The owner is a product ABI boundary.  Do not let a malformed
+         * provider result turn into an unbounded strdup read, and do not
+         * expose an empty identifier as a successful timezone query. */
+        while (length < sizeof(timezone_name) && timezone_name[length] != '\0')
+            ++length;
+        if (length != 0 && length < sizeof(timezone_name))
+            return strdup(timezone_name);
+    }
     return NULL;
 }
 

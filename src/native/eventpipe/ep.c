@@ -1445,6 +1445,7 @@ ep_start_session (EventPipeSessionID session_id)
 	EventPipeProviderCallbackDataQueue callback_data_queue;
 	EventPipeProviderCallbackData provider_callback_data;
 	EventPipeProviderCallbackDataQueue *provider_callback_data_queue = NULL;
+	bool streaming_started = true;
 
 	EP_LOCK_ENTER (section1)
 		ep_raise_error_if_nok_holding_lock (is_session_id_in_collection (session_id), section1);
@@ -1459,13 +1460,21 @@ ep_start_session (EventPipeSessionID session_id)
 
 		// Session drain threads are native (no managed Thread / GC dependency), so start streaming
 		// immediately even during early startup instead of deferring to ep_finish_init.
-		ep_session_start_streaming (session);
+		streaming_started = ep_session_start_streaming (session);
 	EP_LOCK_EXIT (section1)
 
-	// Dispatch the provider-enable callbacks outside the lock. A blocking GCHeapSnapshot callback can force a
-	// stop-the-world heap walk that fills the buffer and parks the producer on capacity; the drain thread was
-	// already created by ep_session_start_streaming above and drains in preemptive mode, so it frees capacity
-	// and wakes the parked producer whether or not it has finished starting - no pre-wait is needed.
+	// The session was made writable before the streaming owner was started.
+	// If the PAL/queue owner rejected that startup, undo the enable outside the
+	// EventPipe lock instead of returning a live session with no drain worker.
+	if (!streaming_started)
+		ep_disable (session_id);
+
+	// Dispatch the provider callbacks outside the lock. On the normal path a
+	// native drain owner was created before this point, so a blocking
+	// GCHeapSnapshot callback can safely park while the drain frees capacity.
+	// When owner startup failed, ep_disable above has already queued the
+	// balancing disable callbacks; dispatching this queue still preserves the
+	// provider callback lifecycle without reporting a live session.
 	while (ep_provider_callback_data_queue_try_dequeue (provider_callback_data_queue, &provider_callback_data)) {
 		ep_rt_prepare_provider_invoke_callback (&provider_callback_data);
 		provider_invoke_callback (&provider_callback_data);

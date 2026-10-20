@@ -37,7 +37,7 @@ session_disable_streaming_thread (EventPipeSession *session);
 
 // _Requires_lock_held (ep)
 static
-void
+bool
 session_create_streaming_thread (EventPipeSession *session);
 
 static
@@ -181,7 +181,7 @@ static size_t streaming_loop_tick(EventPipeSession *const session) {
 #endif // PERFTRACING_DISABLE_THREADS
 
 static
-void
+bool
 session_create_streaming_thread (EventPipeSession *session)
 {
 	EP_ASSERT (session != NULL);
@@ -196,21 +196,27 @@ session_create_streaming_thread (EventPipeSession *session)
 
 #ifndef PERFTRACING_DISABLE_THREADS
 	ep_rt_thread_id_t thread_id = ep_rt_uint64_t_to_thread_id_t (0);
-	if (!ep_rt_thread_create ((void *)streaming_thread, (void *)session, EP_THREAD_TYPE_SESSION, &thread_id))
-		EP_UNREACHABLE ("Unable to create streaming thread.");
+	if (!ep_rt_thread_create ((void *)streaming_thread, (void *)session, EP_THREAD_TYPE_SESSION, &thread_id)) {
+		// A target PAL may reject thread creation.  Do not leave an enabled
+		// session with no drain owner; the caller propagates this failure to
+		// ep_start_session, which performs the ordinary session teardown.
+		ep_session_set_streaming_enabled (session, false);
+		ep_rt_wait_event_set (&session->rt_thread_shutdown_event);
+		return false;
+	}
 #else
 	ep_session_inc_ref (session);
 	if (!ep_rt_queue_job ((void *)streaming_loop_tick, (void *)session)) {
 		// A single-threaded owner may reject the job when its queue is absent or
-		// exhausted.  Do not leave the session enabled with no worker to observe
-		// the shutdown flag: that would make session_disable_streaming_thread
-		// wait forever.  Publish the same completion signal as a worker that has
-		// already stopped, then drop the reference acquired for the job.
+		// exhausted.  Publish completion and drop the job reference, then return
+		// failure so ep_start_session tears down the already-enabled session.
 		ep_session_set_streaming_enabled (session, false);
 		ep_rt_wait_event_set (&session->rt_thread_shutdown_event);
 		ep_session_dec_ref (session);
+		return false;
 	}
 #endif
+	return true;
 }
 
 static
@@ -602,18 +608,19 @@ ep_session_write_sequence_point_unbuffered (EventPipeSession *session)
 	ep_sequence_point_fini (&sequence_point);
 }
 
-void
+bool
 ep_session_start_streaming (EventPipeSession *session)
 {
 	EP_ASSERT (session != NULL);
 
 	ep_requires_lock_held ();
+	bool result = true;
 
 	if (session->file != NULL)
 		ep_file_initialize_file (session->file);
 
 	if (ep_session_type_uses_streaming_thread (session->session_type))
-		session_create_streaming_thread (session);
+		result = session_create_streaming_thread (session);
 
 	if (session->session_type == EP_SESSION_TYPE_SYNCHRONOUS) {
 		EP_ASSERT (session->file == NULL);
@@ -624,7 +631,7 @@ ep_session_start_streaming (EventPipeSession *session)
 		ep_rt_volatile_store_uint32_t_without_barrier (&session->started, 1);
 
 	ep_requires_lock_held ();
-	return;
+	return result;
 }
 
 bool

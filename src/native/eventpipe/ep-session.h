@@ -150,7 +150,7 @@ ep_session_write_sequence_point_unbuffered (EventPipeSession *session);
 // - sends file header information for nettrace format
 // - turns on streaming thread which flushes events to stream
 // _Requires_lock_held (ep)
-void
+bool
 ep_session_start_streaming (EventPipeSession *session);
 
 // Determine if the session is valid or not.

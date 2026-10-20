@@ -78,28 +78,46 @@ static int rinos_gss_kerberos_owner_valid(const RinAuthProviderV1* provider)
 
     owner = rin_kerberos_credential_owner_get_v1();
     operation_owner = rin_kerberos_operation_owner_get_v1();
-    return owner != NULL && operation_owner != NULL &&
+    if (owner == NULL || operation_owner == NULL ||
         /* V1 is a versioned callback table.  An owner may append fields for
          * a later producer without changing the prefix consumed here; only
          * a truncated prefix is unsafe. */
-        owner->struct_size >= sizeof(*owner) &&
-        owner->version == RIN_KERBEROS_CREDENTIAL_OWNER_ABI_VERSION &&
-        owner->reserved0 == 0u &&
-        owner->reserved1 == 0u &&
+        owner->struct_size < sizeof(*owner) ||
+        owner->version != RIN_KERBEROS_CREDENTIAL_OWNER_ABI_VERSION ||
+        owner->reserved0 != 0u || owner->reserved1 != 0u ||
         (owner->capability_mask &
-            RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES) ==
-            RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES &&
+            RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES) == 0u ||
         (owner->capability_mask &
-            ~RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES) == 0u &&
-        owner->acquire_session_initiator != NULL &&
-        owner->acquire_acceptor_keytab != NULL &&
-        owner->release_credential != NULL &&
-        owner->get_session_principal != NULL &&
-        operation_owner->struct_size >= sizeof(*operation_owner) &&
-        operation_owner->version ==
-            RIN_KERBEROS_OPERATION_OWNER_ABI_VERSION &&
-        operation_owner->reserved0 == 0u &&
-        operation_owner->operation != NULL;
+            ~RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES) != 0u ||
+        owner->release_credential == NULL ||
+        operation_owner->struct_size < sizeof(*operation_owner) ||
+        operation_owner->version !=
+            RIN_KERBEROS_OPERATION_OWNER_ABI_VERSION ||
+        operation_owner->reserved0 != 0u ||
+        operation_owner->operation == NULL)
+    {
+        return 0;
+    }
+
+    /* ccache and service-keytab ownership are independent.  A live login
+     * session may legitimately advertise only the initiator role, while a
+     * service may legitimately advertise only its acceptor keytab.  The
+     * role-specific provider callback returns NO_CREDENTIAL when that role
+     * is absent; advertising the other valid role must not be rejected here. */
+    if ((owner->capability_mask &
+            RIN_KERBEROS_CREDENTIAL_OWNER_CAP_SESSION_INITIATOR) != 0u &&
+        (owner->acquire_session_initiator == NULL ||
+         owner->get_session_principal == NULL))
+    {
+        return 0;
+    }
+    if ((owner->capability_mask &
+            RIN_KERBEROS_CREDENTIAL_OWNER_CAP_ACCEPTOR_KEYTAB) != 0u &&
+        owner->acquire_acceptor_keytab == NULL)
+    {
+        return 0;
+    }
+    return 1;
 }
 
 /* The RinOS provider table is process-lifetime storage in the linked target

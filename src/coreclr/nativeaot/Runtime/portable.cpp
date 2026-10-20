@@ -359,6 +359,56 @@ static bool FinishPortableThunkMappingRelease(
     return true;
 }
 
+/* The provider table is process-global, while a mapping retains the exact
+ * provider that allocated it.  Do not let a provider replacement redirect
+ * the geometry/address queries for an existing mapping: the new provider can
+ * interpret the old address space with a different layout or context.  A
+ * transient discovery failure is safe to tolerate because the owner contract
+ * keeps the allocating table valid until its mapping is released. */
+static const RinNativeAotThunkProviderV1* GetPortableThunkProviderForRuntime(
+    bool* providerConflict)
+{
+    if (providerConflict != nullptr)
+        *providerConflict = false;
+
+    const RinNativeAotThunkProviderV1* discovered =
+        GetRinNativeAotThunkProvider();
+    const RinNativeAotThunkProviderV1* active = nullptr;
+    bool multipleProviders = false;
+
+    LockPortableThunkMappingOwners();
+    for (RinOsPortableThunkMappingOwner* owner =
+             g_portableThunkMappingOwners;
+         owner != nullptr;
+         owner = owner->next)
+    {
+        if (owner->provider == nullptr)
+            continue;
+
+        if (active == nullptr)
+            active = owner->provider;
+        else if (active != owner->provider)
+        {
+            multipleProviders = true;
+            break;
+        }
+    }
+
+    if (multipleProviders ||
+        (active != nullptr && discovered != nullptr && active != discovered))
+    {
+        if (providerConflict != nullptr)
+            *providerConflict = true;
+        UnlockPortableThunkMappingOwners();
+        return nullptr;
+    }
+
+    const RinNativeAotThunkProviderV1* selected =
+        active != nullptr ? active : discovered;
+    UnlockPortableThunkMappingOwners();
+    return selected;
+}
+
 #if defined(FEATURE_PORTABLE_HELPERS)
 EXTERN_C void* RhpGcAlloc(MethodTable *pEEType, uint32_t uFlags, intptr_t numElements, void * pTransitionFrame);
 EXTERN_C void RhExceptionHandling_FailedAllocation(MethodTable *pEEType, bool fIsOverflow);
@@ -718,8 +768,11 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void ** ppThunksSection)
     if (!RetryPendingPortableThunkMappingReleases())
         return E_FAIL;
 
+    bool providerConflict = false;
     const RinNativeAotThunkProviderV1* provider =
-        GetRinNativeAotThunkProvider();
+        GetPortableThunkProviderForRuntime(&providerConflict);
+    if (providerConflict)
+        return E_FAIL;
     if (provider != nullptr)
     {
         if (!IsValidRinNativeAotThunkGeometry(provider))
@@ -831,7 +884,7 @@ FCIMPLEND
 FCIMPL0(void *, RhpGetThunksBase)
 {
     const RinNativeAotThunkProviderV1* provider =
-        GetRinNativeAotThunkProvider();
+        GetPortableThunkProviderForRuntime(nullptr);
     if (provider != nullptr)
         return provider->get_thunks_base(provider->context);
 
@@ -842,7 +895,7 @@ FCIMPLEND
 FCIMPL0(int, RhpGetNumThunkBlocksPerMapping)
 {
     const RinNativeAotThunkProviderV1* provider =
-        GetRinNativeAotThunkProvider();
+        GetPortableThunkProviderForRuntime(nullptr);
     if (provider != nullptr)
         return provider->get_num_thunk_blocks_per_mapping(provider->context);
 
@@ -853,7 +906,7 @@ FCIMPLEND
 FCIMPL0(int, RhpGetNumThunksPerBlock)
 {
     const RinNativeAotThunkProviderV1* provider =
-        GetRinNativeAotThunkProvider();
+        GetPortableThunkProviderForRuntime(nullptr);
     if (provider != nullptr)
         return provider->get_num_thunks_per_block(provider->context);
 
@@ -864,7 +917,7 @@ FCIMPLEND
 FCIMPL0(int, RhpGetThunkSize)
 {
     const RinNativeAotThunkProviderV1* provider =
-        GetRinNativeAotThunkProvider();
+        GetPortableThunkProviderForRuntime(nullptr);
     if (provider != nullptr)
         return provider->get_thunk_size(provider->context);
 
@@ -875,7 +928,7 @@ FCIMPLEND
 FCIMPL1(void*, RhpGetThunkDataBlockAddress, void* pThunkStubAddress)
 {
     const RinNativeAotThunkProviderV1* provider =
-        GetRinNativeAotThunkProvider();
+        GetPortableThunkProviderForRuntime(nullptr);
     if (provider != nullptr && pThunkStubAddress != nullptr)
         return provider->get_thunk_data_block_address(
             provider->context, pThunkStubAddress);
@@ -887,7 +940,7 @@ FCIMPLEND
 FCIMPL1(void*, RhpGetThunkStubsBlockAddress, void* pThunkDataAddress)
 {
     const RinNativeAotThunkProviderV1* provider =
-        GetRinNativeAotThunkProvider();
+        GetPortableThunkProviderForRuntime(nullptr);
     if (provider != nullptr && pThunkDataAddress != nullptr)
         return provider->get_thunk_stubs_block_address(
             provider->context, pThunkDataAddress);
@@ -899,7 +952,7 @@ FCIMPLEND
 FCIMPL0(int, RhpGetThunkBlockSize)
 {
     const RinNativeAotThunkProviderV1* provider =
-        GetRinNativeAotThunkProvider();
+        GetPortableThunkProviderForRuntime(nullptr);
     if (provider != nullptr)
         return provider->get_thunk_block_size(provider->context);
 
@@ -910,7 +963,7 @@ FCIMPLEND
 FCIMPL0(void *, RhGetCommonStubAddress)
 {
     const RinNativeAotThunkProviderV1* provider =
-        GetRinNativeAotThunkProvider();
+        GetPortableThunkProviderForRuntime(nullptr);
     if (provider != nullptr)
         return provider->get_common_stub_address(provider->context);
 
@@ -921,7 +974,7 @@ FCIMPLEND
 FCIMPL0(void *, RhGetCurrentThunkContext)
 {
     const RinNativeAotThunkProviderV1* provider =
-        GetRinNativeAotThunkProvider();
+        GetPortableThunkProviderForRuntime(nullptr);
     if (provider != nullptr)
         return provider->get_current_thunk_context(provider->context);
 

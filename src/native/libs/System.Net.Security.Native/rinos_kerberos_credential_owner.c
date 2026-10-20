@@ -69,11 +69,15 @@ static int owner_valid(const RinOsKerberosOwnerContext* context)
         __atomic_load_n(&context->initialized, __ATOMIC_ACQUIRE) !=
             RINOS_KERBEROS_OWNER_INITIALIZED)
         return 0;
+    /* The table is an append-only versioned prefix.  This owner currently
+     * emits the V2 prefix, but rejecting a larger compatible table here would
+     * make a producer-side ABI extension fail closed before the callbacks
+     * that this runtime actually consumes can be used. */
     return context->magic == RINOS_KERBEROS_OWNER_MAGIC &&
-           context->abi.struct_size == sizeof(context->abi) &&
+           context->abi.struct_size >= sizeof(context->abi) &&
            context->abi.version == RIN_KERBEROS_CREDENTIAL_OWNER_ABI_VERSION &&
            context->abi.context == (const void*)context &&
-           context->operation_abi.struct_size ==
+           context->operation_abi.struct_size >=
                sizeof(context->operation_abi) &&
            context->operation_abi.version ==
                RIN_KERBEROS_OPERATION_OWNER_ABI_VERSION &&

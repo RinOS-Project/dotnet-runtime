@@ -179,8 +179,15 @@ struct WasiEventPipeJob
 	WasiEventPipeJob *Next;
 };
 
+// Keep the single-threaded owner fail-closed under a producer bug or a
+// callback that keeps scheduling work faster than the managed event loop can
+// pump it. The normal server/session pair uses two nodes and reuses them
+// across pumps; the limit counts all live nodes, including a node detached
+// while its callback is executing.
+static constexpr size_t WasiEventPipeMaxLiveJobs = 64;
 static WasiEventPipeJob *s_wasiJobsHead = nullptr;
 static WasiEventPipeJob *s_wasiJobsTail = nullptr;
+static size_t s_wasiLiveJobCount = 0;
 
 static void WasiAppendJob(WasiEventPipeJob *job)
 {
@@ -199,6 +206,8 @@ bool ep_rt_coreclr_wasi_queue_job(size_t (*cb)(void *data), void *data)
 	// not a safe release-build failure mode.
 	if (cb == nullptr)
 		return false;
+	if (s_wasiLiveJobCount >= WasiEventPipeMaxLiveJobs)
+		return false;
 
 	_ASSERTE(cb != nullptr);
 	WasiEventPipeJob *job = new (nothrow) WasiEventPipeJob();
@@ -207,6 +216,7 @@ bool ep_rt_coreclr_wasi_queue_job(size_t (*cb)(void *data), void *data)
 
 	job->Callback = cb;
 	job->Data = data;
+	s_wasiLiveJobCount++;
 	WasiAppendJob(job);
 	return true;
 }
@@ -222,7 +232,10 @@ bool ep_rt_coreclr_wasi_run_jobs(void)
 	{
 		WasiEventPipeJob *next = job->Next;
 		if (job->Callback(job->Data) != 0)
+		{
 			delete job;
+			s_wasiLiveJobCount--;
+		}
 		else
 			WasiAppendJob(job);
 		job = next;

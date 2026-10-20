@@ -163,10 +163,19 @@ static size_t streaming_loop_tick(EventPipeSession *const session) {
 	ok = ep_session_write_all_buffers_to_file (session, &events_written);
 	EP_GCX_PREEMP_EXIT
 	if (!ok) {
-		// Keep the job so the next tick sees streaming disabled and releases its reference.
+		// This callback owns the queued-job reference.  Do not call ep_disable while
+		// streaming_enabled is still true: the disable path would wait for this same
+		// callback to signal rt_thread_shutdown_event, and the single-threaded owner
+		// could never reach the return below.  Publish completion first, then perform
+		// the remaining session teardown synchronously while the job reference keeps
+		// the session alive.
+		ep_session_set_streaming_enabled (session, false);
+		ep_rt_wait_event_set (&session->rt_thread_shutdown_event);
 		ep_disable ((EventPipeSessionID)session);
+		ep_session_dec_ref (session);
+		return 1; // done; the queue owner releases the job node
 	}
-	return 0; // continue
+	return 0; // continue until shutdown disables streaming
 }
 
 #endif // PERFTRACING_DISABLE_THREADS

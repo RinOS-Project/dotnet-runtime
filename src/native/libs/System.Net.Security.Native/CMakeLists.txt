@@ -8,6 +8,10 @@ add_compile_options(-Wno-incompatible-pointer-types-discards-qualifiers)
 
 set(NATIVE_LIBS_EXTRA)
 if (CLR_CMAKE_TARGET_RINOS)
+    if (NOT DEFINED RINOS_REPO_ROOT OR RINOS_REPO_ROOT STREQUAL "")
+        message(FATAL_ERROR "RinOS System.Net.Security.Native requires RINOS_REPO_ROOT")
+    endif()
+
     # RinOS TLS is provided by System.Security.Cryptography.Native through
     # the product RinTLS adapter.  This library is the separate GSSAPI PAL
     # used by Negotiate/Kerberos/NTLM; do not discover or link a host GSS

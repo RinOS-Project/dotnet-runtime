@@ -107,42 +107,73 @@ static void provider_zero(void* pointer, size_t size)
     while (size-- != 0u) *bytes++ = 0u;
 }
 
-#define RINOS_KERBEROS_BUFFER_MAGIC UINT64_C(0x314646554f534e52)
-
 /* GSS release receives the public buffer length from managed/native code.
- * That length is metadata, not an allocation authority: a malformed caller
- * must not turn it into an out-of-bounds wipe. Keep the real capacity in a
- * provider-owned prefix and recover it only through the provider magic. */
-typedef struct RinOsKerberosProviderBufferHeader {
-    uint64_t magic;
+ * That length is metadata, not an allocation authority.  A provider-owned
+ * header is not sufficient for this boundary: a hostile or stale pointer
+ * could make a header-at-buffer-minus-one read fault before its magic is
+ * checked.  Keep exact live allocations in a process-local ownership list so
+ * invalid and repeated releases are harmless no-ops. */
+typedef struct RinOsKerberosProviderBuffer {
+    struct RinOsKerberosProviderBuffer* next;
     size_t capacity;
-} RinOsKerberosProviderBufferHeader;
+    uint8_t data[];
+} RinOsKerberosProviderBuffer;
+
+static volatile unsigned int g_provider_buffer_lock;
+static RinOsKerberosProviderBuffer* g_provider_buffers;
+
+static void provider_buffer_lock(void)
+{
+    while (__sync_lock_test_and_set(&g_provider_buffer_lock, 1u) != 0u) {
+    }
+}
+
+static void provider_buffer_unlock(void)
+{
+    __sync_lock_release(&g_provider_buffer_lock);
+}
 
 static uint8_t* provider_buffer_alloc(size_t capacity)
 {
-    RinOsKerberosProviderBufferHeader* header;
-    if (capacity > SIZE_MAX - sizeof(*header)) return NULL;
-    header = (RinOsKerberosProviderBufferHeader*)calloc(
-        1u, sizeof(*header) + capacity);
-    if (header == NULL) return NULL;
-    header->magic = RINOS_KERBEROS_BUFFER_MAGIC;
-    header->capacity = capacity;
-    return (uint8_t*)(header + 1);
+    RinOsKerberosProviderBuffer* buffer;
+    if (capacity > SIZE_MAX - sizeof(*buffer)) return NULL;
+    buffer = (RinOsKerberosProviderBuffer*)calloc(
+        1u, sizeof(*buffer) + capacity);
+    if (buffer == NULL) return NULL;
+    buffer->capacity = capacity;
+    provider_buffer_lock();
+    buffer->next = g_provider_buffers;
+    g_provider_buffers = buffer;
+    provider_buffer_unlock();
+    return buffer->data;
 }
 
 static void provider_buffer_dispose(void* buffer)
 {
-    RinOsKerberosProviderBufferHeader* header;
+    RinOsKerberosProviderBuffer* previous = NULL;
+    RinOsKerberosProviderBuffer* current;
     if (buffer == NULL) return;
-    header = ((RinOsKerberosProviderBufferHeader*)buffer) - 1;
-    if (header->magic != RINOS_KERBEROS_BUFFER_MAGIC ||
-        header->capacity > SIZE_MAX - sizeof(*header))
+
+    provider_buffer_lock();
+    current = g_provider_buffers;
+    while (current != NULL && current->data != (uint8_t*)buffer) {
+        previous = current;
+        current = current->next;
+    }
+    if (current == NULL) {
+        provider_buffer_unlock();
         return;
-    provider_zero(buffer, header->capacity);
-    header->magic = 0u;
-    header->capacity = 0u;
-    provider_zero(header, sizeof(*header));
-    free(header);
+    }
+    if (previous == NULL)
+        g_provider_buffers = current->next;
+    else
+        previous->next = current->next;
+    provider_buffer_unlock();
+
+    provider_zero(current->data, current->capacity);
+    current->capacity = 0u;
+    current->next = NULL;
+    free(current);
 }
 
 static uint32_t provider_unavailable(uint32_t* minor_status)

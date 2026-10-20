@@ -52,14 +52,19 @@ set(PRERELEASE 1)
 # conditionals. CMake is intentionally not cross-compiling in that mode, so
 # use the actual host identity instead of allowing the RinOS target OS to
 # select HOST_UNIX/POSIX implementations.
-if(CLR_CMAKE_TARGET_OS STREQUAL "wasi")
+if(CLR_CROSS_COMPONENTS_BUILD AND NOT CMAKE_CROSSCOMPILING)
+    # Cross-component JIT builds are host PE/DLL tools.  They retain the
+    # WASI/RinOS target variables for TARGET_* conditionals, but HOST_* must
+    # describe the machine compiling and loading the tool.  In particular,
+    # selecting WASI here makes an MSVC host build include POSIX-only headers
+    # and loses the Windows CRT/SEH ABI.
+    set(CLR_CMAKE_HOST_OS ${CMAKE_HOST_SYSTEM_NAME})
+elseif(CLR_CMAKE_TARGET_OS STREQUAL "wasi")
     # The WASI runtime is compiled with the WASI SDK even when the build host
     # is Windows. Treat WASI as the native runtime host for HOST_* feature
     # selection; otherwise HOST_WINDOWS and HOST_UNIX are both defined and
     # minipal selects Windows headers for the WASI target.
     set(CLR_CMAKE_HOST_OS ${CLR_CMAKE_TARGET_OS})
-elseif(CLR_CROSS_COMPONENTS_BUILD AND NOT CMAKE_CROSSCOMPILING)
-    set(CLR_CMAKE_HOST_OS ${CMAKE_HOST_SYSTEM_NAME})
 elseif(CMAKE_CROSSCOMPILING)
     set(CLR_CMAKE_HOST_OS ${CMAKE_HOST_SYSTEM_NAME})
 else()
@@ -286,10 +291,14 @@ if(CLR_CMAKE_HOST_OS STREQUAL emscripten)
     set(CLR_CMAKE_HOST_BROWSER 1)
 endif(CLR_CMAKE_HOST_OS STREQUAL emscripten)
 
-if(CLR_CMAKE_TARGET_OS STREQUAL wasi)
+# A normal WASI runtime is its own host for the purpose of the platform
+# feature set.  The wasmjit cross-component build is different: its output is
+# a host Windows PE/DLL and only TARGET_WASI/TARGET_WASM describe the code it
+# generates.  Do not leak the target's WASI host identity into that graph.
+if(CLR_CMAKE_TARGET_OS STREQUAL wasi AND NOT CLR_CROSS_COMPONENTS_BUILD)
     set(CLR_CMAKE_HOST_WASI 1)
     set(CLR_CMAKE_HOST_UNIX 1)
-endif(CLR_CMAKE_TARGET_OS STREQUAL wasi)
+endif()
 
 #--------------------------------------------
 # This repo builds two set of binaries
@@ -597,7 +606,7 @@ else()
             add_compile_options(-mbulk-memory)
             add_compile_options(-msimd128)
         endif()
-        if(CLR_CMAKE_TARGET_WASI)
+        if(CLR_CMAKE_TARGET_WASI AND NOT CLR_CROSS_COMPONENTS_BUILD)
             # Native wasm exceptions: sjlj cannot handle the interpreter's
             # ResumeAfterCatch (throw-from-catch). -wasm-use-legacy-eh=false
             # selects the new try_table/throw_ref proposal that wasmtime 45+

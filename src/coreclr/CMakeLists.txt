@@ -12,6 +12,13 @@ if(CLR_CROSS_COMPONENTS_BUILD)
   # so remove target-only options left by the preceding RinOS configure before
   # generating the host JIT graph.
   set_property(DIRECTORY PROPERTY COMPILE_OPTIONS "")
+  if(MSVC)
+    # configurecompiler.cmake installed the normal CoreCLR /EHa directory
+    # option before the reset above.  Cross-component JIT and jitinterface
+    # still use C++/SEH exceptions, so restore the host ABI explicitly after
+    # removing target-only options.
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/EHa>)
+  endif()
 endif()
 
 if(CLR_CMAKE_TARGET_RINOS AND NOT CLR_CROSS_COMPONENTS_BUILD)

@@ -1066,13 +1066,17 @@ if (MSVC)
 
   # Enable EH-continuation table and CET-compatibility for native components for amd64 builds except for components of the Mono
   # runtime. Added some switches using variables instead of add_compile_options to let individual projects override it.
-  if (CLR_CMAKE_HOST_ARCH_AMD64 AND NOT CLR_CMAKE_RUNTIME_MONO)
+  # Cross-component JIT/jitinterface outputs are host tools, but they are
+  # compiled from target-conditioned sources and do not carry the native
+  # runtime's CET EH-continuation metadata.  Do not put /guard:ehcont on that
+  # DLL; the target runtime's unwind/CET policy is configured independently.
+  if (CLR_CMAKE_HOST_ARCH_AMD64 AND NOT CLR_CMAKE_RUNTIME_MONO AND NOT CLR_CROSS_COMPONENTS_BUILD)
     set_property(GLOBAL PROPERTY CLR_EH_CONTINUATION ON)
 
     add_compile_options($<$<AND:$<COMPILE_LANGUAGE:C,CXX,ASM_MASM>,$<BOOL:$<TARGET_PROPERTY:CLR_EH_CONTINUATION>>>:/guard:ehcont>)
     add_link_options($<$<BOOL:$<TARGET_PROPERTY:CLR_EH_CONTINUATION>>:/guard:ehcont>)
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /CETCOMPAT")
-  endif (CLR_CMAKE_HOST_ARCH_AMD64 AND NOT CLR_CMAKE_RUNTIME_MONO)
+  endif()
 
   # Statically linked CRT (libcmt[d].lib, libvcruntime[d].lib and libucrt[d].lib) by default. This is done to avoid
   # linking in VCRUNTIME140.DLL for a simplified xcopy experience by reducing the dependency on VC REDIST.

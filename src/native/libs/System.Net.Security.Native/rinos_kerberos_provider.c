@@ -56,6 +56,7 @@ typedef struct RinOsKerberosProviderName {
     uint32_t magic;
     uint32_t size;
     uint8_t bytes[RIN_KERBEROS_PROVIDER_MAX_TARGET_NAME_SIZE];
+    struct RinOsKerberosProviderName* next;
 } RinOsKerberosProviderName;
 
 typedef struct RinOsKerberosProviderCredential {
@@ -121,6 +122,68 @@ typedef struct RinOsKerberosProviderBuffer {
 
 static volatile unsigned int g_provider_buffer_lock;
 static RinOsKerberosProviderBuffer* g_provider_buffers;
+
+/* Names are provider-owned opaque handles too.  Do not inspect a caller-
+ * supplied pointer before establishing that it is one of our live
+ * allocations: a stale or foreign GSS name must fail closed without turning
+ * release/validation into an arbitrary memory read. */
+static volatile unsigned int g_provider_name_lock;
+static RinOsKerberosProviderName* g_provider_names;
+
+static void provider_name_lock(void)
+{
+    while (__sync_lock_test_and_set(&g_provider_name_lock, 1u) != 0u) {
+    }
+}
+
+static void provider_name_unlock(void)
+{
+    __sync_lock_release(&g_provider_name_lock);
+}
+
+static void provider_name_register(RinOsKerberosProviderName* name)
+{
+    provider_name_lock();
+    name->next = g_provider_names;
+    g_provider_names = name;
+    provider_name_unlock();
+}
+
+static RinOsKerberosProviderName* provider_name_lookup(const void* pointer)
+{
+    RinOsKerberosProviderName* current;
+    if (pointer == NULL) return NULL;
+    provider_name_lock();
+    current = g_provider_names;
+    while (current != NULL && current != pointer)
+        current = current->next;
+    provider_name_unlock();
+    return current;
+}
+
+static int provider_name_unregister(RinOsKerberosProviderName* name)
+{
+    RinOsKerberosProviderName* previous = NULL;
+    RinOsKerberosProviderName* current;
+    int found = 0;
+    if (name == NULL) return 0;
+    provider_name_lock();
+    current = g_provider_names;
+    while (current != NULL && current != name) {
+        previous = current;
+        current = current->next;
+    }
+    if (current != NULL) {
+        if (previous == NULL)
+            g_provider_names = current->next;
+        else
+            previous->next = current->next;
+        current->next = NULL;
+        found = 1;
+    }
+    provider_name_unlock();
+    return found;
+}
 
 static void provider_buffer_lock(void)
 {
@@ -1336,6 +1399,7 @@ static int provider_message_pair(
 
 static int provider_name_valid(const RinOsKerberosProviderName* name)
 {
+    name = provider_name_lookup(name);
     return name != NULL && name->magic == RINOS_KERBEROS_NAME_MAGIC &&
            name->size != 0u &&
            name->size <= RIN_KERBEROS_PROVIDER_MAX_TARGET_NAME_SIZE;
@@ -1546,6 +1610,7 @@ static uint32_t provider_alloc_name(uint32_t* minor_status, char* input,
     name->magic = RINOS_KERBEROS_NAME_MAGIC;
     name->size = input_length;
     memcpy(name->bytes, input, input_length);
+    provider_name_register(name);
     *output = name;
     if (minor_status != NULL) *minor_status = 0u;
     return RIN_AUTH_PROVIDER_OK;
@@ -1574,11 +1639,12 @@ static uint32_t provider_release_name(void* context, uint32_t* minor_status,
     (void)context;
     if (input == NULL || *input == NULL)
         return provider_unavailable(minor_status);
-    name = (RinOsKerberosProviderName*)*input;
-    if (!provider_name_valid(name)) {
+    name = provider_name_lookup(*input);
+    if (name == NULL || !provider_name_valid(name)) {
         *input = NULL;
         return provider_unavailable(minor_status);
     }
+    (void)provider_name_unregister(name);
     provider_zero(name, sizeof(*name));
     free(name);
     *input = NULL;

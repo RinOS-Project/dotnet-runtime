@@ -28,6 +28,10 @@
 
 #include "NativeContext.h"
 
+#if defined(TARGET_RINOS)
+#include "pal/rinos_contract.h"
+#endif
+
 // warning C4061: enumerator '{blah}' in switch of enum '{blarg}' is not explicitly handled by a case label
 #pragma warning(disable:4061)
 
@@ -1706,6 +1710,20 @@ static bool IsUniversalTransitionStackRangeValid(
         thread->IsWithinStackBounds((PTR_VOID)end);
 }
 
+#if defined(TARGET_RINOS)
+/* A UniversalTransition frame is target memory supplied by the assembly
+ * helper.  The stack-range checks above make the frame fields readable, but
+ * the saved caller IP is still an untrusted value until it is checked against
+ * the product user address contract.  Keep this check here, before the value
+ * is published in REGDISPLAY; later managed-code classification is not a
+ * substitute for rejecting a kernel/PAL address at the ABI boundary. */
+static bool IsRinOSUniversalTransitionCallerIPValid(uintptr_t address)
+{
+    return address >= RINOS_PAL_USER_ADDRESS_MIN &&
+           address < RINOS_PAL_USER_ADDRESS_LIMIT;
+}
+#endif
+
 // NOTE: This function always publishes a non-NULL conservative stack range lower bound.
 //
 // NOTE: In x86 cases, the unwound callsite often uses a calling convention that expects some amount
@@ -1752,6 +1770,14 @@ void StackFrameIterator::UnwindUniversalTransitionThunk()
         m_pThread, lowerBoundValue, sizeof(uintptr_t)));
     FAILFAST_OR_DAC_FAIL(callerSPAddressValue > m_RegDisplay.SP);
     FAILFAST_OR_DAC_FAIL(lowerBoundValue < callerSPAddressValue);
+
+#if defined(TARGET_RINOS)
+    /* Do not publish a saved return address outside RinOS user VA.  The
+     * target's executable/code-manager check remains the next validation
+     * step, while this check protects the register-display ABI itself. */
+    FAILFAST_OR_DAC_FAIL(IsRinOSUniversalTransitionCallerIPValid(
+        (uintptr_t)dac_cast<TADDR>(addressOfPushedCallerIP)));
+#endif
 
     stackFrame->UnwindNonVolatileRegisters(&m_RegDisplay);
     stackFrame->UnwindVolatileArgRegisters(&m_RegDisplay);

@@ -1543,6 +1543,15 @@ uint16_t PalCaptureStackBackTrace(uint32_t arg1, uint32_t arg2, void* arg3, uint
     // validating the platform-specific capture path so every unsupported or
     // malformed-input return is failure-atomic and cannot expose a stale
     // value left by the caller's previous capture.
+#if defined(TARGET_RINOS)
+    if (arg4 == nullptr ||
+        (uintptr_t)arg4 > UINTPTR_MAX - sizeof(*arg4) ||
+        !RinOSUserRangeValid((uintptr_t)arg4,
+                             (uintptr_t)arg4 + sizeof(*arg4)))
+    {
+        return 0;
+    }
+#endif
     if (arg4 != nullptr)
     {
         *arg4 = 0;

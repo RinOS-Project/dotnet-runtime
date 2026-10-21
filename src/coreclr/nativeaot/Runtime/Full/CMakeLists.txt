@@ -62,10 +62,14 @@ if(NATIVEAOT_PRIVATE_LIBUNWIND_SOURCES)
             "${NATIVEAOT_PRIVATE_LIBUNWIND_OBJECT}"
             "${NATIVEAOT_PRIVATE_LIBUNWIND_SYMBOLS_UNSORTED}"
     # Generate the objcopy symbol list from libunwind-owned object files only.
-    COMMAND sh -c "nm_tool=\"$1\" && shift && \"$nm_tool\" --extern-only --defined-only --format=just-symbols \"$@\" > \"$0\""
-            "${NATIVEAOT_PRIVATE_LIBUNWIND_SYMBOLS_UNSORTED}"
-            "${CMAKE_NM}"
-            ${NATIVEAOT_PRIVATE_LIBUNWIND_SYMBOL_OBJECTS}
+    # Use CMake's process runner instead of a POSIX shell: Windows-hosted
+    # cross-builds do not require sh.exe, and the object paths are already
+    # available as a generator-expression list.
+    COMMAND "${CMAKE_COMMAND}"
+            "-DNM_TOOL=${CMAKE_NM}"
+            "-DOUTPUT=${NATIVEAOT_PRIVATE_LIBUNWIND_SYMBOLS_UNSORTED}"
+            "-DINPUTS=$<JOIN:${NATIVEAOT_PRIVATE_LIBUNWIND_SYMBOL_OBJECTS},|>"
+            -P "${CMAKE_CURRENT_LIST_DIR}/GeneratePrivateLibunwindSymbols.cmake"
     COMMAND "${CMAKE_COMMAND}"
             "-DINPUT=${NATIVEAOT_PRIVATE_LIBUNWIND_SYMBOLS_UNSORTED}"
             "-DOUTPUT=${NATIVEAOT_PRIVATE_LIBUNWIND_SYMBOLS}"

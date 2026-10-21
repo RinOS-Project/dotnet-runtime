@@ -1253,6 +1253,15 @@ static bool IsSupportedW32AccessControl(uint32_t flProtect)
 }
 
 #if defined(TARGET_RINOS)
+static bool RinOSBacktraceAddressValid(uintptr_t address)
+{
+    // A frame-chain word is untrusted target memory.  Only accept return
+    // addresses in the product user range; otherwise a corrupted frame could
+    // expose kernel/PAL addresses through the NativeAOT diagnostics ABI.
+    return address >= RINOS_PAL_USER_ADDRESS_MIN &&
+           address < RINOS_PAL_USER_ADDRESS_LIMIT;
+}
+
 static bool RinOSUserRangeValid(uintptr_t begin, uintptr_t end)
 {
     return begin >= RINOS_PAL_USER_ADDRESS_MIN &&
@@ -1594,7 +1603,7 @@ uint16_t PalCaptureStackBackTrace(uint32_t arg1, uint32_t arg2, void* arg3, uint
 
         const uintptr_t nextFrame = ((const uintptr_t*)frame)[0];
         const uintptr_t returnAddress = ((const uintptr_t*)frame)[1];
-        if (returnAddress == 0)
+        if (!RinOSBacktraceAddressValid(returnAddress))
         {
             break;
         }

@@ -8,18 +8,34 @@ add_library_clr(runtimeinfo STATIC ${RUNTIMEINFO_SOURCES})
 
 function(generate_module_index Target ModuleIndexFile)
     # Win32 may be false when cross compiling
-    if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+    if (CLR_CMAKE_TARGET_RINOS)
+        set(module_index_generator "cmake")
+    elseif (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
         set(scriptExt ".cmd")
     else()
         set(scriptExt ".sh")
     endif()
 
-    add_custom_command(
-        OUTPUT ${ModuleIndexFile}
-        COMMAND ${CLR_ENG_NATIVE_DIR}/genmoduleindex${scriptExt} $<TARGET_FILE:${Target}> ${ModuleIndexFile} ${CMAKE_READELF}
-        DEPENDS ${Target}
-        COMMENT "Generating ${Target} module index file -> ${ModuleIndexFile}"
-    )
+    if (module_index_generator STREQUAL "cmake")
+        add_custom_command(
+            OUTPUT ${ModuleIndexFile}
+            COMMAND "${CMAKE_COMMAND}"
+                    "-DMODULE=$<TARGET_FILE:${Target}>"
+                    "-DOUTPUT=${ModuleIndexFile}"
+                    "-DREADELF=${CMAKE_READELF}"
+                    -P "${CMAKE_CURRENT_LIST_DIR}/GenerateModuleIndex.cmake"
+            DEPENDS ${Target}
+            COMMENT "Generating ${Target} module index file -> ${ModuleIndexFile}"
+            VERBATIM
+        )
+    else()
+        add_custom_command(
+            OUTPUT ${ModuleIndexFile}
+            COMMAND ${CLR_ENG_NATIVE_DIR}/genmoduleindex${scriptExt} $<TARGET_FILE:${Target}> ${ModuleIndexFile} ${CMAKE_READELF}
+            DEPENDS ${Target}
+            COMMENT "Generating ${Target} module index file -> ${ModuleIndexFile}"
+        )
+    endif()
 
     set_source_files_properties(
         ${ModuleIndexFile}

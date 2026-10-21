@@ -188,11 +188,15 @@ else()
     )
 endif()
 
-if(CLR_CMAKE_HOST_WIN32 AND CLR_CMAKE_TARGET_UNIX)
+# Windows-hosted Unix cross builds use the legacy remote-unwind archive.  The
+# RinOS target graph owns its unwind objects through the target PAL instead;
+# no libunwind_xdac archive is emitted for that product graph, so do not turn
+# the OBJECT target name into a linker -l lookup here.
+if(CLR_CMAKE_HOST_WIN32 AND CLR_CMAKE_TARGET_UNIX AND NOT CLR_CMAKE_TARGET_RINOS)
     list(APPEND COREDAC_LIBRARIES
         libunwind_xdac
     )
-endif(CLR_CMAKE_HOST_WIN32 AND CLR_CMAKE_TARGET_UNIX)
+endif(CLR_CMAKE_HOST_WIN32 AND CLR_CMAKE_TARGET_UNIX AND NOT CLR_CMAKE_TARGET_RINOS)
 
 if (CLR_CMAKE_HOST_UNIX OR CLR_CMAKE_TARGET_RINOS)
     list(APPEND COREDAC_LIBRARIES

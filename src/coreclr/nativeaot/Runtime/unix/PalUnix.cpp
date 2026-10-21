@@ -1589,6 +1589,15 @@ uint16_t PalCaptureStackBackTrace(uint32_t arg1, uint32_t arg2, void* arg3, uint
 
     void** frames = (void**)arg3;
     uint32_t frameLimit = arg2 > UINT16_MAX ? UINT16_MAX : arg2;
+    const uintptr_t outputBegin = (uintptr_t)frames;
+    const size_t outputSize = (size_t)frameLimit * sizeof(void*);
+    if (outputSize == 0 ||
+        outputBegin > UINTPTR_MAX - (uintptr_t)outputSize ||
+        !RinOSUserRangeValid(outputBegin, outputBegin + outputSize))
+    {
+        return 0;
+    }
+
     uint32_t frameCount = 0;
     uint32_t backTraceHash = 0;
     uintptr_t frame = firstFrame;

@@ -82,10 +82,24 @@ if(CLR_CMAKE_TARGET_RINOS AND NOT RINOS_CROSS_COMPONENTS_HOST)
         "${RINOS_RUNTIME_ROOT}/libs/rinruntime/rin_runtime.c"
         "${RINOS_RUNTIME_ROOT}/libs/rinruntime/rin_atexit_registry.c"
         "${RINOS_RUNTIME_ROOT}/libs/rinruntime/rin_exit_lifecycle.c"
+        "${RINOS_RUNTIME_ROOT}/libs/rinruntime/rin_resolved_stream_io.c"
+        "${RINOS_RUNTIME_ROOT}/libs/rinruntime/rin_file_handle_policy.c"
         "${RINOS_RUNTIME_ROOT}/libs/rinruntime/rin_cxx_abi_extra.cpp"
         "${RINOS_RUNTIME_ROOT}/libs/rinruntime/rin_coreclr_tls_init.cpp"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/fcntl_runtime.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/stdio_runtime.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/rinerror/error.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/rinruntime/src/service.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/rinruntime/src/platform.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/rinruntime/src/crash_service.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/rinruntime/src/crash_service_client.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/rinruntime/src/poll_wait.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/rinruntime/src/session_recovery.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/rinruntime/src/safe_save.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/rinruntime/src/file_operation.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/rinruntime/src/rin_theme_palette.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libunicode/core.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libi18n/rin_i18n.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/rin_user_allocator.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/malloc.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/environment_runtime.c"
@@ -99,6 +113,9 @@ if(CLR_CMAKE_TARGET_RINOS AND NOT RINOS_CROSS_COMPONENTS_HOST)
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/semaphore_runtime.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libunicode/locale_adapter.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libcxx/new_runtime.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libcxx/new_operators.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libcxx/exception_runtime.cpp"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libcxx/nothrow.cpp"
     )
     target_include_directories(rinos_coreclr_runtime SYSTEM PRIVATE
         "${RINOS_RUNTIME_ROOT}/libs/rinruntime"
@@ -135,6 +152,16 @@ if(CLR_CMAKE_TARGET_RINOS AND NOT RINOS_CROSS_COMPONENTS_HOST)
         ${LLVM_LIBUNWIND_SOURCES}
         ${LLVM_LIBUNWIND_ASM_SOURCES}
     )
+
+    # The upstream object is normally pulled through a platform PAL library.
+    # RinOS packages PAL and CoreCLR as one RIN image, so keep native resource
+    # lookup in that image instead of leaving it as a host import.
+    if(TARGET nativeresourcestring_objects)
+        target_sources(coreclr PRIVATE $<TARGET_OBJECTS:nativeresourcestring_objects>)
+    else()
+        message(FATAL_ERROR
+            "RinOS CoreCLR requires nativeresourcestring_objects in the target image")
+    endif()
 endif()
 
 # IMPORTANT! Please do not rearrange the order of the libraries. The linker on Linux is

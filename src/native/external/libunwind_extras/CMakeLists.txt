@@ -111,8 +111,14 @@ if(CLR_CMAKE_HOST_WIN32)
       message(FATAL_ERROR "Unrecognized TARGET")
     endif ()
 
-    # Windows builds will only support remote unwind
-    add_definitions(-DUNW_REMOTE_ONLY)
+    # Native Windows-hosted cross components use the remote-only target.
+    # The actual RinOS image is different: PAL's seh-unwind.cpp defines
+    # UNW_LOCAL_ONLY and must link the target's local register/context
+    # implementation.  Keeping UNW_REMOTE_ONLY here for RinOS would compile
+    # the L* sources out while still asking seh-unwind.cpp for _UL* symbols.
+    if(NOT CLR_CMAKE_TARGET_RINOS)
+        add_definitions(-DUNW_REMOTE_ONLY)
+    endif()
 
     add_definitions(-DHAVE_UNW_GET_ACCESSORS)
 
@@ -181,7 +187,8 @@ endif()
 # Linux cross-component JITs are executed by the build host even though the
 # configure keeps TARGET_RINOS set. They need the local-only unwind entry
 # points (for example, _ULx86_64_get_reg) as well as the target remote API.
-if(CLR_CMAKE_HOST_UNIX AND (NOT CLR_CMAKE_TARGET_RINOS OR RINOS_CROSS_COMPONENTS_HOST))
+if((CLR_CMAKE_HOST_UNIX AND (NOT CLR_CMAKE_TARGET_RINOS OR RINOS_CROSS_COMPONENTS_HOST)) OR
+   (CLR_CMAKE_TARGET_RINOS AND NOT RINOS_CROSS_COMPONENTS_HOST))
     if(CLR_CMAKE_HOST_APPLE)
         add_library(libunwind_dac OBJECT ${LIBUNWIND_SOURCES})
     else()
@@ -194,7 +201,12 @@ if(CLR_CMAKE_HOST_UNIX AND (NOT CLR_CMAKE_TARGET_RINOS OR RINOS_CROSS_COMPONENTS
         endif()
     endif(CLR_CMAKE_HOST_APPLE)
 else()
-    if(CLR_CMAKE_TARGET_RINOS)
+    if(CLR_CMAKE_TARGET_RINOS AND NOT RINOS_CROSS_COMPONENTS_HOST)
+        # The product PAL uses local unwind entry points.  Do not add
+        # remote-unwind.cpp here: that adapter belongs to DAC/host tools and
+        # would select the remote-only ABI instead of the target ABI.
+        add_library(libunwind OBJECT ${LIBUNWIND_SOURCES})
+    elseif(CLR_CMAKE_TARGET_RINOS)
         # remote-unwind.cpp is added from this external project and otherwise
         # misses the PAL-generated config.h, so it would silently select the
         # old hand-rolled ELF lookup branch instead of the bundled libunwind

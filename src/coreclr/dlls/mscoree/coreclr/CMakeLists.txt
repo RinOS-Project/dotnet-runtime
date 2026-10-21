@@ -85,6 +85,7 @@ if(CLR_CMAKE_TARGET_RINOS AND NOT RINOS_CROSS_COMPONENTS_HOST)
         "${RINOS_RUNTIME_ROOT}/libs/rinruntime/rin_resolved_stream_io.c"
         "${RINOS_RUNTIME_ROOT}/libs/rinruntime/rin_file_handle_policy.c"
         "${RINOS_RUNTIME_ROOT}/libs/rinruntime/rin_cxx_abi_extra.cpp"
+        "${RINOS_RUNTIME_ROOT}/libs/rinruntime/rin_cxx_personality.cpp"
         "${RINOS_RUNTIME_ROOT}/libs/rinruntime/rin_coreclr_tls_init.cpp"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/fcntl_runtime.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/stdio_runtime.c"

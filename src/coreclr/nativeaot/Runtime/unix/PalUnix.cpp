@@ -49,6 +49,11 @@
 
 #if defined(TARGET_RINOS)
 #include "pal/rinos_contract.h"
+
+// Defined with the other RinOS PAL address helpers below.  Template thunk
+// allocation needs the same user-VA contract before it copies the source
+// bytes, so keep the declaration visible at the allocation boundary.
+static bool RinOSUserRangeValid(uintptr_t begin, uintptr_t end);
 #endif
 
 #if !defined(HOST_WASM)
@@ -694,6 +699,19 @@ UInt32_BOOL PalAllocateThunksFromTemplate(HANDLE hTemplateModule, uint32_t templ
     {
         return UInt32_FALSE;
     }
+
+#if defined(TARGET_RINOS)
+    // The module handle and RVA are produced by NativeAOT, but the PAL still
+    // treats the resulting source span as an ABI input.  Reject a kernel/PAL
+    // address (or an endpoint outside the product user range) before memcpy;
+    // validating only the newly allocated destination would leave the read
+    // side of the copy outside the RinOS execution-memory contract.
+    if (!RinOSUserRangeValid(
+            templateAddress, templateAddress + (uintptr_t)templateSize))
+    {
+        return UInt32_FALSE;
+    }
+#endif
 
 #ifdef TARGET_APPLE
     vm_address_t addr, taddr;

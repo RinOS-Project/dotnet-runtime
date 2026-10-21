@@ -13,21 +13,31 @@ for path in "${__VersionFolder}/"*{.h,.c}; do
         commit="${commit:-N/A}"
         weak_substitute="$(printf 'char sccsid[] __attribute__((used, weak)) = "@(#)Version N/A @Commit: %s";\n' "$commit")"
         retain_substitute="$(printf 'static char sccsid[] __attribute__((used, retain)) = "@(#)Version N/A @Commit: %s";\n' "$commit")"
-        version_file_contents="$(cat "$path" | sed -e "s|^char sccsid\[\].*|$weak_substitute|" -e "s|^static char sccsid\[\].*|$retain_substitute|")"
+        version_file_template="$(cat "$path" | sed -e "s|^char sccsid\[\].*|$weak_substitute|" -e "s|^static char sccsid\[\].*|$retain_substitute|")"
         version_file_destination="$__RepoRoot/artifacts/obj/_version.c"
         current_contents=
         is_placeholder_file=
+        needs_sccsid=1
+        desired_contents="$version_file_template"
         if [[ -e "$version_file_destination" ]]; then
             current_contents="$(<"$__RepoRoot/artifacts/obj/_version.c")"
             # If the current file has the version placeholder this script uses, we can update it
             # to have the current commit. Otherwise, use the current version file that has the actual product version.
             is_placeholder_file="$(echo $current_contents | grep "@(#)Version N/A @Commit:")"
+            if printf '%s\n' "$current_contents" | grep -Eq '^[[:space:]]*(static[[:space:]]+)?char sccsid\[\]'; then
+                needs_sccsid=
+            elif [[ -z "$is_placeholder_file" ]]; then
+                # Preserve GenerateNativeVersionFile's product macros and
+                # repair only the missing declaration consumed by crash
+                # reporting/corehost.
+                desired_contents="${current_contents}"$'\n'"$retain_substitute"
+            fi
         else
             # Treat a non-existent file like a file that doesn't exist.
             is_placeholder_file=1
         fi
-        if [[ "$is_placeholder_file" && "$version_file_contents" != "$current_contents" ]]; then
-            echo "$version_file_contents" > "$version_file_destination"
+        if [[ ("$is_placeholder_file" || "$needs_sccsid") && "$desired_contents" != "$current_contents" ]]; then
+            echo "$desired_contents" > "$version_file_destination"
         fi
     elif [[ ! -e "$__RepoRoot/artifacts/obj/$(basename "$path")" ]]; then
         cp "$path" "$__RepoRoot/artifacts/obj/"

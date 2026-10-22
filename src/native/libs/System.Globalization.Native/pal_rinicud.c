@@ -1688,6 +1688,24 @@ static int append_display_name_text(char* dest, size_t capacity, size_t* length,
     return 1;
 }
 
+static int product_locale_dialect_code(const RinIcuDataLocaleRecord* record,
+                                       char* dest, size_t capacity)
+{
+    size_t language_length;
+    size_t region_length;
+    if (!record || !dest || capacity == 0u || record->language[0] == '\0' ||
+        record->region[0] == '\0') return 0;
+    language_length = record_field_length(record->language, sizeof(record->language));
+    region_length = record_field_length(record->region, sizeof(record->region));
+    if (language_length == 0u || region_length == 0u ||
+        language_length + 1u + region_length >= capacity) return 0;
+    memcpy(dest, record->language, language_length);
+    dest[language_length] = '_';
+    memcpy(dest + language_length + 1u, record->region, region_length);
+    dest[language_length + 1u + region_length] = '\0';
+    return 1;
+}
+
 static int product_locale_display_name(rin_icu_client_t* client,
                                        const char* display_locale,
                                        const RinIcuDataLocaleRecord* record,
@@ -1696,8 +1714,11 @@ static int product_locale_display_name(rin_icu_client_t* client,
                                        size_t* out_length)
 {
     char language[256];
+    char dialect[256];
+    char dialect_name[256];
     char region[256];
     size_t language_length = 0u;
+    size_t dialect_length = 0u;
     size_t region_length = 0u;
     size_t length = 0u;
     int status;
@@ -1709,6 +1730,19 @@ static int product_locale_display_name(rin_icu_client_t* client,
     if (status != RIN_ICU_STATUS_OK || language_length >= sizeof(language) ||
         !append_display_name_text(dest, capacity, &length, language)) {
         return status != RIN_ICU_STATUS_OK ? status : RIN_ICU_STATUS_NO_SPACE;
+    }
+    if (product_locale_dialect_code(record, dialect, sizeof(dialect))) {
+        status = rin_icu_display_name(client, display_locale, dialect,
+                                      RIN_ICU_DISPLAY_NAME_LANGUAGE, RIN_ICU_STYLE_LONG,
+                                      RIN_ICU_LANGUAGE_DISPLAY_DIALECT, dialect_name,
+                                      sizeof(dialect_name), &dialect_length);
+        if (status == RIN_ICU_STATUS_OK && dialect_length > 0u &&
+            dialect_length < sizeof(dialect_name)) {
+            if (!append_display_name_text(dest, capacity, &length, dialect_name))
+                return RIN_ICU_STATUS_NO_SPACE;
+            if (out_length) *out_length = dialect_length;
+            return RIN_ICU_STATUS_OK;
+        }
     }
     if (record->region[0] != '\0') {
         status = rin_icu_display_name(client, display_locale, record->region,

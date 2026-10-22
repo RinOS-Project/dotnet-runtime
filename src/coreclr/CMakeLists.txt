@@ -38,6 +38,16 @@ endif()
 include_directories("${CLR_SRC_NATIVE_DIR}")
 include_directories("${CLR_SRC_NATIVE_DIR}/inc")
 
+if(CLR_CMAKE_TARGET_RINOS AND RINOS_CROSS_COMPONENTS_HOST)
+  # Cross-component host targets still compile some RinOS platform sources
+  # (PAL, minipal, and debug PAL). Give the CoreCLR graph the public SDK ABI
+  # declarations without adding target libc headers that would shadow host
+  # POSIX and C++ headers.
+  include_directories(BEFORE SYSTEM
+    "${RINOS_REPO_ROOT}/public-base/RinOS-SDK/include"
+  )
+endif()
+
 if(MSVC)
   set(CMAKE_CXX_STANDARD_LIBRARIES "") # do not link against standard win32 libs i.e. kernel32, uuid, user32, etc.
 endif (MSVC)

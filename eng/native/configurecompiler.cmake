@@ -556,6 +556,7 @@ endif(CLR_CMAKE_HOST_WIN32)
 # the static default.  This keeps every host cross-component target on the
 # Windows CRT without inheriting RinOS freestanding link options.
 if (CLR_CMAKE_HOST_WIN32 AND RINOS_CROSS_COMPONENTS_HOST AND NOT MSVC)
+  add_linker_flag("-Xlinker /DEFAULTLIB:libucrtd.lib" DEBUG CHECKED)
   add_linker_flag("-Xlinker /NODEFAULTLIB:libucrt.lib" RELEASE RELWITHDEBINFO MINSIZEREL)
   add_linker_flag("-Xlinker /DEFAULTLIB:ucrt.lib" RELEASE RELWITHDEBINFO MINSIZEREL)
 endif()

@@ -174,7 +174,7 @@ VOID LogAssert(
         ts.tv_nsec = tv.tv_usec * 1000;
         timestampAvailable = true;
     }
-#elif defined(TARGET_RINOS)
+#elif defined(TARGET_RINOS) && !defined(HOST_WINDOWS)
     // RinOS exposes the product POSIX clock contract but does not provide
     // the C11 timespec_get/TIME_UTC pair in its freestanding libc.
     timestampAvailable = clock_gettime(CLOCK_REALTIME, &ts) == 0;

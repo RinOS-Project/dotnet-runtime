@@ -243,6 +243,12 @@ add_library(coreclrpal_objects
 # interfaces.
 if(CLR_CMAKE_TARGET_RINOS AND RINOS_CROSS_COMPONENTS_HOST)
   target_compile_definitions(coreclrpal_objects PRIVATE RINOS_CROSS_COMPONENTS_HOST=1)
+  # Cross-component JIT sources are built with the host libc, but RinOS PAL
+  # sources still include public RinOS ABI declarations. Add the SDK headers
+  # alone here; adding the target libc would shadow host POSIX headers.
+  target_include_directories(coreclrpal_objects SYSTEM BEFORE PRIVATE
+    "${RINOS_REPO_ROOT}/public-base/RinOS-SDK/include"
+  )
 endif()
 
 # PAL sources include POSIX-shaped headers such as unistd.h and ucontext.h.

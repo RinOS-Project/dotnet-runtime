@@ -1415,7 +1415,7 @@ static uint32_t provider_validate_named_session_credential(
     const RinKerberosCredentialOwnerV1* owner, void* owner_credential,
     const RinOsKerberosProviderName* desired_name, uint32_t* minor_status)
 {
-    uint8_t principal[RINOS_KERBEROS_MAX_PRINCIPAL_SIZE] = {};
+    uint8_t principal[RINOS_KERBEROS_MAX_PRINCIPAL_SIZE] = {0};
     uint32_t principal_size = 0u;
     uint64_t generation = 0u;
     uint32_t owner_minor = 0u;
@@ -2219,8 +2219,8 @@ static uint32_t provider_refresh_initiator_credential(
     uint64_t current_generation = 0u;
     uint64_t replacement_generation = 0u;
     int replacement_identity_matches = 0;
-    uint8_t current_principal[RINOS_KERBEROS_MAX_PRINCIPAL_SIZE] = {};
-    uint8_t replacement_principal[RINOS_KERBEROS_MAX_PRINCIPAL_SIZE] = {};
+    uint8_t current_principal[RINOS_KERBEROS_MAX_PRINCIPAL_SIZE] = {0};
+    uint8_t replacement_principal[RINOS_KERBEROS_MAX_PRINCIPAL_SIZE] = {0};
 
     if (minor_status != NULL) *minor_status = 0u;
     if (credential == NULL || provider_context == NULL ||

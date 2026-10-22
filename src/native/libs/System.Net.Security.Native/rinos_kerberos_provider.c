@@ -132,13 +132,14 @@ static RinOsKerberosProviderName* g_provider_names;
 
 static void provider_name_lock(void)
 {
-    while (__sync_lock_test_and_set(&g_provider_name_lock, 1u) != 0u) {
+    while (__atomic_exchange_n(
+               &g_provider_name_lock, 1u, __ATOMIC_ACQUIRE) != 0u) {
     }
 }
 
 static void provider_name_unlock(void)
 {
-    __sync_lock_release(&g_provider_name_lock);
+    __atomic_store_n(&g_provider_name_lock, 0u, __ATOMIC_RELEASE);
 }
 
 static void provider_name_register(RinOsKerberosProviderName* name)
@@ -187,13 +188,14 @@ static int provider_name_unregister(RinOsKerberosProviderName* name)
 
 static void provider_buffer_lock(void)
 {
-    while (__sync_lock_test_and_set(&g_provider_buffer_lock, 1u) != 0u) {
+    while (__atomic_exchange_n(
+               &g_provider_buffer_lock, 1u, __ATOMIC_ACQUIRE) != 0u) {
     }
 }
 
 static void provider_buffer_unlock(void)
 {
-    __sync_lock_release(&g_provider_buffer_lock);
+    __atomic_store_n(&g_provider_buffer_lock, 0u, __ATOMIC_RELEASE);
 }
 
 static uint8_t* provider_buffer_alloc(size_t capacity)

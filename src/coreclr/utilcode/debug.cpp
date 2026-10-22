@@ -164,15 +164,32 @@ VOID LogAssert(
     STRESS_LOG2(LF_ASSERT, LL_ALWAYS, "ASSERT:%s:%d\n", szFile, iLine);
 
     struct timespec ts;
+    bool timestampAvailable = false;
 #if defined(HOST_ANDROID)
     // timespec_get is not supported on Android API levels we target, use gettimeofday instead
     struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    ts.tv_sec = tv.tv_sec;
-    ts.tv_nsec = tv.tv_usec * 1000;
+    if (gettimeofday(&tv, nullptr) == 0)
+    {
+        ts.tv_sec = tv.tv_sec;
+        ts.tv_nsec = tv.tv_usec * 1000;
+        timestampAvailable = true;
+    }
+#elif defined(TARGET_RINOS)
+    // RinOS exposes the product POSIX clock contract but does not provide
+    // the C11 timespec_get/TIME_UTC pair in its freestanding libc.
+    timestampAvailable = clock_gettime(CLOCK_REALTIME, &ts) == 0;
 #else
-    int ret = timespec_get(&ts, TIME_UTC);
+    timestampAvailable = timespec_get(&ts, TIME_UTC) == TIME_UTC;
 #endif
+
+    // Logging an assertion must not read an uninitialized timestamp if the
+    // platform clock is unavailable. Keep the failure path deterministic;
+    // the assertion text remains the diagnostic that matters here.
+    if (!timestampAvailable)
+    {
+        ts.tv_sec = 0;
+        ts.tv_nsec = 0;
+    }
 
     struct tm local;
 #ifdef HOST_WINDOWS

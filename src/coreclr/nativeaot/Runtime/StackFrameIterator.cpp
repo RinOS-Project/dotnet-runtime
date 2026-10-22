@@ -1761,6 +1761,8 @@ void StackFrameIterator::UnwindUniversalTransitionThunk()
         (uintptr_t)dac_cast<TADDR>(callerSPAddress);
     const uintptr_t lowerBoundValue =
         (uintptr_t)dac_cast<TADDR>(pLowerBound);
+    const uintptr_t pushedCallerIPValue =
+        (uintptr_t)dac_cast<TADDR>(*addressOfPushedCallerIP);
 
     FAILFAST_OR_DAC_FAIL(IsUniversalTransitionStackRangeValid(
         m_pThread, addressOfPushedCallerIPValue, sizeof(uintptr_t)));
@@ -1776,13 +1778,13 @@ void StackFrameIterator::UnwindUniversalTransitionThunk()
      * target's executable/code-manager check remains the next validation
      * step, while this check protects the register-display ABI itself. */
     FAILFAST_OR_DAC_FAIL(IsRinOSUniversalTransitionCallerIPValid(
-        (uintptr_t)dac_cast<TADDR>(addressOfPushedCallerIP)));
+        pushedCallerIPValue));
 #endif
 
     stackFrame->UnwindNonVolatileRegisters(&m_RegDisplay);
     stackFrame->UnwindVolatileArgRegisters(&m_RegDisplay);
 
-    m_RegDisplay.SetIP(ReturnAddressToCanonicalPC(*addressOfPushedCallerIP));
+    m_RegDisplay.SetIP(ReturnAddressToCanonicalPC(pushedCallerIPValue));
     m_RegDisplay.SetSP(callerSPAddressValue);
     SetControlPC(dac_cast<PTR_VOID>(m_RegDisplay.GetIP()));
 #if defined(TARGET_AMD64) && defined(TARGET_WINDOWS)

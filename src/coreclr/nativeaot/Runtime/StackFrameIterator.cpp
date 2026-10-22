@@ -1761,11 +1761,15 @@ void StackFrameIterator::UnwindUniversalTransitionThunk()
         (uintptr_t)dac_cast<TADDR>(callerSPAddress);
     const uintptr_t lowerBoundValue =
         (uintptr_t)dac_cast<TADDR>(pLowerBound);
+    /* Validate the address of the saved return-address cell before reading
+     * it.  The cell is on the transition stack frame; its contents are the
+     * caller's code address and therefore must not be checked as if they
+     * were another stack address. */
+    FAILFAST_OR_DAC_FAIL(IsUniversalTransitionStackRangeValid(
+        m_pThread, addressOfPushedCallerIPValue, sizeof(uintptr_t)));
     const uintptr_t pushedCallerIPValue =
         (uintptr_t)dac_cast<TADDR>(*addressOfPushedCallerIP);
 
-    FAILFAST_OR_DAC_FAIL(IsUniversalTransitionStackRangeValid(
-        m_pThread, addressOfPushedCallerIPValue, sizeof(uintptr_t)));
     FAILFAST_OR_DAC_FAIL(IsUniversalTransitionStackRangeValid(
         m_pThread, callerSPAddressValue, sizeof(uintptr_t)));
     FAILFAST_OR_DAC_FAIL(IsUniversalTransitionStackRangeValid(

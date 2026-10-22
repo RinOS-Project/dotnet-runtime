@@ -10,18 +10,13 @@ if (CLR_CMAKE_TARGET_APPLE)
   list(APPEND RUNTIME_SOURCES_ARCH_ASM
     ${ARCH_SOURCES_DIR}/ThunkPoolThunks.${ASM_SUFFIX}
   )
-elseif (CLR_CMAKE_TARGET_RINOS)
-  # RinOS x64 uses the executable RX thunk-pool ABI.  Keep the pool
-  # implementation in the target graph; PortableRuntime/WASM deliberately
-  # has no executable thunk owner and must not consume this assembly.
-  list(APPEND RUNTIME_SOURCES_ARCH_ASM
-    ${ARCH_SOURCES_DIR}/ThunkPoolThunks.${ASM_SUFFIX}
-  )
-  add_definitions(-DFEATURE_RX_THUNKS)
 elseif (NOT CLR_CMAKE_TARGET_ARCH_WASM)
-  # Runtime/CMakeLists.txt selects PortableRuntime for WASM. Keep this guard
-  # here as well so a direct Full-runtime configure cannot accidentally expose
-  # the x64/Unix executable thunk implementation to the portable target.
+  # Runtime/CMakeLists.txt selects PortableRuntime for WASM.  Non-Apple Unix
+  # targets, including RinOS, use ThunksMapping.cpp's FEATURE_RX_THUNKS path:
+  # it generates the stubs into a W^X code/data mapping at runtime.  The
+  # ThunkPoolThunks assembly below is the image-owned template path and must
+  # stay Apple-only; selecting both paths would duplicate geometry helpers and
+  # make the managed ABI disagree with the generated code.
   add_definitions(-DFEATURE_RX_THUNKS)
 endif()
 

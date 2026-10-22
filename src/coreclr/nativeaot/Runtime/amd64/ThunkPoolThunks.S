@@ -37,7 +37,7 @@
     .endr
 .endm
 
-#if defined(TARGET_APPLE) || defined(TARGET_RINOS)
+#if defined(TARGET_APPLE)
 // Thunk pool
     .text
     .p2align PAGE_SIZE_LOG2
@@ -48,7 +48,7 @@ PATCH_LABEL ThunkPool
     .endr
     .p2align PAGE_SIZE_LOG2
 #else
-#error Unsupported OS for the amd64 executable thunk-pool ABI
+#error Unsupported OS for the amd64 template thunk-pool ABI
 #endif
 
 //;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; General Helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

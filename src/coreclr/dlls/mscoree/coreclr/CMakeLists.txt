@@ -134,6 +134,7 @@ if(CLR_CMAKE_TARGET_RINOS AND NOT RINOS_CROSS_COMPONENTS_HOST)
     )
     target_compile_definitions(rinos_coreclr_runtime PRIVATE
         RIN_ICU_ENABLE_AUTOSTART=1
+        RIN_CXX_ABI_ENABLE_ITANIUM_UNWINDER=1
     )
     target_compile_options(rinos_coreclr_runtime PRIVATE
         -ffreestanding

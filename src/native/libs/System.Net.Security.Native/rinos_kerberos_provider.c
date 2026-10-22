@@ -3766,6 +3766,12 @@ static int provider_escaped_principal_valid(const uint8_t* bytes,
     for (index = 0u; index < size; ++index) {
         const uint8_t byte = bytes[index];
         if (byte == 0u) return 0;
+        /* krb5_unparse_name() escapes C0 controls and DEL.  Do not accept a
+         * producer that places them directly in the principal identity: raw
+         * controls can cross the managed DefaultCredentials/RemoteIdentity
+         * boundary and change logging or line-oriented consumers.  Escaped
+         * `\\xHH` sequences are handled by the branch below and remain valid. */
+        if (byte < 0x20u || byte == 0x7fu) return 0;
         if (escaped) {
             if (byte == (uint8_t)'x') {
                 if (size - index < 3u ||

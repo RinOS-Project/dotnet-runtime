@@ -110,12 +110,21 @@ dwarf_search_unwind_table_linear (unw_addr_space_t as, unw_word_t ip,
                                   unw_proc_info_t *pi,
                                   int need_unwind_info, void *arg)
 {
+  int ret;
+
   if (pi == NULL || start_ip >= end_ip || ip < start_ip || ip >= end_ip ||
       eh_frame_start >= eh_frame_end)
     return -UNW_EINVAL;
-  return linear_search(as, ip, eh_frame_start, eh_frame_end,
-                       ~((unw_word_t)0), is_debug_frame, pi,
-                       need_unwind_info, arg);
+  ret = linear_search(as, ip, eh_frame_start, eh_frame_end,
+                      ~((unw_word_t)0), is_debug_frame, pi,
+                      need_unwind_info, arg);
+  /* The RIN inventory authenticates the mapped UNWIND bytes, but the DWARF
+     payload remains untrusted metadata.  Do not let an FDE describe a PC
+     outside the image whose range selected this table. */
+  if (ret > 0 && (pi->start_ip < start_ip || pi->start_ip >= pi->end_ip ||
+                  pi->end_ip > end_ip))
+    return -UNW_ENOINFO;
+  return ret;
 }
 #endif /* !UNW_REMOTE_ONLY || __rinos__ */
 

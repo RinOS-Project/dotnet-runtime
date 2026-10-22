@@ -12,6 +12,7 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "../../../../../../public-base/libs/rinicu/include/rinicu/rinicu.h"
 #include "../../../../../../public-base/libs/rinicu/include/rinicu/data_policy.h"
@@ -3600,8 +3601,30 @@ static uint32_t timezone_display_service_type(TimeZoneDisplayNameType type)
     }
 }
 
+/* The upstream PAL contract uses the current instant for the display-name
+ * set.  On RinOS, current time must come from the product realtime owner;
+ * never substitute the build host clock or a fixed timestamp. */
+static int timezone_current_epoch_ms(int64_t* epoch_ms)
+{
+    struct timespec now;
+    uint64_t seconds;
+    uint64_t milliseconds;
+    if (!epoch_ms || clock_gettime(CLOCK_REALTIME, &now) != 0 ||
+        now.tv_sec <= 0 || now.tv_nsec < 0 || now.tv_nsec >= 1000000000L)
+        return 0;
+    seconds = (uint64_t)now.tv_sec;
+    if (seconds > (uint64_t)INT64_MAX / 1000u)
+        return 0;
+    milliseconds = seconds * 1000u + (uint64_t)now.tv_nsec / 1000000u;
+    if (milliseconds > (uint64_t)INT64_MAX)
+        return 0;
+    *epoch_ms = (int64_t)milliseconds;
+    return 1;
+}
+
 static int timezone_display_name_call(const UChar* locale, const UChar* time_zone,
-                                      TimeZoneDisplayNameType type, UChar* dest,
+                                      TimeZoneDisplayNameType type, int64_t epoch_ms,
+                                      UChar* dest,
                                       int32_t dest_length)
 {
     char* locale_name = locale_utf8(locale);
@@ -3619,10 +3642,10 @@ static int timezone_display_name_call(const UChar* locale, const UChar* time_zon
         free(time_zone_name);
         return -1;
     }
-    status = rin_icu_display_name(client, locale_name, time_zone_name,
-                                  service_type, style,
-                                  RIN_ICU_LANGUAGE_DISPLAY_STANDARD,
-                                  buffer, sizeof(buffer), &length);
+    status = rin_icu_display_name_at_epoch_ms(
+        client, locale_name, time_zone_name, service_type, style,
+        RIN_ICU_LANGUAGE_DISPLAY_STANDARD, epoch_ms, buffer, sizeof(buffer),
+        &length);
     if (status == RIN_ICU_STATUS_NO_SPACE) {
         if (length == SIZE_MAX || length > RIN_ICU_MAX_INLINE_PAYLOAD) {
             free(locale_name);
@@ -3635,10 +3658,10 @@ static int timezone_display_name_call(const UChar* locale, const UChar* time_zon
             free(time_zone_name);
             return -1;
         }
-        status = rin_icu_display_name(client, locale_name, time_zone_name,
-                                      service_type, style,
-                                      RIN_ICU_LANGUAGE_DISPLAY_STANDARD,
-                                      dynamic, length + 1u, &length);
+        status = rin_icu_display_name_at_epoch_ms(
+            client, locale_name, time_zone_name, service_type, style,
+            RIN_ICU_LANGUAGE_DISPLAY_STANDARD, epoch_ms, dynamic, length + 1u,
+            &length);
     }
     free(locale_name);
     free(time_zone_name);
@@ -3692,9 +3715,13 @@ int32_t GlobalizationNative_IanaIdToWindowsId(const UChar* iana_id, UChar* windo
 
 ResultCode GlobalizationNative_GetTimeZoneDisplayName(const UChar* locale, const UChar* time_zone, TimeZoneDisplayNameType type, UChar* result, int32_t result_length)
 {
-    int32_t required = timezone_display_name_call(locale, time_zone, type, NULL, 0);
+    int64_t epoch_ms;
+    int32_t required;
+    if (!timezone_current_epoch_ms(&epoch_ms)) return UnknownError;
+    required = timezone_display_name_call(locale, time_zone, type, epoch_ms, NULL, 0);
     if (required < 0) return UnknownError;
     if (result && result_length <= required) return InsufficientBuffer;
-    if (result && timezone_display_name_call(locale, time_zone, type, result, result_length) < 0) return UnknownError;
+    if (result && timezone_display_name_call(locale, time_zone, type, epoch_ms, result, result_length) < 0)
+        return UnknownError;
     return Success;
 }

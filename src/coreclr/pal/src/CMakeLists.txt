@@ -292,6 +292,15 @@ else()
   endif(NOT FEATURE_CROSSBITNESS AND NOT CLR_CMAKE_TARGET_ARCH_WASM)
 endif(CLR_CMAKE_TARGET_APPLE)
 
+# The remote-unwind DAC object is also part of the cross-components host
+# graph. Its RinOS PAL declarations need the SDK ABI headers while it still
+# uses the host libc for POSIX and C++ headers.
+if(CLR_CMAKE_TARGET_RINOS AND RINOS_CROSS_COMPONENTS_HOST AND TARGET coreclrpal_dac)
+  target_include_directories(coreclrpal_dac SYSTEM BEFORE PRIVATE
+    "${RINOS_REPO_ROOT}/public-base/RinOS-SDK/include"
+  )
+endif()
+
 # There is only one function exported in 'tracepointprovider.cpp' namely 'PAL_InitializeTracing',
 # which is guarded with '#if defined(__linux__)'. On macOS, Xcode issues the following warning:
 #

@@ -369,7 +369,12 @@ FCIMPL0(int, RhpGetThunkSize)
 {
     // RuntimeImports exposes this geometry as an int.  Keep the conversion
     // failure-closed so an unsupported architecture or malformed page-size
-    // provider cannot wrap into a small positive thunk size.
+    // provider cannot wrap into a small positive thunk size.  Keep this
+    // helper consistent with the other geometry entry points: a non-power-of
+    // two or otherwise invalid PAL page size must not publish a thunk size
+    // that managed ThunkPool code could combine with zero block counts.
+    if (!IsValidThunkPageGeometry())
+        return 0;
     return (size_t)THUNK_SIZE > (size_t)INT_MAX ? 0 : (int)THUNK_SIZE;
 }
 FCIMPLEND

@@ -10,6 +10,14 @@ if (CLR_CMAKE_TARGET_APPLE)
   list(APPEND RUNTIME_SOURCES_ARCH_ASM
     ${ARCH_SOURCES_DIR}/ThunkPoolThunks.${ASM_SUFFIX}
   )
+elseif (CLR_CMAKE_TARGET_RINOS)
+  # RinOS x64 uses the executable RX thunk-pool ABI.  Keep the pool
+  # implementation in the target graph; PortableRuntime/WASM deliberately
+  # has no executable thunk owner and must not consume this assembly.
+  list(APPEND RUNTIME_SOURCES_ARCH_ASM
+    ${ARCH_SOURCES_DIR}/ThunkPoolThunks.${ASM_SUFFIX}
+  )
+  add_definitions(-DFEATURE_RX_THUNKS)
 elseif (NOT CLR_CMAKE_TARGET_ARCH_WASM)
   # Runtime/CMakeLists.txt selects PortableRuntime for WASM. Keep this guard
   # here as well so a direct Full-runtime configure cannot accidentally expose

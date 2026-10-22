@@ -3822,6 +3822,7 @@ static uint32_t provider_get_user(
     uint8_t* principal;
     uint32_t principal_size = 0u;
     uint64_t generation = 0u;
+    uint32_t owner_minor = 0u;
     uint32_t status;
     (void)context;
     if (output != NULL) {
@@ -3880,13 +3881,22 @@ static uint32_t provider_get_user(
     principal = provider_buffer_alloc(RINOS_KERBEROS_MAX_PRINCIPAL_SIZE);
     if (principal == NULL) return provider_unavailable(minor_status);
     status = owner->get_session_principal(
-        owner->context, minor_status, provider_context->owner_credential,
+        owner->context, &owner_minor, provider_context->owner_credential,
         principal, RINOS_KERBEROS_MAX_PRINCIPAL_SIZE, &principal_size,
         &generation);
     if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK) {
         provider_zero(principal, RINOS_KERBEROS_MAX_PRINCIPAL_SIZE);
         provider_buffer_dispose(principal);
         return provider_status_from_owner(status, minor_status);
+    }
+    /* A successful owner callback must also clear its minor status.  Treating
+     * OK plus a diagnostic as a valid identity would hide a producer-side
+     * partial failure and turn an untrusted principal buffer into successful
+     * DefaultCredentials/RemoteIdentity state. */
+    if (owner_minor != 0u) {
+        provider_zero(principal, RINOS_KERBEROS_MAX_PRINCIPAL_SIZE);
+        provider_buffer_dispose(principal);
+        return provider_unavailable(minor_status);
     }
     /* An owner OK result is not sufficient to establish an identity.  Do not
      * turn an empty principal or a stale generation into a successful

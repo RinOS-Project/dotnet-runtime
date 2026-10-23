@@ -8,6 +8,8 @@ namespace System.Runtime.InteropServices
         Weak = 0,
         WeakTrackResurrection = 1,
         Normal = 2,
-        Pinned = 3  // NOTE: not implemented here
+        // NativeAOT maps this value to the GC handle table's HNDTYPE_PINNED
+        // entry.  GCHandle.cs owns the managed pin tag and address checks.
+        Pinned = 3
     }
 }

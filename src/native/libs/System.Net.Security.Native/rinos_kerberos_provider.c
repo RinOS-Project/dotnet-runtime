@@ -3059,6 +3059,7 @@ static uint32_t provider_accept_sec_context(
     if (ntlm_used != NULL) *ntlm_used = 0;
     if (security_context == NULL || output == NULL || return_flags == NULL ||
         ntlm_used == NULL || channel_binding_size < 0 ||
+        (input_length != 0u && input == NULL) ||
         !provider_credential_valid(credential,
                                    RIN_KERBEROS_OPERATION_CREDENTIAL_ACCEPTOR))
         return provider_unavailable(minor_status);

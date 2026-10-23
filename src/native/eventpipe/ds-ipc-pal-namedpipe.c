@@ -281,22 +281,25 @@ ds_ipc_poll (
 		ep_raise_error ();
 	}
 
-	// determine which of the streams signaled
-	DWORD index = wait - WAIT_OBJECT_0;
-	// error check the index
-	if (index < 0 || index > (poll_handles_data_len - 1)) {
-		// check if we abandoned something
-		DWORD abandonedIndex = wait - WAIT_ABANDONED_0;
-		if (abandonedIndex > 0 || abandonedIndex < (poll_handles_data_len - 1)) {
-			poll_handles_data [abandonedIndex].events = (uint8_t)IPC_POLL_EVENTS_HANGUP;
-			result = -1;
-			ep_raise_error ();
-		} else {
-			if (callback)
-				callback ("WaitForMultipleObjects failed", GetLastError());
-			result = -1;
-			ep_raise_error ();
-		}
+	// determine which of the streams signaled.  Do not derive an array index
+	// from an arbitrary wait result: WAIT_ABANDONED_* and unexpected values
+	// must be checked against the same bounded poll-handle count before any
+	// event is published.
+	size_t index = 0;
+	if (wait >= WAIT_OBJECT_0 &&
+		wait < WAIT_OBJECT_0 + poll_handles_data_len) {
+		index = (size_t)(wait - WAIT_OBJECT_0);
+	} else if (wait >= WAIT_ABANDONED_0 &&
+		wait < WAIT_ABANDONED_0 + poll_handles_data_len) {
+		index = (size_t)(wait - WAIT_ABANDONED_0);
+		poll_handles_data [index].events = (uint8_t)IPC_POLL_EVENTS_HANGUP;
+		result = -1;
+		ep_raise_error ();
+	} else {
+		if (callback)
+			callback ("WaitForMultipleObjects failed", GetLastError());
+		result = -1;
+		ep_raise_error ();
 	}
 
 	// Set revents depending on what signaled the stream

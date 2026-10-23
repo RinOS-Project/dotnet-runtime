@@ -53,6 +53,8 @@ enum class ReadyToRunSectionType
     // 210 is unused - it was used by ThreadStaticIndex
     // 211 is unused - it was used by LoopHijackFlag
     ImportAddressTables         = 212,
+    // NativeAOT GC heap-dump metadata for generated GC static fields.
+    GCStaticMetadataRegion      = 216,
 
     // Sections 300 - 399 are reserved for RhFindBlob backwards compatibility
     ReadonlyBlobRegionStart     = 300,

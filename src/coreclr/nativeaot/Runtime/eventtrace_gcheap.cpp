@@ -26,12 +26,21 @@
 #include "profheapwalkhelper.h"
 #include "gchandleutilities.h"
 #include "NativeAotComWrappersDiagnostics.h"
+#include "RuntimeInstance.h"
+#include "TypeManager.h"
 
 #include <string.h>
 
 /****************************************************************************/
 /* Methods that are called from the runtime */
 /****************************************************************************/
+
+namespace
+{
+    bool HasCompleteGCStaticMetadata();
+    void WalkGCStaticRootsForETW();
+    void WalkManagedObjectWrapperRootsForETW();
+}
 
 
 // Simple helpers called by the GC to decide whether it needs to do a walk of heap
@@ -60,11 +69,14 @@ BOOL ETW::GCLog::ShouldTrackMovementForEtw()
 
 BOOL ETW::GCLog::ShouldWalkStaticsAndCOMForEtw()
 {
-    // NativeAOT has separate owners for GC static roots and ComWrappers roots
-    // in the normal heap-root walk. It does not provide CoreCLR's
-    // GCBulkRootStaticVar metadata event, so keep this combined capability
-    // false and never advertise a partial static/COM walk as complete.
-    return FALSE;
+    // NativeAOT can use the CoreCLR combined hook only when every generated
+    // GC-static block has a validated field metadata record. If the image was
+    // produced by an older compiler, keep the capability false and retain the
+    // normal root-walk fallback below.
+    return RUNTIME_PROVIDER_CATEGORY_ENABLED(
+               TRACE_LEVEL_INFORMATION,
+               CLR_GCHEAPDUMP_KEYWORD) &&
+        HasCompleteGCStaticMetadata();
 }
 
 // Batches the list of moved/surviving references for the GCBulkMovedObjectRanges /
@@ -491,10 +503,8 @@ HRESULT ETW::GCLog::ForceGCForDiagnostics()
 
 void ETW::GCLog::WalkStaticsAndCOMForETW()
 {
-    // NativeAOT now has a COM/RCW wrapper owner in the normal heap-root walk below.
-    // The combined CoreCLR hook remains disabled: NativeAOT still has no owner for
-    // CoreCLR's static-variable metadata event (GCBulkRootStaticVar), and must not
-    // advertise that combined capability as complete.
+    WalkGCStaticRootsForETW();
+    WalkManagedObjectWrapperRootsForETW();
 }
 
 // Holds state that batches of roots, nodes, edges, and types as the GC walks the heap
@@ -982,6 +992,345 @@ void ETW::GCLog::EndHeapDump(ProfilerWalkHeapContext* profilerWalkHeapContext)
 
 namespace
 {
+    struct NativeAotGCStaticMetadataRecord
+    {
+        const uint8_t* Fields;
+        const uint8_t* End;
+        uint32_t RegionIndex;
+        uint32_t FieldCount;
+    };
+
+    static constexpr uint32_t NativeAotGCStaticMetadataMagic = 0x314D5347; // "GSM1"
+    static constexpr size_t NativeAotGCStaticMetadataHeaderSize = 24;
+    static constexpr size_t NativeAotGCStaticMetadataFieldHeaderSize = 12;
+
+    static uint16_t ReadGCStaticMetadataUInt16(const uint8_t* address)
+    {
+        uint16_t value;
+        memcpy(&value, address, sizeof(value));
+        return value;
+    }
+
+    static uint32_t ReadGCStaticMetadataUInt32(const uint8_t* address)
+    {
+        uint32_t value;
+        memcpy(&value, address, sizeof(value));
+        return value;
+    }
+
+    static bool ReadGCStaticMetadataRecord(
+        const uint8_t*& cursor,
+        const uint8_t* end,
+        NativeAotGCStaticMetadataRecord* record)
+    {
+        if (record == nullptr || cursor == nullptr || end == nullptr ||
+            cursor > end || (size_t)(end - cursor) < NativeAotGCStaticMetadataHeaderSize)
+        {
+            return false;
+        }
+
+        if (ReadGCStaticMetadataUInt32(cursor) != NativeAotGCStaticMetadataMagic ||
+            ReadGCStaticMetadataUInt16(cursor + 4) != 1)
+        {
+            return false;
+        }
+
+        uint32_t recordSize = ReadGCStaticMetadataUInt32(cursor + 8);
+        if (recordSize < NativeAotGCStaticMetadataHeaderSize ||
+            recordSize > (size_t)(end - cursor) ||
+            (recordSize % sizeof(void*)) != 0)
+        {
+            return false;
+        }
+
+        record->RegionIndex = ReadGCStaticMetadataUInt32(cursor + 12);
+        record->FieldCount = ReadGCStaticMetadataUInt32(cursor + 16);
+        record->Fields = cursor + NativeAotGCStaticMetadataHeaderSize;
+        record->End = cursor + recordSize;
+
+        cursor = record->End;
+        return true;
+    }
+
+    static bool ValidateGCStaticMetadataRecord(const NativeAotGCStaticMetadataRecord& record)
+    {
+        const uint8_t* field = record.Fields;
+        for (uint32_t i = 0; i < record.FieldCount; i++)
+        {
+            if (field > record.End ||
+                (size_t)(record.End - field) < NativeAotGCStaticMetadataFieldHeaderSize)
+            {
+                return false;
+            }
+
+            uint32_t nameCharacters = ReadGCStaticMetadataUInt32(field + 8);
+            if (nameCharacters == 0 ||
+                nameCharacters > (size_t)(record.End - field - NativeAotGCStaticMetadataFieldHeaderSize) / sizeof(WCHAR))
+            {
+                return false;
+            }
+
+            size_t fieldSize = NativeAotGCStaticMetadataFieldHeaderSize +
+                (size_t)nameCharacters * sizeof(WCHAR);
+            field += fieldSize;
+        }
+
+        return field <= record.End;
+    }
+
+    static bool ReadGCStaticMetadataField(
+        const NativeAotGCStaticMetadataRecord& record,
+        uint32_t fieldIndex,
+        uint32_t* offset,
+        uint32_t* flags,
+        const WCHAR** name,
+        uint32_t* nameCharacters)
+    {
+        const uint8_t* field = record.Fields;
+        for (uint32_t i = 0; i <= fieldIndex; i++)
+        {
+            if (field > record.End ||
+                (size_t)(record.End - field) < NativeAotGCStaticMetadataFieldHeaderSize)
+            {
+                return false;
+            }
+
+            uint32_t currentNameCharacters = ReadGCStaticMetadataUInt32(field + 8);
+            if (currentNameCharacters == 0 ||
+                currentNameCharacters > (size_t)(record.End - field - NativeAotGCStaticMetadataFieldHeaderSize) / sizeof(WCHAR))
+            {
+                return false;
+            }
+            size_t fieldSize = NativeAotGCStaticMetadataFieldHeaderSize +
+                (size_t)currentNameCharacters * sizeof(WCHAR);
+            if (fieldSize > (size_t)(record.End - field))
+            {
+                return false;
+            }
+
+            if (i == fieldIndex)
+            {
+                *offset = ReadGCStaticMetadataUInt32(field);
+                *flags = ReadGCStaticMetadataUInt32(field + 4);
+                *name = (const WCHAR*)(field + NativeAotGCStaticMetadataFieldHeaderSize);
+                *nameCharacters = currentNameCharacters;
+                return true;
+            }
+
+            field += fieldSize;
+        }
+
+        return false;
+    }
+
+    bool HasCompleteGCStaticMetadata()
+    {
+        RuntimeInstance::TypeManagerList& typeManagers = GetRuntimeInstance()->GetTypeManagerList();
+        for (RuntimeInstance::TypeManagerList::Iterator it = typeManagers.Begin(); it != typeManagers.End(); ++it)
+        {
+            TypeManager* typeManager = it->m_pTypeManager;
+            int staticLength = 0;
+            int metadataLength = 0;
+            const uint8_t* staticRegion = (const uint8_t*)typeManager->GetModuleSection(
+                ReadyToRunSectionType::GCStaticRegion, &staticLength);
+            const uint8_t* metadataRegion = (const uint8_t*)typeManager->GetModuleSection(
+                ReadyToRunSectionType::GCStaticMetadataRegion, &metadataLength);
+
+            if (staticLength < 0 || metadataLength < 0 ||
+                (staticLength == 0) != (staticRegion == nullptr) ||
+                (metadataLength == 0) != (metadataRegion == nullptr))
+            {
+                return false;
+            }
+
+            if (staticLength == 0)
+            {
+                if (metadataLength != 0)
+                    return false;
+                continue;
+            }
+
+            if (staticRegion == nullptr || metadataRegion == nullptr ||
+                (staticLength % (int)sizeof(void*)) != 0 || metadataLength == 0)
+            {
+                return false;
+            }
+
+            uint32_t expectedIndex = 0;
+            const uint8_t* cursor = metadataRegion;
+            const uint8_t* end = metadataRegion + metadataLength;
+            while (cursor < end)
+            {
+                NativeAotGCStaticMetadataRecord record;
+                if (!ReadGCStaticMetadataRecord(cursor, end, &record) ||
+                    record.RegionIndex != expectedIndex ||
+                    record.FieldCount == 0 ||
+                    !ValidateGCStaticMetadataRecord(record))
+                {
+                    return false;
+                }
+                expectedIndex++;
+            }
+
+            if (expectedIndex != (uint32_t)(staticLength / (int)sizeof(void*)))
+                return false;
+        }
+
+        return true;
+    }
+
+    // This is the packed value described by the GCBulkRootStaticVar event
+    // template. sizeof intentionally retains the platform ABI padding used by
+    // CoreCLR's EventStaticEntry before the variable UnicodeString payload.
+    struct NativeAotEventStaticEntry
+    {
+        ULONGLONG GCRootID;
+        ULONGLONG ObjectID;
+        ULONGLONG TypeID;
+        ULONG Flags;
+        WCHAR Name[0];
+    };
+
+    static_assert(offsetof(NativeAotEventStaticEntry, Name) == 28,
+        "NativeAOT GCBulkRootStaticVar fixed fields must match the event manifest");
+
+    void WalkGCStaticRootsForETW()
+    {
+        const int maxBytes = cbMaxEtwEvent - 0x30;
+        if (maxBytes <= 0)
+            return;
+
+        BYTE* entries = new (nothrow) BYTE[maxBytes];
+        if (entries == nullptr)
+            return;
+
+        BulkTypeEventLogger typeLogger;
+        const bool logTypes = RUNTIME_PROVIDER_CATEGORY_ENABLED(
+            TRACE_LEVEL_INFORMATION,
+            CLR_TYPE_KEYWORD);
+        uint32_t entryCount = 0;
+        int used = 0;
+
+        auto flush = [&]()
+        {
+            if (entryCount == 0)
+                return;
+
+            FireEtwGCBulkRootStaticVar(
+                entryCount,
+                0, // NativeAOT has no CoreCLR AppDomain owner.
+                GetClrInstanceId(),
+                used,
+                entries);
+            entryCount = 0;
+            used = 0;
+        };
+
+        RuntimeInstance::TypeManagerList& typeManagers = GetRuntimeInstance()->GetTypeManagerList();
+        for (RuntimeInstance::TypeManagerList::Iterator it = typeManagers.Begin(); it != typeManagers.End(); ++it)
+        {
+            TypeManager* typeManager = it->m_pTypeManager;
+            int staticLength = 0;
+            int metadataLength = 0;
+            const uint8_t* staticRegion = (const uint8_t*)typeManager->GetModuleSection(
+                ReadyToRunSectionType::GCStaticRegion, &staticLength);
+            const uint8_t* metadataRegion = (const uint8_t*)typeManager->GetModuleSection(
+                ReadyToRunSectionType::GCStaticMetadataRegion, &metadataLength);
+            if (staticRegion == nullptr || metadataRegion == nullptr ||
+                staticLength <= 0 || metadataLength <= 0)
+            {
+                continue;
+            }
+
+            Array* spine = (Array*)typeManager->GetGCStaticSpine();
+            if (spine == nullptr)
+                continue;
+
+            Object** roots = (Object**)spine->GetArrayData();
+            const uint8_t* cursor = metadataRegion;
+            const uint8_t* end = metadataRegion + metadataLength;
+            while (cursor < end)
+            {
+                NativeAotGCStaticMetadataRecord record;
+                if (!ReadGCStaticMetadataRecord(cursor, end, &record))
+                    break;
+                if (record.RegionIndex >= spine->GetArrayLength())
+                    continue;
+
+                Object* staticObject = roots[record.RegionIndex];
+                if (staticObject == nullptr ||
+                    !GCHeapUtilities::GetGCHeap()->IsHeapPointer(staticObject))
+                {
+                    continue;
+                }
+
+                size_t objectSize = staticObject->GetSize();
+                if (objectSize < sizeof(void*))
+                    continue;
+
+                for (uint32_t fieldIndex = 0; fieldIndex < record.FieldCount; fieldIndex++)
+                {
+                    uint32_t fieldOffset;
+                    uint32_t fieldFlags;
+                    const WCHAR* fieldName;
+                    uint32_t nameCharacters;
+                    if (!ReadGCStaticMetadataField(
+                            record,
+                            fieldIndex,
+                            &fieldOffset,
+                            &fieldFlags,
+                            &fieldName,
+                            &nameCharacters))
+                    {
+                        continue;
+                    }
+
+                    if ((size_t)fieldOffset > objectSize - sizeof(void*) ||
+                        sizeof(void*) > objectSize - sizeof(void*) - (size_t)fieldOffset)
+                    {
+                        continue;
+                    }
+
+                    Object** address = (Object**)((uint8_t*)staticObject + sizeof(void*) + fieldOffset);
+                    Object* rootedObject = *address;
+                    if (rootedObject == nullptr ||
+                        !GCHeapUtilities::GetGCHeap()->IsHeapPointer(rootedObject))
+                    {
+                        continue;
+                    }
+
+                    size_t nameBytes = (size_t)nameCharacters * sizeof(WCHAR);
+                    size_t entryBytes = sizeof(NativeAotEventStaticEntry) + nameBytes;
+                    if (entryBytes > (size_t)maxBytes)
+                        continue;
+                    if (entryBytes > (size_t)(maxBytes - used))
+                        flush();
+
+                    NativeAotEventStaticEntry* entry =
+                        (NativeAotEventStaticEntry*)(entries + used);
+                    entry->GCRootID = (ULONGLONG)address;
+                    entry->ObjectID = (ULONGLONG)rootedObject;
+                    entry->TypeID = (ULONGLONG)rootedObject->GetGCSafeMethodTable();
+                    entry->Flags = fieldFlags;
+                    memcpy(entry->Name, fieldName, nameBytes);
+                    used += (int)entryBytes;
+                    entryCount++;
+
+                    if (logTypes)
+                        typeLogger.LogTypeAndParameters(entry->TypeID);
+                }
+            }
+        }
+
+        flush();
+        if (logTypes)
+        {
+            typeLogger.FireBulkTypeEvent();
+            typeLogger.Cleanup();
+        }
+        delete[] entries;
+    }
+
     // This is the packed value described by the GCBulkRootCCW event template.
     // Keep it independent from CoreCLR's ComCallWrapper representation: NativeAOT
     // has ManagedObjectWrapper plus ref-counted GC handles instead.
@@ -1342,10 +1691,15 @@ namespace
 
             // NativeAOT stores generated GC static bases in a managed spine
             // registered by TypeManager. Report those bases as static roots;
-            // COM/RCW roots remain a separate unsupported capability.
-            SC.dwEtwRootKind = kEtwGCRootKindOther;
-            WalkGCStaticRootsForETW(&SC);
-            WalkManagedObjectWrapperRootsForETW();
+            // and use the combined CoreCLR hook when its field metadata is
+            // available. This prevents duplicate static/CCW events while
+            // retaining the generic root event fallback for old images.
+            if (!ETW::GCLog::ShouldWalkStaticsAndCOMForEtw())
+            {
+                SC.dwEtwRootKind = kEtwGCRootKindOther;
+                WalkGCStaticRootsForETW(&SC);
+                WalkManagedObjectWrapperRootsForETW();
+            }
         }
 
         // **** Scan dependent handles: only if ETW wants roots

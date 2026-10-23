@@ -104,6 +104,8 @@ namespace Internal.Runtime
         ModuleInitializerList = 213,
         GvmDispatchCellInfoRegion = 214,
         GvmDispatchCellRegion = 215,
+        // NativeAOT GC heap-dump metadata for generated GC static fields.
+        GCStaticMetadataRegion = 216,
 
         // Sections 300 - 399 are reserved for RhFindBlob backwards compatibility
         ReadonlyBlobRegionStart = 300,

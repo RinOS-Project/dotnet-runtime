@@ -850,7 +850,11 @@ namespace ILCompiler.DependencyAnalysis
 
         public EmbeddedObjectNode GCStaticIndirection(MetadataType type)
         {
-            return _GCStaticIndirectionNodes.GetOrAdd(type);
+            return _GCStaticIndirectionNodes.GetOrAdd(type, staticType =>
+            {
+                GCStaticMetadataRegion.AddEmbeddedObject(new GCStaticMetadataNode(staticType));
+                return GCStaticsRegion.NewNode((GCStaticsNode)TypeGCStaticsSymbol(staticType));
+            });
         }
 
         private NodeCache<MetadataType, ISymbolDefinitionNode> _threadStatics;
@@ -1648,6 +1652,10 @@ namespace ILCompiler.DependencyAnalysis
             "__GCStaticRegion",
             new SortableDependencyNode.ObjectNodeComparer(CompilerComparer.Instance));
 
+        public ArrayOfEmbeddedDataNode<GCStaticMetadataNode> GCStaticMetadataRegion = new ArrayOfEmbeddedDataNode<GCStaticMetadataNode>(
+            "__GCStaticMetadataRegion",
+            new SortableDependencyNode.EmbeddedObjectNodeComparer(CompilerComparer.Instance));
+
         public ArrayOfEmbeddedDataNode<ThreadStaticsNode> ThreadStaticsRegion = new ArrayOfEmbeddedDataNode<ThreadStaticsNode>(
             "__ThreadStaticRegion",
             new SortableDependencyNode.EmbeddedObjectNodeComparer(CompilerComparer.Instance));
@@ -1676,6 +1684,7 @@ namespace ILCompiler.DependencyAnalysis
             graph.AddRoot(new ModulesSectionNode(), "ModulesSection is always generated");
 
             graph.AddRoot(GCStaticsRegion, "GC StaticsRegion is always generated");
+            graph.AddRoot(GCStaticMetadataRegion, "GC static ETW metadata is always generated");
             graph.AddRoot(ThreadStaticsRegion, "ThreadStaticsRegion is always generated");
             graph.AddRoot(EagerCctorTable, "EagerCctorTable is always generated");
             graph.AddRoot(TypeManagerIndirection, "TypeManagerIndirection is always generated");
@@ -1689,6 +1698,7 @@ namespace ILCompiler.DependencyAnalysis
             }
 
             ReadyToRunHeader.Add(ReadyToRunSectionType.GCStaticRegion, GCStaticsRegion);
+            ReadyToRunHeader.Add(ReadyToRunSectionType.GCStaticMetadataRegion, GCStaticMetadataRegion);
             ReadyToRunHeader.Add(ReadyToRunSectionType.ThreadStaticRegion, ThreadStaticsRegion);
             ReadyToRunHeader.Add(ReadyToRunSectionType.EagerCctor, EagerCctorTable);
             ReadyToRunHeader.Add(ReadyToRunSectionType.TypeManagerIndirection, TypeManagerIndirection);

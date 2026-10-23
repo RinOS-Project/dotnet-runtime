@@ -4,8 +4,6 @@
 #ifndef __NATIVEAOT_COMWRAPPERS_DIAGNOSTICS_H__
 #define __NATIVEAOT_COMWRAPPERS_DIAGNOSTICS_H__
 
-#include "ObjectLayout.h"
-
 // These layouts are shared by the NativeAOT managed ComWrappers implementation
 // and the diagnostics/runtime code. Keep the field order in lockstep with
 // System.Runtime.InteropServices.ComWrappers.cs.

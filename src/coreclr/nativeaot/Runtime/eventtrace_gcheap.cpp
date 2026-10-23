@@ -24,6 +24,10 @@
 #include "eventtracebase.h"
 #include "eventtracepriv.h"
 #include "profheapwalkhelper.h"
+#include "gchandleutilities.h"
+#include "NativeAotComWrappersDiagnostics.h"
+
+#include <string.h>
 
 /****************************************************************************/
 /* Methods that are called from the runtime */
@@ -56,10 +60,10 @@ BOOL ETW::GCLog::ShouldTrackMovementForEtw()
 
 BOOL ETW::GCLog::ShouldWalkStaticsAndCOMForEtw()
 {
-    // NativeAOT does not provide a COM/RCW enumerator for this combined ETW
-    // hook. Static roots have a separate owner in the normal heap-root walk;
-    // keep this combined capability false until the COM root identity contract
-    // exists so this hook cannot advertise a partial walk as complete.
+    // NativeAOT has separate owners for GC static roots and ComWrappers roots
+    // in the normal heap-root walk. It does not provide CoreCLR's
+    // GCBulkRootStaticVar metadata event, so keep this combined capability
+    // false and never advertise a partial static/COM walk as complete.
     return FALSE;
 }
 
@@ -487,9 +491,10 @@ HRESULT ETW::GCLog::ForceGCForDiagnostics()
 
 void ETW::GCLog::WalkStaticsAndCOMForETW()
 {
-    // COM/RCW enumeration is still not available in NativeAOT. GC static roots
-    // are handled by WalkGCStaticRootsForETW during the normal heap-root walk,
-    // so this combined CoreCLR hook remains disabled until the COM owner exists.
+    // NativeAOT now has a COM/RCW wrapper owner in the normal heap-root walk below.
+    // The combined CoreCLR hook remains disabled: NativeAOT still has no owner for
+    // CoreCLR's static-variable metadata event (GCBulkRootStaticVar), and must not
+    // advertise that combined capability as complete.
 }
 
 // Holds state that batches of roots, nodes, edges, and types as the GC walks the heap
@@ -977,6 +982,267 @@ void ETW::GCLog::EndHeapDump(ProfilerWalkHeapContext* profilerWalkHeapContext)
 
 namespace
 {
+    // This is the packed value described by the GCBulkRootCCW event template.
+    // Keep it independent from CoreCLR's ComCallWrapper representation: NativeAOT
+    // has ManagedObjectWrapper plus ref-counted GC handles instead.
+#pragma pack(push, 1)
+    struct NativeAotEventCCWEntry
+    {
+        ULONGLONG RootID;
+        ULONGLONG ObjectID;
+        ULONGLONG TypeID;
+        ULONGLONG IUnk;
+        ULONG RefCount;
+        ULONG JupiterRefCount;
+        ULONG Flags;
+    };
+#pragma pack(pop)
+
+    static_assert(sizeof(NativeAotEventCCWEntry) == 44,
+        "NativeAOT GCBulkRootCCW value must match the event manifest");
+
+    struct NativeAotComHandleBatch
+    {
+        NativeAotComHandleBatch* Next;
+        uint32_t Count;
+        Object** Handles[64];
+    };
+
+    struct NativeAotComHandleEnumeration
+    {
+        MethodTable* HolderType;
+        NativeAotComHandleBatch* Head;
+        NativeAotComHandleBatch* Tail;
+        bool Complete;
+
+        NativeAotComHandleEnumeration(MethodTable* holderType)
+            : HolderType(holderType), Head(nullptr), Tail(nullptr), Complete(true)
+        {
+        }
+    };
+
+    static bool IsIUnknownIid(const uint8_t* iid)
+    {
+        static const uint8_t s_iidIUnknown[16] =
+            { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+              0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46 };
+        return memcmp(iid, s_iidIUnknown, sizeof(s_iidIUnknown)) == 0;
+    }
+
+    static void* GetDispatchPointerAtIndex(
+        NativeAotManagedObjectWrapperLayout* wrapper,
+        uint32_t index)
+    {
+        if (wrapper == nullptr || wrapper->Dispatches == nullptr)
+            return nullptr;
+
+        NativeAotInternalComInterfaceDispatch* dispatches =
+            (NativeAotInternalComInterfaceDispatch*)wrapper->Dispatches;
+        NativeAotInternalComInterfaceDispatch* dispatch =
+            &dispatches[index / NativeAotComInterfaceEntriesPerDispatch];
+        return &dispatch->Vtables[index % NativeAotComInterfaceEntriesPerDispatch];
+    }
+
+    static void* GetIUnknownPointer(NativeAotManagedObjectWrapperLayout* wrapper)
+    {
+        if (wrapper == nullptr)
+            return nullptr;
+
+        if ((wrapper->Flags & NativeAotComInterfaceCallerDefinedIUnknown) != 0)
+        {
+            NativeAotComInterfaceEntryLayout* entries =
+                (NativeAotComInterfaceEntryLayout*)wrapper->UserDefined;
+            if (entries == nullptr)
+                return nullptr;
+
+            for (int32_t i = 0; i < wrapper->UserDefinedCount; i++)
+            {
+                if (IsIUnknownIid(entries[i].IID))
+                    return GetDispatchPointerAtIndex(wrapper, (uint32_t)i);
+            }
+            return nullptr;
+        }
+
+        // Runtime-defined IUnknown follows all caller-defined interfaces.
+        return GetDispatchPointerAtIndex(wrapper, (uint32_t)wrapper->UserDefinedCount);
+    }
+
+    static void CALLBACK CollectNativeAotComHandle(
+        PTR_UNCHECKED_OBJECTREF pref,
+        uintptr_t* /* pExtraInfo */,
+        uintptr_t param1,
+        uintptr_t param2)
+    {
+        CONTRACTL
+        {
+            NOTHROW;
+            GC_NOTRIGGER;
+            MODE_ANY;
+        }
+        CONTRACTL_END;
+
+        NativeAotComHandleEnumeration* enumeration =
+            (NativeAotComHandleEnumeration*)param1;
+        if (enumeration == nullptr || param2 != 0 || !enumeration->Complete ||
+            pref == nullptr || *pref == nullptr)
+        {
+            return;
+        }
+
+        Object* object = (Object*)*pref;
+        if (enumeration->HolderType == nullptr ||
+            object->GetGCSafeMethodTable() != enumeration->HolderType)
+        {
+            return;
+        }
+
+        NativeAotComHandleBatch* batch = enumeration->Tail;
+        if (batch == nullptr || batch->Count == _countof(batch->Handles))
+        {
+            NativeAotComHandleBatch* newBatch = new (nothrow) NativeAotComHandleBatch();
+            if (newBatch == nullptr)
+            {
+                enumeration->Complete = false;
+                return;
+            }
+            newBatch->Next = nullptr;
+            newBatch->Count = 0;
+            if (enumeration->Tail != nullptr)
+                enumeration->Tail->Next = newBatch;
+            else
+                enumeration->Head = newBatch;
+            enumeration->Tail = newBatch;
+            batch = newBatch;
+        }
+
+        batch->Handles[batch->Count++] = (Object**)pref;
+    }
+
+    static void FreeNativeAotComHandleBatches(NativeAotComHandleEnumeration* enumeration)
+    {
+        NativeAotComHandleBatch* batch = enumeration->Head;
+        while (batch != nullptr)
+        {
+            NativeAotComHandleBatch* next = batch->Next;
+            delete batch;
+            batch = next;
+        }
+        enumeration->Head = nullptr;
+        enumeration->Tail = nullptr;
+    }
+
+    static void WalkManagedObjectWrapperRootsForETW()
+    {
+        MethodTable* holderType = RhGetManagedObjectWrapperHolderType();
+        if (holderType == nullptr)
+            return;
+
+        NativeAotComHandleEnumeration enumeration(holderType);
+        GCHandleUtilities::GetGCHandleManager()->TraceRefCountedHandles(
+            CollectNativeAotComHandle,
+            (uintptr_t)&enumeration,
+            0);
+
+        // Do not emit a partial event batch if native memory pressure prevented
+        // us from collecting the complete handle set.
+        if (!enumeration.Complete)
+        {
+            FreeNativeAotComHandleBatches(&enumeration);
+            return;
+        }
+
+        const int maxEntries = (cbMaxEtwEvent - 0x30) / sizeof(NativeAotEventCCWEntry);
+        NativeAotEventCCWEntry* entries = new (nothrow) NativeAotEventCCWEntry[maxEntries];
+        if (entries == nullptr)
+        {
+            FreeNativeAotComHandleBatches(&enumeration);
+            return;
+        }
+
+        BulkTypeEventLogger typeLogger;
+        const bool logTypes = RUNTIME_PROVIDER_CATEGORY_ENABLED(
+            TRACE_LEVEL_INFORMATION,
+            CLR_TYPE_KEYWORD);
+        uint32_t entryCount = 0;
+
+        for (NativeAotComHandleBatch* batch = enumeration.Head;
+             batch != nullptr;
+             batch = batch->Next)
+        {
+            for (uint32_t i = 0; i < batch->Count; i++)
+            {
+                Object** handle = batch->Handles[i];
+                Object* holderObject = (handle == nullptr) ? nullptr : *handle;
+                if (holderObject == nullptr ||
+                    holderObject->GetGCSafeMethodTable() != holderType)
+                {
+                    continue;
+                }
+
+                NativeAotManagedObjectWrapperHolderLayout* holder =
+                    (NativeAotManagedObjectWrapperHolderLayout*)holderObject;
+                Object* wrappedObject = holder->WrappedObject;
+                NativeAotManagedObjectWrapperLayout* wrapper = holder->Wrapper;
+                if (wrappedObject == nullptr || wrapper == nullptr ||
+                    !GCHeapUtilities::GetGCHeap()->IsHeapPointer(wrappedObject))
+                {
+                    continue;
+                }
+
+                if (entryCount == (uint32_t)maxEntries)
+                {
+                    FireEtwGCBulkRootCCW(
+                        entryCount,
+                        GetClrInstanceId(),
+                        sizeof(NativeAotEventCCWEntry) * entryCount,
+                        entries);
+                    entryCount = 0;
+                }
+
+                uint64_t refCount = (uint64_t)PalInterlockedCompareExchange64(
+                    (int64_t*)&wrapper->RefCount, 0, 0);
+                uint32_t comRefCount = (uint32_t)(refCount & NativeAotComRefCountMask);
+                uint32_t trackerRefCount = (uint32_t)(
+                    (refCount & NativeAotTrackerRefCountMask) >> NativeAotTrackerRefShift);
+
+                NativeAotEventCCWEntry& entry = entries[entryCount++];
+                entry.RootID = (ULONGLONG)handle;
+                entry.ObjectID = (ULONGLONG)wrappedObject;
+                entry.TypeID = (ULONGLONG)wrappedObject->GetGCSafeMethodTable();
+                entry.IUnk = (ULONGLONG)GetIUnknownPointer(wrapper);
+                entry.RefCount = comRefCount;
+                entry.JupiterRefCount = trackerRefCount;
+                entry.Flags = (comRefCount != 0) ? 0x1 : 0;
+                if (trackerRefCount != 0 &&
+                    (wrapper->Flags & NativeAotComInterfaceIsPegged) != 0)
+                {
+                    entry.Flags |= 0x2;
+                }
+
+                if (logTypes)
+                    typeLogger.LogTypeAndParameters(entry.TypeID);
+            }
+        }
+
+        if (entryCount != 0)
+        {
+            FireEtwGCBulkRootCCW(
+                entryCount,
+                GetClrInstanceId(),
+                sizeof(NativeAotEventCCWEntry) * entryCount,
+                entries);
+        }
+
+        if (logTypes)
+        {
+            typeLogger.FireBulkTypeEvent();
+            typeLogger.Cleanup();
+        }
+
+        delete[] entries;
+        FreeNativeAotComHandleBatches(&enumeration);
+    }
+
     void WalkGCStaticRootsForETW(ProfilingScanContext* pSC)
     {
         RuntimeInstance::TypeManagerList& typeManagers = GetRuntimeInstance()->GetTypeManagerList();
@@ -1079,6 +1345,7 @@ namespace
             // COM/RCW roots remain a separate unsupported capability.
             SC.dwEtwRootKind = kEtwGCRootKindOther;
             WalkGCStaticRootsForETW(&SC);
+            WalkManagedObjectWrapperRootsForETW();
         }
 
         // **** Scan dependent handles: only if ETW wants roots

@@ -23,10 +23,17 @@ namespace System.Runtime.InteropServices
             private static void RegisterIsRootedCallback()
             {
                 delegate* unmanaged<IntPtr, bool> callback = &IsRootedCallback;
-                if (!RuntimeImports.RhRegisterRefCountedHandleCallback((nint)callback, MethodTable.Of<ManagedObjectWrapperHolder>()))
+                MethodTable* typeFilter = MethodTable.Of<ManagedObjectWrapperHolder>();
+                if (!RuntimeImports.RhRegisterRefCountedHandleCallback((nint)callback, typeFilter))
                 {
                     throw new OutOfMemoryException();
                 }
+
+                // NativeAOT diagnostics enumerates ref-counted handles after the
+                // GC has completed. Publish the exact holder MethodTable so the
+                // native walk can reject non-ComWrappers ref-counted handles
+                // before reading the holder layout.
+                RuntimeImports.RhSetManagedObjectWrapperHolderType(typeFilter);
             }
 
             [UnmanagedCallersOnly]

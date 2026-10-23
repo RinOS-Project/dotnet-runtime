@@ -487,6 +487,9 @@ namespace System.Runtime
         [RuntimeImport(RuntimeLibrary, "RhUnregisterRefCountedHandleCallback")]
         internal static extern unsafe void RhUnregisterRefCountedHandleCallback(IntPtr pCalloutMethod, MethodTable* pTypeFilter);
 
+        [RuntimeImport(RuntimeLibrary, "RhSetManagedObjectWrapperHolderType")]
+        internal static extern unsafe void RhSetManagedObjectWrapperHolderType(MethodTable* pTypeFilter);
+
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         [RuntimeImport(RuntimeLibrary,
 #if TARGET_WINDOWS && TARGET_X86

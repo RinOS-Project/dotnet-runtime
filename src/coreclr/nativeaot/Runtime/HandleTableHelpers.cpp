@@ -7,6 +7,9 @@
 #include "RestrictedCallouts.h"
 #include "gchandleutilities.h"
 #include "interoplibinterface.h"
+#include "NativeAotComWrappersDiagnostics.h"
+
+static MethodTable* s_pManagedObjectWrapperHolderType = nullptr;
 
 
 FCIMPL2(OBJECTHANDLE, RhpHandleAlloc, Object *pObject, int type)
@@ -65,6 +68,17 @@ FCIMPL2(void, RhUnregisterRefCountedHandleCallback, void * pCallout, MethodTable
 }
 FCIMPLEND
 
+FCIMPL1(void, RhSetManagedObjectWrapperHolderType, MethodTable * pTypeFilter)
+{
+    s_pManagedObjectWrapperHolderType = pTypeFilter;
+}
+FCIMPLEND
+
+extern "C" MethodTable* RhGetManagedObjectWrapperHolderType()
+{
+    return s_pManagedObjectWrapperHolderType;
+}
+
 FCIMPL2(OBJECTHANDLE, RhpHandleAllocCrossReference, Object *pPrimary, void *pContext)
 {
     return GCHandleUtilities::GetGCHandleManager()->GetGlobalHandleStore()->CreateHandleWithExtraInfo(pPrimary, HNDTYPE_CROSSREFERENCE, pContext);
@@ -87,17 +101,8 @@ FCIMPL2(FC_BOOL_RET, RhHandleTryGetCrossReferenceContext, OBJECTHANDLE handle, v
 FCIMPLEND
 
 // This structure mirrors the managed type System.Runtime.InteropServices.ComWrappers.ManagedObjectWrapper.
-struct ManagedObjectWrapper
+struct ManagedObjectWrapper : public NativeAotManagedObjectWrapperLayout
 {
-    intptr_t HolderHandle;
-    uint64_t RefCount;
-
-    int32_t UserDefinedCount;
-    void* /* ComInterfaceEntry */ UserDefined;
-    void* /* InternalComInterfaceDispatch* */ Dispatches;
-
-    int32_t /* CreateComInterfaceFlagsEx */ Flags;
-
     uint32_t AddRef()
     {
         return GetComCount((uint64_t)PalInterlockedIncrement64((int64_t*)&RefCount));
@@ -111,32 +116,22 @@ struct ManagedObjectWrapper
     }
 };
 
-template<typename T>
-struct Span
-{
-    T* _pointer;
-    int _length;
-};
-
 // This structure mirrors the managed type System.Runtime.InteropServices.ComWrappers.InternalComInterfaceDispatch.
-struct InternalComInterfaceDispatch
-{
-    ManagedObjectWrapper* _thisPtr;
-    Span<void*> Vtables;
-};
+using InternalComInterfaceDispatch = NativeAotInternalComInterfaceDispatch;
 
-#ifdef TARGET_64BIT
-constexpr uintptr_t DispatchAlignment = 64;
-#else
-constexpr uintptr_t DispatchAlignment = 16;
-#endif
+static_assert(offsetof(NativeAotManagedObjectWrapperLayout, Flags) == sizeof(intptr_t) + sizeof(uint64_t),
+    "NativeAOT ManagedObjectWrapper Flags offset must match managed layout");
+static_assert(offsetof(NativeAotManagedObjectWrapperLayout, UserDefinedCount) == sizeof(intptr_t) + sizeof(uint64_t) + sizeof(int32_t),
+    "NativeAOT ManagedObjectWrapper UserDefinedCount offset must match managed layout");
+static_assert(offsetof(NativeAotManagedObjectWrapperLayout, Dispatches) > offsetof(NativeAotManagedObjectWrapperLayout, UserDefined),
+    "NativeAOT ManagedObjectWrapper pointer fields must remain ordered");
 
-constexpr uintptr_t DispatchAlignmentMask = ~(DispatchAlignment - 1);
+constexpr uintptr_t DispatchAlignmentMask = ~(NativeAotComInterfaceDispatchAlignment - 1);
 
 static ManagedObjectWrapper* ToManagedObjectWrapper(void* dispatchPtr)
 {
     uintptr_t dispatch = reinterpret_cast<uintptr_t>(dispatchPtr) & DispatchAlignmentMask;
-    return ((InternalComInterfaceDispatch*)dispatch)->_thisPtr;
+    return (ManagedObjectWrapper*)((InternalComInterfaceDispatch*)dispatch)->ThisPtr;
 }
 
 //

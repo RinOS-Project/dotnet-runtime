@@ -840,8 +840,25 @@ ipc_stream_poll_func (
 	void *object,
 	uint32_t timeout_ms)
 {
-	EP_ASSERT (!"ipc_stream_poll_func needs to be implemented for NamedPipes");
-	// TODO: Implement ipc_stream_poll_func for NamedPipes
+	EP_ASSERT (object != NULL);
+
+	DiagnosticsIpcStream *ipc_stream = (DiagnosticsIpcStream *)object;
+	DiagnosticsIpcPollHandle poll_handle = {0};
+	poll_handle.stream = ipc_stream;
+
+	int32_t result = ds_ipc_poll (&poll_handle, 1, timeout_ms, NULL);
+	if (poll_handle.events == IPC_POLL_EVENTS_HANGUP)
+		return IPC_POLL_EVENTS_HANGUP;
+
+	if (poll_handle.events == IPC_POLL_EVENTS_ERR || result < 0)
+		return IPC_POLL_EVENTS_ERR;
+
+	if (result == 0 || poll_handle.events == IPC_POLL_EVENTS_NONE)
+		return IPC_POLL_EVENTS_NONE;
+
+	if (poll_handle.events == IPC_POLL_EVENTS_SIGNALED)
+		return IPC_POLL_EVENTS_SIGNALED;
+
 	return IPC_POLL_EVENTS_UNKNOWN;
 }
 

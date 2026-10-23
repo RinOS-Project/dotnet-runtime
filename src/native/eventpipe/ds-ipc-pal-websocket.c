@@ -455,9 +455,21 @@ ipc_stream_poll_func (
 	void *object,
 	uint32_t timeout_ms)
 {
-	EP_ASSERT (!"ipc_stream_poll_func needs to be implemented for WebSockets");
-	// TODO: Implement ipc_stream_poll_func for WebSockets
-	return IPC_POLL_EVENTS_UNKNOWN;
+	EP_ASSERT (object != NULL);
+	(void)timeout_ms;
+
+	DiagnosticsIpcStream *ipc_stream = (DiagnosticsIpcStream *)object;
+	if (ipc_stream->client_socket == DS_IPC_INVALID_SOCKET)
+		return IPC_POLL_EVENTS_HANGUP;
+
+	int pending = ds_rt_websocket_poll (ipc_stream->client_socket);
+	if (pending < 0)
+		return IPC_POLL_EVENTS_ERR;
+
+	if (pending > 0)
+		return IPC_POLL_EVENTS_SIGNALED;
+
+	return IPC_POLL_EVENTS_NONE;
 }
 
 static IpcStreamVtable ipc_stream_vtable = {

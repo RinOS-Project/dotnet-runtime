@@ -85,8 +85,12 @@ static const char* const g_japanese_era_abbreviations[] = {
  * host's current locale. */
 static const char* const g_gregorian_era_names[] = { "AD" };
 static const char* const g_gregorian_era_abbreviations[] = { "AD" };
-static const char* const g_taiwan_era_names[] = { "中華民國" };
-static const char* const g_taiwan_era_abbreviations[] = { "民國" };
+/* CLDR 48.2 zh/roc publishes both the pre-Republic and Republic eras.  Keep
+ * the pre-epoch entry: CalendarData consumers use the ordinal position when
+ * converting dates before the ROC epoch, so collapsing this to one entry
+ * silently maps those dates to the wrong era. */
+static const char* const g_taiwan_era_names[] = { "民國前", "民國" };
+static const char* const g_taiwan_era_abbreviations[] = { "民國前", "民國" };
 static const char* const g_korean_era_names[] = { "단기" };
 static const char* const g_thai_era_names[] = { "พ.ศ." };
 static const char* const g_japanese_era_names_en[] = {
@@ -920,7 +924,9 @@ static const char* calendar_symbol(const RinIcuDataLocaleRecord* record,
 static size_t calendar_symbol_count(CalendarId calendar, CalendarDataType kind)
 {
     if (kind == CalendarData_EraNames || kind == CalendarData_AbbrevEraNames) {
-        return calendar == 3 ? sizeof(g_japanese_eras) / sizeof(g_japanese_eras[0]) : 1u;
+        if (calendar == 3) return sizeof(g_japanese_eras) / sizeof(g_japanese_eras[0]);
+        if (calendar == 4) return sizeof(g_taiwan_era_names) / sizeof(g_taiwan_era_names[0]);
+        return 1u;
     }
     if (kind == CalendarData_MonthNames || kind == CalendarData_AbbrevMonthNames ||
         kind == CalendarData_MonthGenitiveNames || kind == CalendarData_AbbrevMonthGenitiveNames) {

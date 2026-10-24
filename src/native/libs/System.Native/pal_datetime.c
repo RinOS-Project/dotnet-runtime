@@ -13,6 +13,10 @@
 #include <sys/system_properties.h>
 #endif
 #include <time.h>
+#if defined(TARGET_RINOS)
+#include <rin/contract_abi.h>
+#include <sys/syscall.h>
+#endif
 
 static const int64_t TICKS_PER_SECOND = 10000000; /* 10^7 */
 #if HAVE_CLOCK_REALTIME
@@ -60,32 +64,100 @@ char* SystemNative_GetDefaultTimeZone(void)
 #elif defined(TARGET_RINOS)
 /* The machine-wide timezone is owned by the RinOS kernel/runtime boundary.
  * Do not inspect host filesystem timezone files or inherit a host libc database. */
-extern int rin_system_timezone_get(char* output, size_t capacity)
-    __attribute__((weak));
-extern uint32_t rin_system_timezone_generation(void)
-    __attribute__((weak));
+
+static int rin_timezone_info_is_valid(const RinTimeZoneInfoV1* info)
+{
+    size_t length = 0;
+    size_t index;
+    size_t component_length = 0;
+
+    if (info == NULL || info->struct_size != sizeof(*info) ||
+        info->version != RIN_TIME_ZONE_INFO_VERSION ||
+        info->reserved0 != 0u || info->generation == 0u ||
+        (info->flags & ~(RIN_TIME_ZONE_INFO_FLAG_SYSTEM_DEFAULT |
+                         RIN_TIME_ZONE_INFO_FLAG_FALLBACK_UTC)) != 0u ||
+        (info->flags & RIN_TIME_ZONE_INFO_FLAG_SYSTEM_DEFAULT) == 0u)
+    {
+        return 0;
+    }
+
+    for (index = 0; index < sizeof(info->reserved); ++index)
+    {
+        if (info->reserved[index] != 0u)
+            return 0;
+    }
+
+    while (length < sizeof(info->id) && info->id[length] != '\0')
+        ++length;
+    if (length == 0 || length > RIN_TIME_ZONE_ID_MAX ||
+        length == sizeof(info->id) || info->id[0] == '/' ||
+        info->id[length - 1] == '/')
+    {
+        return 0;
+    }
+
+    for (index = length + 1; index < sizeof(info->id); ++index)
+    {
+        if (info->id[index] != 0u)
+            return 0;
+    }
+
+    /* The kernel owns catalogue membership. PAL still rejects malformed
+     * IANA-shaped IDs before converting the ABI byte array to a C string. */
+    for (index = 0; index < length; ++index)
+    {
+        unsigned char value = info->id[index];
+        int alpha = (value >= 'A' && value <= 'Z') ||
+                    (value >= 'a' && value <= 'z');
+        int digit = value >= '0' && value <= '9';
+        if (value == '/')
+        {
+            if (component_length == 0)
+                return 0;
+            component_length = 0;
+            continue;
+        }
+        if (!alpha && !digit && value != '_' && value != '+' && value != '-')
+            return 0;
+        ++component_length;
+    }
+    return component_length != 0;
+}
+
+static int rin_timezone_query(RinTimeZoneInfoV1* info)
+{
+    if (info == NULL)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    memset(info, 0, sizeof(*info));
+    if (syscall(RIN_SYS_TIMEZONE_GET, info) != 0)
+        return -1;
+    if (!rin_timezone_info_is_valid(info))
+    {
+        memset(info, 0, sizeof(*info));
+        errno = EPROTO;
+        return -1;
+    }
+    return 0;
+}
 
 char* SystemNative_GetDefaultTimeZone(void)
 {
-    char timezone_name[128] = { 0 };
-    size_t length = 0;
-    if (rin_system_timezone_get &&
-        rin_system_timezone_get(timezone_name, sizeof(timezone_name)))
-    {
-        /* The owner is a product ABI boundary.  Do not let a malformed
-         * provider result turn into an unbounded strdup read, and do not
-         * expose an empty identifier as a successful timezone query. */
-        while (length < sizeof(timezone_name) && timezone_name[length] != '\0')
-            ++length;
-        if (length != 0 && length < sizeof(timezone_name))
-            return strdup(timezone_name);
-    }
-    return NULL;
+    RinTimeZoneInfoV1 info;
+    if (rin_timezone_query(&info) != 0)
+        return NULL;
+    return strdup((const char*)info.id);
 }
 
 uint32_t SystemNative_GetTimeZoneGeneration(void)
 {
-    return rin_system_timezone_generation ? rin_system_timezone_generation() : 0u;
+    RinTimeZoneInfoV1 info;
+    if (rin_timezone_query(&info) != 0)
+        return 0u;
+    return info.generation;
 }
 #elif !defined(__APPLE__)
 char* SystemNative_GetDefaultTimeZone(void)

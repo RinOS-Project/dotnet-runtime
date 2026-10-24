@@ -150,40 +150,56 @@ static void provider_name_register(RinOsKerberosProviderName* name)
     provider_name_unlock();
 }
 
-static RinOsKerberosProviderName* provider_name_lookup(const void* pointer)
+static int provider_name_snapshot(
+    const void* pointer, uint8_t* bytes, uint32_t* size_out)
 {
     RinOsKerberosProviderName* current;
-    if (pointer == NULL) return NULL;
+    uint32_t size;
+    if (pointer == NULL || size_out == NULL) return 0;
     provider_name_lock();
     current = g_provider_names;
     while (current != NULL && current != pointer)
         current = current->next;
+    if (current == NULL || current->magic != RINOS_KERBEROS_NAME_MAGIC ||
+        current->size == 0u ||
+        current->size > RIN_KERBEROS_PROVIDER_MAX_TARGET_NAME_SIZE) {
+        provider_name_unlock();
+        return 0;
+    }
+    size = current->size;
+    if (bytes != NULL) memcpy(bytes, current->bytes, size);
     provider_name_unlock();
-    return current;
+    *size_out = size;
+    return 1;
 }
 
-static int provider_name_unregister(RinOsKerberosProviderName* name)
+/* Remove a name and return its owner only after unlinking it while holding
+ * the registry lock.  Callers may then scrub/free it without exposing a
+ * pointer that another provider operation can still discover. */
+static RinOsKerberosProviderName* provider_name_take(const void* pointer)
 {
     RinOsKerberosProviderName* previous = NULL;
     RinOsKerberosProviderName* current;
-    int found = 0;
-    if (name == NULL) return 0;
+    if (pointer == NULL) return NULL;
     provider_name_lock();
     current = g_provider_names;
-    while (current != NULL && current != name) {
+    while (current != NULL && current != pointer) {
         previous = current;
         current = current->next;
     }
-    if (current != NULL) {
-        if (previous == NULL)
-            g_provider_names = current->next;
-        else
-            previous->next = current->next;
-        current->next = NULL;
-        found = 1;
+    if (current == NULL || current->magic != RINOS_KERBEROS_NAME_MAGIC ||
+        current->size == 0u ||
+        current->size > RIN_KERBEROS_PROVIDER_MAX_TARGET_NAME_SIZE) {
+        provider_name_unlock();
+        return NULL;
     }
+    if (previous == NULL)
+        g_provider_names = current->next;
+    else
+        previous->next = current->next;
+    current->next = NULL;
     provider_name_unlock();
-    return found;
+    return current;
 }
 
 static void provider_buffer_lock(void)
@@ -1401,10 +1417,8 @@ static int provider_message_pair(
 
 static int provider_name_valid(const RinOsKerberosProviderName* name)
 {
-    name = provider_name_lookup(name);
-    return name != NULL && name->magic == RINOS_KERBEROS_NAME_MAGIC &&
-           name->size != 0u &&
-           name->size <= RIN_KERBEROS_PROVIDER_MAX_TARGET_NAME_SIZE;
+    uint32_t size = 0u;
+    return provider_name_snapshot(name, NULL, &size);
 }
 
 /* RinOS does not have a caller-selected credential namespace.  A named
@@ -1422,11 +1436,14 @@ static uint32_t provider_validate_named_session_credential(
     uint64_t generation = 0u;
     uint32_t owner_minor = 0u;
     uint32_t status = RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
+    uint8_t desired_principal[RINOS_KERBEROS_MAX_PRINCIPAL_SIZE] = {0};
+    uint32_t desired_principal_size = 0u;
     int matches = 0;
 
     if (minor_status != NULL) *minor_status = 0u;
     if (owner == NULL || owner_credential == NULL ||
-        !provider_name_valid(desired_name) ||
+        !provider_name_snapshot(desired_name, desired_principal,
+                                &desired_principal_size) ||
         owner->get_session_principal == NULL)
         return RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
 
@@ -1441,13 +1458,14 @@ static uint32_t provider_validate_named_session_credential(
         goto cleanup;
     }
 
-    matches = principal_size == desired_name->size &&
-              memcmp(principal, desired_name->bytes, principal_size) == 0;
+    matches = principal_size == desired_principal_size &&
+              memcmp(principal, desired_principal, principal_size) == 0;
     status = matches ? RIN_KERBEROS_CREDENTIAL_OWNER_OK
                      : RIN_KERBEROS_CREDENTIAL_OWNER_NO_CREDENTIAL;
 
 cleanup:
     provider_zero(principal, sizeof(principal));
+    provider_zero(desired_principal, sizeof(desired_principal));
     if (minor_status != NULL) *minor_status = owner_minor;
     return status;
 }
@@ -1641,12 +1659,11 @@ static uint32_t provider_release_name(void* context, uint32_t* minor_status,
     (void)context;
     if (input == NULL || *input == NULL)
         return provider_unavailable(minor_status);
-    name = provider_name_lookup(*input);
-    if (name == NULL || !provider_name_valid(name)) {
+    name = provider_name_take(*input);
+    if (name == NULL) {
         *input = NULL;
         return provider_unavailable(minor_status);
     }
-    (void)provider_name_unregister(name);
     provider_zero(name, sizeof(*name));
     free(name);
     *input = NULL;
@@ -1876,10 +1893,13 @@ static uint32_t provider_build_sec_context_input(
     uint8_t** output, uint32_t* output_size)
 {
     RinKerberosProviderSecContextInputV1 header = {0};
+    uint8_t target_name_bytes[RIN_KERBEROS_PROVIDER_MAX_TARGET_NAME_SIZE] = {0};
+    uint32_t target_name_size = 0u;
     uint32_t total;
     uint8_t* bytes;
     if (output == NULL || output_size == NULL ||
-        (target_name != NULL && !provider_name_valid(target_name)) ||
+        (target_name != NULL && !provider_name_snapshot(
+            target_name, target_name_bytes, &target_name_size)) ||
         /* The upstream GSS namespace is wider than the RinOS operation
          * contract.  Do not let a caller request delegation, identity, or
          * another mode whose session policy/owner lifecycle is not present;
@@ -1893,12 +1913,11 @@ static uint32_t provider_build_sec_context_input(
         (token_size != 0u && token == NULL))
         return 0u;
     total = (uint32_t)sizeof(header);
-    if ((target_name != NULL && target_name->size >
-         RIN_KERBEROS_OPERATION_MAX_INPUT_SIZE - total) ||
+    if (target_name_size > RIN_KERBEROS_OPERATION_MAX_INPUT_SIZE - total ||
         channel_binding_size > RIN_KERBEROS_OPERATION_MAX_INPUT_SIZE - total ||
         token_size > RIN_KERBEROS_OPERATION_MAX_INPUT_SIZE - total)
         return 0u;
-    total += target_name != NULL ? target_name->size : 0u;
+    total += target_name_size;
     if (channel_binding_size > RIN_KERBEROS_OPERATION_MAX_INPUT_SIZE - total)
         return 0u;
     total += channel_binding_size;
@@ -1912,14 +1931,14 @@ static uint32_t provider_build_sec_context_input(
     header.kind = RIN_KERBEROS_PROVIDER_INPUT_SEC_CONTEXT;
     header.mechanism = mechanism;
     header.requested_flags = requested_flags;
-    header.target_name_size = target_name != NULL ? target_name->size : 0u;
+    header.target_name_size = target_name_size;
     header.channel_binding_size = channel_binding_size;
     header.token_size = token_size;
     memcpy(bytes, &header, sizeof(header));
     total = (uint32_t)sizeof(header);
-    if (target_name != NULL) {
-        memcpy(bytes + total, target_name->bytes, target_name->size);
-        total += target_name->size;
+    if (target_name_size != 0u) {
+        memcpy(bytes + total, target_name_bytes, target_name_size);
+        total += target_name_size;
     }
     if (channel_binding_size != 0u) {
         memcpy(bytes + total, channel_binding, channel_binding_size);

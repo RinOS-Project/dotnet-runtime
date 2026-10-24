@@ -1714,13 +1714,30 @@ static bool IsUniversalTransitionStackRangeValid(
 /* A UniversalTransition frame is target memory supplied by the assembly
  * helper.  The stack-range checks above make the frame fields readable, but
  * the saved caller IP is still an untrusted value until it is checked against
- * the product user address contract.  Keep this check here, before the value
- * is published in REGDISPLAY; later managed-code classification is not a
- * substitute for rejecting a kernel/PAL address at the ABI boundary. */
-static bool IsRinOSUniversalTransitionCallerIPValid(uintptr_t address)
+ * both the product user address contract and the NativeAOT code manager.  Do
+ * both checks here, before the value is published in REGDISPLAY; a VA-range
+ * check alone would still allow an unmapped or non-managed executable target
+ * to enter the unwind state. */
+static bool IsRinOSUniversalTransitionCallerIPValid(
+    RuntimeInstance * instance,
+    uintptr_t address)
 {
-    return address >= RINOS_PAL_USER_ADDRESS_MIN &&
-           address < RINOS_PAL_USER_ADDRESS_LIMIT;
+    if (instance == NULL ||
+        address < RINOS_PAL_USER_ADDRESS_MIN ||
+        address >= RINOS_PAL_USER_ADDRESS_LIMIT)
+    {
+        return false;
+    }
+
+    PTR_VOID callerIP = dac_cast<PTR_VOID>((TADDR)address);
+    ICodeManager * pCodeManager = instance->GetCodeManagerForAddress(callerIP);
+    if (pCodeManager == NULL)
+    {
+        return false;
+    }
+
+    MethodInfo methodInfo;
+    return pCodeManager->FindMethodInfo(callerIP, &methodInfo);
 }
 #endif
 
@@ -1778,10 +1795,10 @@ void StackFrameIterator::UnwindUniversalTransitionThunk()
     FAILFAST_OR_DAC_FAIL(lowerBoundValue < callerSPAddressValue);
 
 #if defined(TARGET_RINOS)
-    /* Do not publish a saved return address outside RinOS user VA.  The
-     * target's executable/code-manager check remains the next validation
-     * step, while this check protects the register-display ABI itself. */
+    /* Do not publish a saved return address unless it is both inside RinOS
+     * user VA and a managed method known to the target code manager. */
     FAILFAST_OR_DAC_FAIL(IsRinOSUniversalTransitionCallerIPValid(
+        m_pInstance,
         pushedCallerIPValue));
 #endif
 

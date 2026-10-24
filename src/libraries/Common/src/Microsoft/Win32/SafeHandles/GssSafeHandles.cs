@@ -55,8 +55,18 @@ namespace Microsoft.Win32.SafeHandles
         protected override bool ReleaseHandle()
         {
             Interop.NetSecurityNative.Status status = Interop.NetSecurityNative.ReleaseName(out _, ref handle);
-            SetHandle(IntPtr.Zero);
-            return status == Interop.NetSecurityNative.Status.GSS_S_COMPLETE;
+            if (status == Interop.NetSecurityNative.Status.GSS_S_COMPLETE)
+            {
+                SetHandle(IntPtr.Zero);
+                return true;
+            }
+
+            // Keep a provider-owned name live when the native boundary could
+            // not consume it.  This is the same retryable SafeHandle contract
+            // used by credentials and security contexts; clearing the handle
+            // here would orphan an opaque allocation after a transient PAL
+            // or provider failure.
+            return false;
         }
 
         public SafeGssNameHandle()

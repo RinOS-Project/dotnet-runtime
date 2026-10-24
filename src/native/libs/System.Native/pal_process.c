@@ -70,8 +70,16 @@ extern int __rin_argc;
 extern char** __rin_argv;
 #endif
 
-#define RINOS_COMMAND_LINE_MAX_ARGS 4096
-#define RINOS_COMMAND_LINE_MAX_ARG_BYTES (1024u * 1024u)
+/*
+ * These are PAL safety ceilings, not a second command-line specification.
+ * They match the RinOS pointer-free exec snapshot contract:
+ * RIN_EXEC_ARGUMENT_COUNT_MAX (64) and RIN_EXEC_ARGUMENT_BYTES_MAX (256 KiB).
+ * The actual launch may be smaller because the same snapshot also stores the
+ * executable path and environment.  Keep this conservative boundary aligned
+ * with src/kernel/sched/exec_arguments.h when that ABI changes.
+ */
+#define RINOS_COMMAND_LINE_MAX_ARGS 64
+#define RINOS_COMMAND_LINE_MAX_ARG_BYTES (256u * 1024u)
 
 // Validate that our SysLogPriority values are correct for the platform
 c_static_assert(PAL_LOG_EMERG == LOG_EMERG);

@@ -3355,8 +3355,12 @@ static uint32_t provider_delete_sec_context(
         }
         /* The owner still owns the remote context when cleanup fails.  Keep
          * the local handle alive so the caller can retry after a transient
-         * transport failure; successful cleanup below is the commit point. */
-        if (minor_status != NULL) *minor_status = 0u;
+         * transport failure; successful cleanup below is the commit point.
+         * provider_operation() has already written the mechanism/transport
+         * diagnostic to minor_status.  Preserve it for the caller: clearing
+         * it here would make a retryable DELETE_SEC_CONTEXT failure look like
+         * an undiagnosed status and would discard the only actionable owner
+         * error before the next cleanup attempt. */
         return status;
     }
     provider_context_release(provider_context);

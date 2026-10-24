@@ -841,7 +841,7 @@ static const char* calendar_symbol(const RinIcuDataLocaleRecord* record,
         } else if (calendar == 4) {
             eras = kind == CalendarData_EraNames
                 ? g_taiwan_era_names : g_taiwan_era_abbreviations;
-            count = 1u;
+            count = sizeof(g_taiwan_era_names) / sizeof(g_taiwan_era_names[0]);
         } else if (calendar == 5) {
             eras = g_korean_era_names;
             count = 1u;

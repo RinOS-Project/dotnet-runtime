@@ -38,8 +38,36 @@ namespace System
         {
             // This is only used for delegate created from native host
 
-            // Consider to use /proc/self/cmdline to get command line
+#if TARGET_RINOS
+            // The RinOS crt0 records the process argv before invoking the native
+            // host.  Hosted CoreCLR normally initializes s_commandLineArgs from
+            // the host API, but a delegate loaded by a native host does not take
+            // that path.  Read the product startup ABI instead of assuming a
+            // Linux procfs exists or returning a fabricated argument list.
+            int count = Interop.Sys.GetRinOSCommandLineArgCount();
+            if (count <= 0)
+            {
+                return [];
+            }
+
+            string[] commandLineArgs = new string[count];
+            for (int i = 0; i < commandLineArgs.Length; i++)
+            {
+                if (!Interop.Sys.TryGetRinOSCommandLineArg(i, out string? argument))
+                {
+                    // A stale or malformed startup context must not produce a
+                    // partial command line that callers could mistake for the
+                    // real process arguments.
+                    return [];
+                }
+
+                commandLineArgs[i] = argument!;
+            }
+
+            return commandLineArgs;
+#else
             return [];
+#endif
         }
     }
 }

@@ -243,3 +243,19 @@ PALEXPORT int32_t SystemNative_SchedGetAffinity(int32_t pid, intptr_t* mask);
  * resolving symbolic links. The caller is responsible for releasing the buffer.
  */
 PALEXPORT char* SystemNative_GetProcessPath(void);
+
+/**
+ * Returns the argument count recorded by the RinOS process startup ABI.
+ * Returns -1 with errno set when the product startup context is unavailable
+ * or malformed; non-RinOS builds return -1 with ENOTSUP.
+ */
+PALEXPORT int32_t SystemNative_GetRinOSCommandLineArgCount(void);
+
+/**
+ * Copies one UTF-8 argument from the RinOS process startup ABI into a caller
+ * supplied buffer.  capacity includes the terminating NUL.  When the buffer
+ * is too small, capacity is updated with the required size and 1 is returned;
+ * malformed/unavailable startup state returns -1.
+ */
+PALEXPORT int32_t SystemNative_GetRinOSCommandLineArg(
+    int32_t index, char* argument, int32_t* capacity);

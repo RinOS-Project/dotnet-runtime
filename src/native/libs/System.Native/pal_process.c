@@ -65,6 +65,14 @@
 
 #include <minipal/getexepath.h>
 
+#if defined(TARGET_RINOS)
+extern int __rin_argc;
+extern char** __rin_argv;
+#endif
+
+#define RINOS_COMMAND_LINE_MAX_ARGS 4096
+#define RINOS_COMMAND_LINE_MAX_ARG_BYTES (1024u * 1024u)
+
 // Validate that our SysLogPriority values are correct for the platform
 c_static_assert(PAL_LOG_EMERG == LOG_EMERG);
 c_static_assert(PAL_LOG_ALERT == LOG_ALERT);
@@ -1425,4 +1433,72 @@ int32_t SystemNative_SchedGetAffinity(int32_t pid, intptr_t* mask)
 char* SystemNative_GetProcessPath(void)
 {
     return minipal_getexepath();
+}
+
+int32_t SystemNative_GetRinOSCommandLineArgCount(void)
+{
+#if defined(TARGET_RINOS)
+    if (__rin_argc < 0 || __rin_argc > RINOS_COMMAND_LINE_MAX_ARGS ||
+        __rin_argv == NULL)
+    {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    return (int32_t)__rin_argc;
+#else
+    errno = ENOTSUP;
+    return -1;
+#endif
+}
+
+int32_t SystemNative_GetRinOSCommandLineArg(
+    int32_t index, char* argument, int32_t* capacity)
+{
+#if defined(TARGET_RINOS)
+    const char* source;
+    size_t length;
+    int32_t required;
+
+    if (__rin_argc < 0 || __rin_argc > RINOS_COMMAND_LINE_MAX_ARGS ||
+        index < 0 || index >= __rin_argc || argument == NULL ||
+        capacity == NULL || *capacity <= 0 || __rin_argv == NULL)
+    {
+        errno = EFAULT;
+        return -1;
+    }
+
+    source = __rin_argv[index];
+    if (source == NULL)
+    {
+        errno = EFAULT;
+        return -1;
+    }
+
+    length = strnlen(source, RINOS_COMMAND_LINE_MAX_ARG_BYTES);
+    if (length >= RINOS_COMMAND_LINE_MAX_ARG_BYTES ||
+        length > (size_t)INT32_MAX - 1u)
+    {
+        errno = EOVERFLOW;
+        return -1;
+    }
+
+    required = (int32_t)length + 1;
+    if (*capacity < required)
+    {
+        *capacity = required;
+        errno = ERANGE;
+        return 1;
+    }
+
+    memcpy(argument, source, (size_t)required);
+    *capacity = required;
+    return 0;
+#else
+    (void)index;
+    (void)argument;
+    (void)capacity;
+    errno = ENOTSUP;
+    return -1;
+#endif
 }

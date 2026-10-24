@@ -3457,7 +3457,10 @@ typedef struct RinOSSocketEventPort
     int ReadFd;
     int WakeFd;
     int Active;
+    int Closing;
+    uint32_t WaiterCount;
     pthread_mutex_t Lock;
+    pthread_cond_t Condition;
     RinOSSocketEventRegistration Registrations[RINOS_SOCKET_EVENT_REGISTRATION_CAPACITY];
 } RinOSSocketEventPort;
 
@@ -3528,7 +3531,8 @@ static int32_t CreateSocketEventPortInner(int32_t* port)
     RinOSSocketEventPort* slot = NULL;
     for (int i = 0; i < RINOS_SOCKET_EVENT_PORT_CAPACITY; ++i)
     {
-        if (!g_rinosSocketEventPorts[i].Active)
+        if (!g_rinosSocketEventPorts[i].Active &&
+            !g_rinosSocketEventPorts[i].Closing)
         {
             slot = &g_rinosSocketEventPorts[i];
             break;
@@ -3543,10 +3547,34 @@ static int32_t CreateSocketEventPortInner(int32_t* port)
         return Error_ENOMEM;
     }
 
+    int mutexError = pthread_mutex_init(&slot->Lock, NULL);
+    if (mutexError != 0)
+    {
+        pthread_mutex_unlock(&g_rinosSocketEventPortsLock);
+        close(pipeFds[0]);
+        close(pipeFds[1]);
+        *port = -1;
+        errno = mutexError;
+        return SystemNative_ConvertErrorPlatformToPal(errno);
+    }
+
+    int conditionError = pthread_cond_init(&slot->Condition, NULL);
+    if (conditionError != 0)
+    {
+        (void)pthread_mutex_destroy(&slot->Lock);
+        pthread_mutex_unlock(&g_rinosSocketEventPortsLock);
+        close(pipeFds[0]);
+        close(pipeFds[1]);
+        *port = -1;
+        errno = conditionError;
+        return SystemNative_ConvertErrorPlatformToPal(errno);
+    }
+
     slot->ReadFd = pipeFds[0];
     slot->WakeFd = pipeFds[1];
     slot->Active = 1;
-    pthread_mutex_init(&slot->Lock, NULL);
+    slot->Closing = 0;
+    slot->WaiterCount = 0;
     memset(slot->Registrations, 0, sizeof(slot->Registrations));
     *port = slot->ReadFd;
     pthread_mutex_unlock(&g_rinosSocketEventPortsLock);
@@ -3566,17 +3594,48 @@ static int32_t CloseSocketEventPortInner(int32_t port)
      * while holding the per-port lock.  Serialize with those operations
      * before changing Active or destroying the lock. */
     pthread_mutex_lock(&slot->Lock);
+    slot->Closing = 1;
     WakeRinOSSocketEventPort(slot);
     slot->Active = 0;
-    pthread_mutex_unlock(&slot->Lock);
     pthread_mutex_unlock(&g_rinosSocketEventPortsLock);
 
-    pthread_mutex_destroy(&slot->Lock);
-    int readResult = close(slot->ReadFd);
-    int wakeResult = close(slot->WakeFd);
-    return readResult == 0 && wakeResult == 0
-        ? Error_SUCCESS
-        : SystemNative_ConvertErrorPlatformToPal(errno);
+    while (slot->WaiterCount != 0)
+    {
+        int waitError = pthread_cond_wait(&slot->Condition, &slot->Lock);
+        if (waitError != 0)
+        {
+            pthread_mutex_unlock(&slot->Lock);
+            errno = waitError;
+            return SystemNative_ConvertErrorPlatformToPal(errno);
+        }
+    }
+
+    int readFd = slot->ReadFd;
+    int wakeFd = slot->WakeFd;
+    pthread_mutex_unlock(&slot->Lock);
+
+    int closeError = 0;
+    if (close(readFd) != 0)
+        closeError = errno;
+    if (close(wakeFd) != 0 && closeError == 0)
+        closeError = errno;
+
+    (void)pthread_cond_destroy(&slot->Condition);
+    (void)pthread_mutex_destroy(&slot->Lock);
+
+    pthread_mutex_lock(&g_rinosSocketEventPortsLock);
+    slot->ReadFd = -1;
+    slot->WakeFd = -1;
+    slot->Closing = 0;
+    memset(slot->Registrations, 0, sizeof(slot->Registrations));
+    pthread_mutex_unlock(&g_rinosSocketEventPortsLock);
+
+    if (closeError != 0)
+    {
+        errno = closeError;
+        return SystemNative_ConvertErrorPlatformToPal(errno);
+    }
+    return Error_SUCCESS;
 }
 
 static int32_t TryChangeSocketEventRegistrationInner(
@@ -3590,6 +3649,12 @@ static int32_t TryChangeSocketEventRegistrationInner(
     pthread_mutex_unlock(&g_rinosSocketEventPortsLock);
     if (slot == NULL)
         return Error_EBADF;
+
+    if (slot->Closing)
+    {
+        pthread_mutex_unlock(&slot->Lock);
+        return Error_EBADF;
+    }
 
     int freeIndex = -1;
     int registrationIndex = -1;
@@ -3644,7 +3709,14 @@ static int32_t WaitForSocketEventsInner(int32_t port, SocketEvent* buffer, int32
     if (slot == NULL)
         return Error_EBADF;
 
+    if (slot->Closing)
+    {
+        pthread_mutex_unlock(&slot->Lock);
+        return Error_EBADF;
+    }
+
     int readFd = slot->ReadFd;
+    ++slot->WaiterCount;
 
     pollFds[0].fd = readFd;
     pollFds[0].events = POLLIN;
@@ -3667,9 +3739,18 @@ static int32_t WaitForSocketEventsInner(int32_t port, SocketEvent* buffer, int32
     {
         result = poll(pollFds, (nfds_t)pollCount, -1);
     } while (result < 0 && errno == EINTR);
+
+    int pollError = result < 0 ? errno : 0;
+    pthread_mutex_lock(&slot->Lock);
+    --slot->WaiterCount;
+    if (slot->Closing && slot->WaiterCount == 0)
+        pthread_cond_signal(&slot->Condition);
+    pthread_mutex_unlock(&slot->Lock);
+
     if (result < 0)
     {
         *count = 0;
+        errno = pollError;
         return SystemNative_ConvertErrorPlatformToPal(errno);
     }
 

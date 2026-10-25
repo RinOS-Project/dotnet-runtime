@@ -1213,6 +1213,12 @@ if (CLR_CMAKE_TARGET_RINOS)
     set(HAVE_INOTIFY 1)
     set(HAVE_GETIFADDRS 1)
     set(HAVE_GETHOSTNAME 1)
+    # The product libc supplies both UTS identity accessors as inline
+    # SYS_UNAME-backed ABI wrappers.  Host configure probes cannot discover
+    # those target-only definitions reliably; selecting only gethostname
+    # would leave SystemNative_GetDomainName on its ENOTSUP fallback.
+    set(HAVE_GETDOMAINNAME 1)
+    set(HAVE_GETDOMAINNAME_SIZET 1)
     set(HAVE_GETNAMEINFO 1)
     set(HAVE_NET_IF_H 1)
     # The product utime contract is carried by <utime.h> and dispatches to

@@ -975,14 +975,48 @@ static void* RinOSBackgroundWorkEntry(void* rawContext)
 
     if (start->highPriority)
     {
-        sched_param parameters = {};
-        parameters.sched_priority = 25;
-        if (pthread_setschedparam(pthread_self(), SCHED_RR, &parameters) != 0)
+        int originalPolicy = SCHED_OTHER;
+        sched_param originalParameters = {};
+        sched_param requestedParameters = {};
+        int appliedPolicy = SCHED_OTHER;
+        sched_param appliedParameters = {};
+        const bool originalCaptured =
+            pthread_getschedparam(
+                pthread_self(), &originalPolicy, &originalParameters) == 0;
+        bool priorityApplied = originalCaptured;
+
+        requestedParameters.sched_priority = 25;
+        if (priorityApplied &&
+            !(originalPolicy == SCHED_RR &&
+              originalParameters.sched_priority == 25))
+        {
+            priorityApplied =
+                pthread_setschedparam(
+                    pthread_self(), SCHED_RR, &requestedParameters) == 0;
+        }
+
+        if (priorityApplied)
+        {
+            priorityApplied =
+                pthread_getschedparam(
+                    pthread_self(), &appliedPolicy, &appliedParameters) == 0 &&
+                appliedPolicy == SCHED_RR &&
+                appliedParameters.sched_priority == 25;
+        }
+
+        if (!priorityApplied)
         {
             /* The parent waits for this acknowledgement before reporting
-             * success.  Do not run a finalizer callback without its requested
-             * scheduler class, and do not fall back to a normal-priority
-             * thread while claiming success. */
+             * success.  Do not run a finalizer callback without the exact
+             * requested scheduler class/priority, and do not fall back to a
+             * normal-priority thread while claiming success.  If the setter
+             * reported success but the query did not publish the requested
+             * state, restore the inherited scheduler tuple before failing. */
+            if (originalCaptured)
+            {
+                (void)pthread_setschedparam(
+                    pthread_self(), originalPolicy, &originalParameters);
+            }
             __atomic_store_n(&start->startupStatus, -1, __ATOMIC_RELEASE);
             RinOSBackgroundWorkRelease(start);
             return nullptr;

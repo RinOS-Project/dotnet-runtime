@@ -3663,6 +3663,9 @@ static const char* provider_kerberos_error_name(uint32_t value)
     case 86u: return "KRB_AP_ERR_IAKERB_KDC_NO_RESPONSE";
     case 90u: return "KDC_ERR_PREAUTH_EXPIRED";
     case 91u: return "KDC_ERR_MORE_PREAUTH_DATA_REQUIRED";
+    /* RFC 6113 section 6.1 assigns 92/93.  The pinned MIT 1.22.2
+     * krb5_err.et still leaves 92 as a placeholder and uses the older
+     * singular spelling for 93; diagnostics use the RFC registry names. */
     case 92u: return "KDC_ERR_PREAUTH_BAD_AUTHENTICATION_SET";
     case 93u: return "KDC_ERR_UNKNOWN_CRITICAL_FAST_OPTIONS";
     case 100u: return "KDC_ERR_NO_ACCEPTABLE_KDF";

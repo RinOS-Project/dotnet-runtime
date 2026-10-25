@@ -3659,11 +3659,11 @@ static uint32_t timezone_display_service_type(TimeZoneDisplayNameType type)
 {
     switch (type) {
         case TimeZoneDisplayName_Generic: return RIN_ICU_DISPLAY_NAME_TIME_ZONE;
-        case TimeZoneDisplayName_Standard: return 9u;
-        case TimeZoneDisplayName_DaylightSavings: return 10u;
-        case TimeZoneDisplayName_GenericLocation: return 11u;
-        case TimeZoneDisplayName_ExemplarCity: return 12u;
-        case TimeZoneDisplayName_TimeZoneName: return 13u;
+        case TimeZoneDisplayName_Standard: return RIN_ICU_DISPLAY_NAME_TIME_ZONE_STANDARD;
+        case TimeZoneDisplayName_DaylightSavings: return RIN_ICU_DISPLAY_NAME_TIME_ZONE_DAYLIGHT;
+        case TimeZoneDisplayName_GenericLocation: return RIN_ICU_DISPLAY_NAME_TIME_ZONE_GENERIC_LOCATION;
+        case TimeZoneDisplayName_ExemplarCity: return RIN_ICU_DISPLAY_NAME_TIME_ZONE_EXEMPLAR_CITY;
+        case TimeZoneDisplayName_TimeZoneName: return RIN_ICU_DISPLAY_NAME_TIME_ZONE_NAME;
         default: return 0u;
     }
 }

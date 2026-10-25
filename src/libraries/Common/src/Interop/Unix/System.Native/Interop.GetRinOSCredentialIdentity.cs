@@ -20,9 +20,19 @@ internal static partial class Interop
         {
             int capacity = 512;
             byte[] identity = new byte[capacity];
-            if (GetRinOSCredentialIdentity(identity, ref capacity) != 0 &&
-                capacity > identity.Length)
+            int result = GetRinOSCredentialIdentity(identity, ref capacity);
+            if (result != 0)
             {
+                // The native contract only changes capacity for ERANGE.  Do
+                // not decode the first buffer after any other failure: it may
+                // contain no session snapshot at all, or stale bytes from a
+                // future caller-provided buffer.  An unavailable product
+                // credential owner must remain an unavailable identity.
+                if (capacity <= identity.Length)
+                {
+                    return string.Empty;
+                }
+
                 identity = new byte[capacity];
                 if (GetRinOSCredentialIdentity(identity, ref capacity) != 0)
                 {

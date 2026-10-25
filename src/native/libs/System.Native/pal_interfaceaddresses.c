@@ -844,7 +844,7 @@ int32_t SystemNative_GetRinOSNetworkInterfaceStatistics(
         statistics.version != RIN_NET_STATISTICS_VERSION ||
         statistics.struct_size != sizeof(statistics) ||
         statistics.device_generation == 0u ||
-        statistics.device_generation != (uint64_t)interfaceIndex)
+        interfaceIndex != RIN_NET_PRIMARY_INTERFACE_INDEX)
     {
         errno = ENOTSUP;
         return -1;

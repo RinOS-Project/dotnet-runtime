@@ -8,6 +8,7 @@ namespace System.Net.NetworkInformation
 {
     internal readonly struct RinOSNetworkStatisticsSnapshot
     {
+        private const int PrimaryInterfaceIndex = 1;
         internal readonly long BytesReceived;
         internal readonly long BytesSent;
         internal readonly long IncomingPacketsWithErrors;
@@ -33,10 +34,10 @@ namespace System.Net.NetworkInformation
 
         internal static unsafe RinOSNetworkStatisticsSnapshot Read(int interfaceIndex)
         {
-            if (interfaceIndex <= 0)
+            if (interfaceIndex != PrimaryInterfaceIndex)
             {
                 throw new NetworkInformationException(
-                    "RinOS returned an invalid network-interface index.");
+                    "RinOS returned a non-primary network-interface index for a primary-only statistics ABI.");
             }
 
             Interop.Sys.RinOSNetworkInterfaceStatistics native = default;
@@ -44,7 +45,7 @@ namespace System.Net.NetworkInformation
                     unchecked((uint)interfaceIndex), &native) != 0 ||
                 native.Version != 1u ||
                 native.StructSize != 64u ||
-                native.DeviceGeneration != unchecked((uint)interfaceIndex))
+                native.DeviceGeneration == 0u)
             {
                 throw new NetworkInformationException(
                     "RinOS did not provide a current network-statistics snapshot.");

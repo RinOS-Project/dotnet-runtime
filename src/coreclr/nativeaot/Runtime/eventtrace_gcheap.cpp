@@ -29,6 +29,7 @@
 #include "RuntimeInstance.h"
 #include "TypeManager.h"
 
+#include <stdint.h>
 #include <string.h>
 
 /****************************************************************************/
@@ -1299,7 +1300,11 @@ namespace
                         continue;
                     }
 
+                    if ((size_t)nameCharacters > SIZE_MAX / sizeof(WCHAR))
+                        continue;
                     size_t nameBytes = (size_t)nameCharacters * sizeof(WCHAR);
+                    if (nameBytes > SIZE_MAX - sizeof(NativeAotEventStaticEntry))
+                        continue;
                     size_t entryBytes = sizeof(NativeAotEventStaticEntry) + nameBytes;
                     if (entryBytes > (size_t)maxBytes)
                         continue;

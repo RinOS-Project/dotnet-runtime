@@ -3742,16 +3742,17 @@ static int32_t WaitForSocketEventsInner(int32_t port, SocketEvent* buffer, int32
 
     int pollError = result < 0 ? errno : 0;
     pthread_mutex_lock(&slot->Lock);
-    --slot->WaiterCount;
-    if (slot->Closing && slot->WaiterCount == 0)
-        pthread_cond_signal(&slot->Condition);
-    pthread_mutex_unlock(&slot->Lock);
 
     if (result < 0)
     {
         *count = 0;
         errno = pollError;
-        return SystemNative_ConvertErrorPlatformToPal(errno);
+        int32_t error = SystemNative_ConvertErrorPlatformToPal(errno);
+        --slot->WaiterCount;
+        if (slot->Closing && slot->WaiterCount == 0)
+            pthread_cond_signal(&slot->Condition);
+        pthread_mutex_unlock(&slot->Lock);
+        return error;
     }
 
     int outputCount = 0;
@@ -3770,6 +3771,15 @@ static int32_t WaitForSocketEventsInner(int32_t port, SocketEvent* buffer, int32
         ++outputCount;
     }
     *count = outputCount;
+
+    /* Keep the waiter lease until every descriptor access and output write is
+     * complete.  CloseSocketEventPortInner waits for this count before it
+     * closes the wake/read fds and destroys the port lock; decrementing right
+     * after poll() would still permit close to race the wake-pipe read above. */
+    --slot->WaiterCount;
+    if (slot->Closing && slot->WaiterCount == 0)
+        pthread_cond_signal(&slot->Condition);
+    pthread_mutex_unlock(&slot->Lock);
     return Error_SUCCESS;
 }
 

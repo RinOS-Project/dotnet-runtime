@@ -23,6 +23,11 @@ if(CLR_CMAKE_HOST_UNIX)
   # disabling flag to a RinOS target build.
   if(NOT CLR_CMAKE_TARGET_RINOS)
     add_compile_options(-fno-asynchronous-unwind-tables)
+  elseif(NOT RINOS_CROSS_COMPONENTS_HOST)
+    # RinOS signal/exception entry and PAL stack walking require compiler
+    # asynchronous unwind metadata for every target runtime object.  Keep
+    # cross-component host tools on their host compiler defaults.
+    add_compile_options(-fasynchronous-unwind-tables)
   endif()
   add_compile_options(-nostdlib)
 

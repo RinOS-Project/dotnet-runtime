@@ -3040,6 +3040,33 @@ static const RinTimeZoneIdMapping g_time_zone_id_legacy_mappings[] = {
 
 #include "generated_windows_zone_map.h"
 
+static const RinTimeZoneIdMapping* find_windows_zone_mapping(
+    const UChar* windows_id, const char* region)
+{
+    const RinTimeZoneIdMapping* default_mapping = NULL;
+    int has_region = region != NULL && region[0] != '\0';
+    size_t length;
+    size_t i;
+
+    if (!windows_id) return NULL;
+    length = u16_length(windows_id, -1);
+    if (length == SIZE_MAX) return NULL;
+    for (i = 0u; i < sizeof(g_time_zone_id_mappings) /
+                         sizeof(g_time_zone_id_mappings[0]); ++i) {
+        RinTimeZoneIdMapping const* candidate = &g_time_zone_id_mappings[i];
+        if (!u16_ascii_equal(windows_id, length, candidate->windows_id))
+            continue;
+        if (strcmp(candidate->region, "001") == 0 &&
+            default_mapping == NULL)
+            default_mapping = candidate;
+        if (has_region && ascii_region_equal(region, candidate->region))
+            return candidate;
+    }
+    /* ICU's null/unknown-region behavior uses the CLDR territory 001 row,
+     * but a supplied region must win over that default when it exists. */
+    return default_mapping;
+}
+
 enum {
     RIN_IDNA_MAX_NAME = 4096,
     RIN_IDNA_MAX_LABEL = 63,
@@ -3716,22 +3743,10 @@ static int timezone_display_name_call(const UChar* locale, const UChar* time_zon
 
 int32_t GlobalizationNative_WindowsIdToIanaId(const UChar* windows_id, const char* region, UChar* iana_id, int32_t iana_length)
 {
-    const RinTimeZoneIdMapping* mapping = NULL;
-    size_t length;
-    size_t i;
-    if (!windows_id) return 0;
-    length = u16_length(windows_id, -1);
-    if (length == SIZE_MAX) return 0;
-    for (i = 0u; i < sizeof(g_time_zone_id_mappings) / sizeof(g_time_zone_id_mappings[0]); ++i) {
-        RinTimeZoneIdMapping const* candidate = &g_time_zone_id_mappings[i];
-        if (u16_ascii_equal(windows_id, length, candidate->windows_id) &&
-            (!region || region[0] == '\0' ||
-             strcmp(candidate->region, "001") == 0 ||
-             ascii_region_equal(region, candidate->region))) {
-            mapping = candidate;
-            break;
-        }
-    }
+    const RinTimeZoneIdMapping* mapping;
+    if (!windows_id || !iana_id || iana_length <= 0) return 0;
+    iana_id[0] = 0;
+    mapping = find_windows_zone_mapping(windows_id, region);
     return mapping ? copy_ascii_text(mapping->iana_id, iana_id, iana_length) : 0;
 }
 
@@ -3740,7 +3755,8 @@ int32_t GlobalizationNative_IanaIdToWindowsId(const UChar* iana_id, UChar* windo
     const RinTimeZoneIdMapping* mapping = NULL;
     size_t length;
     size_t i;
-    if (!iana_id) return 0;
+    if (!iana_id || !windows_id || windows_length <= 0) return 0;
+    windows_id[0] = 0;
     length = u16_length(iana_id, -1);
     if (length == SIZE_MAX) return 0;
     for (i = 0u; i < sizeof(g_time_zone_id_mappings) / sizeof(g_time_zone_id_mappings[0]); ++i) {

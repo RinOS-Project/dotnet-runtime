@@ -1219,6 +1219,16 @@ if (CLR_CMAKE_TARGET_RINOS)
     # would leave SystemNative_GetDomainName on its ENOTSUP fallback.
     set(HAVE_GETDOMAINNAME 1)
     set(HAVE_GETDOMAINNAME_SIZET 1)
+    # The product libc implements the terminal ioctl and POSIX termios
+    # helpers as inline wrappers over the RinOS TTY ABI.  Host probes can
+    # report a Linux-only signature or select termios2 headers that do not
+    # exist in the target sysroot; bind the PAL to the product contract.
+    set(HAVE_IOCTL 1)
+    set(HAVE_TIOCGWINSZ 1)
+    set(HAVE_CFSETSPEED 1)
+    set(HAVE_CFMAKERAW 1)
+    set(HAVE_IOCTL_WITH_INT_REQUEST 0)
+    set(HAVE_TERMIOS2 0)
     set(HAVE_GETNAMEINFO 1)
     set(HAVE_NET_IF_H 1)
     # The product utime contract is carried by <utime.h> and dispatches to

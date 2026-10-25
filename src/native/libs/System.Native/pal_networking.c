@@ -3448,6 +3448,7 @@ static const size_t SocketEventBufferElementSize = sizeof(SocketEvent);
 typedef struct RinOSSocketEventRegistration
 {
     int Socket;
+    int Active;
     short Events;
     uintptr_t Data;
 } RinOSSocketEventRegistration;
@@ -3660,13 +3661,13 @@ static int32_t TryChangeSocketEventRegistrationInner(
     int registrationIndex = -1;
     for (int i = 0; i < RINOS_SOCKET_EVENT_REGISTRATION_CAPACITY; ++i)
     {
-        if (slot->Registrations[i].Events != 0 &&
+        if (slot->Registrations[i].Active &&
             slot->Registrations[i].Socket == socket)
         {
             registrationIndex = i;
             break;
         }
-        if (freeIndex < 0 && slot->Registrations[i].Events == 0)
+        if (freeIndex < 0 && !slot->Registrations[i].Active)
             freeIndex = i;
     }
 
@@ -3685,6 +3686,7 @@ static int32_t TryChangeSocketEventRegistrationInner(
             return Error_ENOMEM;
         }
         slot->Registrations[registrationIndex].Socket = socket;
+        slot->Registrations[registrationIndex].Active = 1;
         slot->Registrations[registrationIndex].Events = GetRinOSPollEvents(newEvents);
         slot->Registrations[registrationIndex].Data = data;
     }
@@ -3724,7 +3726,7 @@ static int32_t WaitForSocketEventsInner(int32_t port, SocketEvent* buffer, int32
     data[0] = 0;
     for (int i = 0; i < RINOS_SOCKET_EVENT_REGISTRATION_CAPACITY; ++i)
     {
-        if (slot->Registrations[i].Events == 0)
+        if (!slot->Registrations[i].Active)
             continue;
         pollFds[pollCount].fd = slot->Registrations[i].Socket;
         pollFds[pollCount].events = slot->Registrations[i].Events;

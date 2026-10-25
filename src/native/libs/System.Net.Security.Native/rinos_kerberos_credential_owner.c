@@ -49,6 +49,25 @@ static void owner_zero(void* pointer, size_t size)
     while (size-- != 0u) *bytes++ = 0u;
 }
 
+static int owner_nonzero_bytes(const uint8_t* bytes, size_t size)
+{
+    uint8_t aggregate = 0u;
+    size_t index;
+    if (bytes == NULL || size == 0u) return 0;
+    for (index = 0u; index < size; ++index) aggregate |= bytes[index];
+    return aggregate != 0u;
+}
+
+static int owner_keyring_handle_valid(const RinKeyringHandleV1* handle)
+{
+    return handle != NULL && handle->generation != 0u &&
+           handle->generation != UINT64_MAX &&
+           owner_nonzero_bytes(handle->storage_id,
+                               sizeof(handle->storage_id)) &&
+           owner_nonzero_bytes(handle->authenticator,
+                               sizeof(handle->authenticator));
+}
+
 static int owner_lock(RinOsKerberosOwnerContext* context)
 {
     return __atomic_exchange_n(&context->lock, 1u, __ATOMIC_ACQUIRE) == 0u;
@@ -170,6 +189,16 @@ static uint32_t owner_acquire(RinOsKerberosOwnerContext* context,
         slot->generation = generation;
         owner_unlock(context);
         return owner_keyring_result(result);
+    }
+    /* Do not publish a token for a successful-but-incomplete backend
+     * response.  The locator and authenticator are the only authenticated
+     * state available to later callbacks; without both, no safe removal
+     * request can be formed. */
+    if (!owner_keyring_handle_valid(&slot->handle)) {
+        owner_zero(&slot->handle, sizeof(slot->handle));
+        slot->generation = generation;
+        owner_unlock(context);
+        return RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
     }
     slot->generation = generation;
     slot->kind = kind;

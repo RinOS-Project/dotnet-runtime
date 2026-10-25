@@ -30,6 +30,10 @@ Revision History:
 #include <inttypes.h>
 #include <sys/types.h>
 
+#if defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST)
+#include "rinos/rinos_affinity.h"
+#endif
+
 #if HAVE_SYSCONF
 // <unistd.h> already included above
 #elif HAVE_SYSCTL
@@ -164,7 +168,22 @@ PAL_GetLogicalCpuCountFromOS()
 
     if (nrcpus <= 0)
     {
-#if HAVE_SCHED_GETAFFINITY
+#if defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST)
+        cpu_set_t cpuSet;
+        if (rinos_affinity_get(gPID, &cpuSet) == 0)
+        {
+            nrcpus = CPU_COUNT(&cpuSet);
+        }
+        else
+        {
+            ASSERT("sched_getaffinity failed (%d)\n", errno);
+        }
+
+        if (nrcpus < 1)
+        {
+            nrcpus = PAL_GetTotalCpuCount();
+        }
+#elif HAVE_SCHED_GETAFFINITY
 
         int configuredCpuCount = minipal_get_cpu_max_possible_count();
         if (configuredCpuCount == -1)
@@ -203,7 +222,7 @@ PAL_GetLogicalCpuCountFromOS()
         }
 #else // HAVE_SCHED_GETAFFINITY
         nrcpus = PAL_GetTotalCpuCount();
-#endif // HAVE_SCHED_GETAFFINITY
+#endif // TARGET_RINOS / HAVE_SCHED_GETAFFINITY
     }
 
     return nrcpus;

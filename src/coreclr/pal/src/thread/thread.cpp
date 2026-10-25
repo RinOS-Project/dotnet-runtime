@@ -67,6 +67,10 @@ SET_DEFAULT_DEBUG_CHANNEL(THREAD); // some headers have code with asserts, so do
 #include <limits.h>
 #include <algorithm>
 
+#if defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST)
+#include "rinos/rinos_affinity.h"
+#endif
+
 #if HAVE_SYS_LWP_H
 #include <sys/lwp.h>
 #endif
@@ -1387,7 +1391,8 @@ CPalThread::ThreadEntry(
     PTHREAD_START_ROUTINE pfnStartRoutine;
     LPVOID pvPar;
     DWORD retValue;
-#if HAVE_SCHED_GETAFFINITY && HAVE_SCHED_SETAFFINITY
+#if (HAVE_SCHED_GETAFFINITY && HAVE_SCHED_SETAFFINITY) || \
+    (defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST))
     int st;
 #endif
 
@@ -1399,7 +1404,31 @@ CPalThread::ThreadEntry(
         goto fail;
     }
 
-#if HAVE_SCHED_GETAFFINITY && HAVE_SCHED_SETAFFINITY
+#if defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST)
+    // RinOS exposes a fixed-size cpuset syscall ABI.  Do not use the
+    // host-only CPU_ALLOC/CPU_COUNT_S path below: it can request a different
+    // object size and silently diverge from the product kernel contract.
+    {
+        cpu_set_t cpuSet;
+        st = rinos_affinity_get(gPID, &cpuSet);
+        if (st == 0)
+        {
+            st = rinos_affinity_set(0, &cpuSet);
+            if (st != 0 && errno != EPERM && errno != EACCES)
+            {
+                ASSERT("sched_setaffinity failed!\n");
+                palError = ERROR_INTERNAL_ERROR;
+                goto fail;
+            }
+        }
+        else
+        {
+            // Affinity is inherited on RinOS when possible, but failure to
+            // read the process mask must not make thread creation unsafe.
+            ASSERT("sched_getaffinity failed (%d)\n", errno);
+        }
+    }
+#elif HAVE_SCHED_GETAFFINITY && HAVE_SCHED_SETAFFINITY
     // Threads inherit their parent's affinity mask on Linux. This is not desired, so we reset
     // the current thread's affinity mask to the mask of the current process.
     //

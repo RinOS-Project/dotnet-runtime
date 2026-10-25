@@ -99,8 +99,8 @@ set(HAVE_SYS_UCONTEXT_H 1)
 # RinOS scheduler exposes a bounded fixed-size cpuset ABI.  The generic PAL
 # affinity implementation requires CPU_ALLOC/CPU_COUNT_S, which is a
 # host-libc extension and cannot be enabled by a target-only symbol probe.
-# Keep affinity on the safe sysconf CPU-count path until the PAL gets a
-# dedicated bounded cpuset adapter.
+# Keep these feature probes disabled; the target-specific PAL and
+# System.Native branches use rinos_affinity.h and the fixed ABI directly.
 set(HAVE_SCHED_GETAFFINITY 0)
 set(HAVE_SCHED_SETAFFINITY 0)
 set(HAVE_SCHED_GET_PRIORITY 0)

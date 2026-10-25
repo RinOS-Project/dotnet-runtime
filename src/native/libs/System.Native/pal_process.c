@@ -48,8 +48,13 @@
 #include <sys/prctl.h>
 #endif
 
-#if HAVE_SCHED_SETAFFINITY || HAVE_SCHED_GETAFFINITY
+#if HAVE_SCHED_SETAFFINITY || HAVE_SCHED_GETAFFINITY || \
+    (defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST))
 #include <sched.h>
+#endif
+
+#if defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST)
+#include "rinos/rinos_affinity.h"
 #endif
 
 #ifdef __APPLE__
@@ -1366,7 +1371,23 @@ char* SystemNative_GetCwd(char* buffer, int32_t bufferSize)
     return getcwd(buffer, Int32ToSizeT(bufferSize));
 }
 
-#if HAVE_SCHED_SETAFFINITY
+#if defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST)
+int32_t SystemNative_SchedSetAffinity(int32_t pid, intptr_t* mask)
+{
+    cpu_set_t set;
+
+    if (mask == NULL || rinos_affinity_from_intptr(*mask, &set) != 0)
+    {
+        if (mask == NULL)
+        {
+            errno = EINVAL;
+        }
+        return -1;
+    }
+
+    return rinos_affinity_set((pid_t)pid, &set);
+}
+#elif HAVE_SCHED_SETAFFINITY
 int32_t SystemNative_SchedSetAffinity(int32_t pid, intptr_t* mask)
 {
     assert(mask != NULL);
@@ -1398,7 +1419,26 @@ int32_t SystemNative_SchedSetAffinity(int32_t pid, intptr_t* mask)
 }
 #endif
 
-#if HAVE_SCHED_GETAFFINITY
+#if defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST)
+int32_t SystemNative_SchedGetAffinity(int32_t pid, intptr_t* mask)
+{
+    cpu_set_t set;
+
+    if (mask == NULL)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    *mask = 0;
+    if (rinos_affinity_get((pid_t)pid, &set) != 0)
+    {
+        return -1;
+    }
+
+    return rinos_affinity_to_intptr(&set, mask);
+}
+#elif HAVE_SCHED_GETAFFINITY
 int32_t SystemNative_SchedGetAffinity(int32_t pid, intptr_t* mask)
 {
     assert(mask != NULL);

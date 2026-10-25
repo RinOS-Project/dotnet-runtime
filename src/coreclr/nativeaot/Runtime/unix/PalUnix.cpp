@@ -1967,7 +1967,12 @@ bool PalGetMaximumStackBounds(_Out_ void** ppStackLowOut, _Out_ void** ppStackHi
     pthread_t thread = pthread_self();
 
     status = pthread_attr_init(&attr);
+#if defined(TARGET_RINOS)
+    if (status != 0)
+        return false;
+#else
     ASSERT_MSG(status == 0, "pthread_attr_init call failed");
+#endif
 
 #if HAVE_PTHREAD_ATTR_GET_NP
     status = pthread_attr_get_np(thread, &attr);
@@ -1976,13 +1981,42 @@ bool PalGetMaximumStackBounds(_Out_ void** ppStackLowOut, _Out_ void** ppStackHi
 #else
 #error Dont know how to get thread attributes on this platform!
 #endif
+#if defined(TARGET_RINOS)
+    if (status != 0)
+    {
+        (void)pthread_attr_destroy(&attr);
+        return false;
+    }
+#else
     ASSERT_MSG(status == 0, "pthread_getattr_np call failed");
+#endif
 
     status = pthread_attr_getstack(&attr, &pStackLowOut, &stackSize);
+#if defined(TARGET_RINOS)
+    if (status != 0)
+    {
+        (void)pthread_attr_destroy(&attr);
+        return false;
+    }
+#else
     ASSERT_MSG(status == 0, "pthread_attr_getstack call failed");
+#endif
 
-    status = pthread_attr_destroy(&attr);
-    ASSERT_MSG(status == 0, "pthread_attr_destroy call failed");
+    int destroyStatus = pthread_attr_destroy(&attr);
+#if defined(TARGET_RINOS)
+    if (destroyStatus != 0)
+        return false;
+
+    const uintptr_t stackBegin = (uintptr_t)pStackLowOut;
+    if (pStackLowOut == NULL || stackSize == 0 ||
+        stackBegin > UINTPTR_MAX - stackSize ||
+        !RinOSUserRangeValid(stackBegin, stackBegin + stackSize))
+    {
+        return false;
+    }
+#else
+    ASSERT_MSG(destroyStatus == 0, "pthread_attr_destroy call failed");
+#endif
 
     pStackHighOut = (uint8_t*)pStackLowOut + stackSize;
 #endif // __APPLE__

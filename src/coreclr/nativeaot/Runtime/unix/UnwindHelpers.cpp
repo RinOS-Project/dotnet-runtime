@@ -60,6 +60,13 @@ using libunwind::DwarfInstructions;
 #endif
 using libunwind::UnwindInfoSections;
 
+#if defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST)
+#include <rin/dynlink/inventory_abi.h>
+#include <rin/dynlink/unwind_abi.h>
+#include <rin/syscall_abi.h>
+#include <sys/syscall.h>
+#endif
+
 LocalAddressSpace _addressSpace;
 
 #ifdef TARGET_AMD64
@@ -1258,7 +1265,7 @@ void Registers_REGDISPLAY::setFloatRegister(int num, double value)
 
 #endif // TARGET_RISCV64
 
-bool UnwindHelpers::StepFrame(REGDISPLAY *regs, unw_word_t start_ip, uint32_t format, unw_word_t unwind_info)
+static bool StepFrameFromMetadata(REGDISPLAY *regs, unw_word_t start_ip, uint32_t format, unw_word_t unwind_info)
 {
 #if _LIBUNWIND_SUPPORT_DWARF_UNWIND
 
@@ -1321,8 +1328,239 @@ bool UnwindHelpers::StepFrame(REGDISPLAY *regs, unw_word_t start_ip, uint32_t fo
     return true;
 }
 
+#if defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST)
+
+// RIN UNWIND is a generation-bound publication, not an ELF program header.
+// Validate the complete record before exposing any published address to
+// libunwind.  This mirrors the public ABI and the kernel's image-range rules;
+// a malformed record is a safe lookup failure, never a best-effort parse.
+static bool RinOSValidateUnwindRecord(const RinDlInventoryUnwindRecordV1& record,
+                                      uint32_t index)
+{
+    if (record.abi_version != RIN_DLINVENTORY_UNWIND_V1_ABI_VERSION ||
+        (record.flags & ~RIN_DLINVENTORY_UNWIND_V1_KNOWN_FLAGS) != 0u ||
+        record.record_index != index ||
+        record.record_count == 0u ||
+        record.record_count > RIN_DLINVENTORY_V1_MAX_RECORDS ||
+        record.launch_generation == 0u ||
+        record.load_address == 0u ||
+        record.mapped_size == 0u ||
+        record.load_address > UINT64_MAX - record.mapped_size ||
+        record.reserved[0] != 0u)
+    {
+        return false;
+    }
+
+    const uint32_t formatFlags =
+        record.flags & (RIN_DLINVENTORY_UNWIND_V1_FLAG_DWARF_DEBUG_FRAME |
+                        RIN_DLINVENTORY_UNWIND_V1_FLAG_EH_FRAME);
+    const bool present =
+        (record.flags & RIN_DLINVENTORY_UNWIND_V1_FLAG_PRESENT) != 0u;
+
+    if (!present)
+    {
+        return record.unwind_address == 0u && record.unwind_size == 0u &&
+               formatFlags == 0u;
+    }
+
+    // The image loader publishes exactly one authenticated section format.
+    // LLVM libunwind's DWARF parser consumes both formats through the same
+    // CFI path, but accepting both bits would hide an ambiguous publication.
+    if (formatFlags != RIN_DLINVENTORY_UNWIND_V1_FLAG_DWARF_DEBUG_FRAME &&
+        formatFlags != RIN_DLINVENTORY_UNWIND_V1_FLAG_EH_FRAME)
+    {
+        return false;
+    }
+
+    if (record.unwind_address == 0u || record.unwind_size == 0u ||
+        record.unwind_address < record.load_address ||
+        record.unwind_address > UINT64_MAX - record.unwind_size ||
+        record.unwind_address + record.unwind_size >
+            record.load_address + record.mapped_size ||
+        record.unwind_size > SIZE_MAX)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+class RinOSUnwindLease final
+{
+    RinDlInventoryUnwindLeaseV1 _lease{};
+    bool _held = false;
+
+public:
+    bool Begin()
+    {
+        _lease = {};
+        const intptr_t result = _syscall1(
+            (uintptr_t)RIN_SYS_DLINVENTORY_UNWIND_LEASE_BEGIN,
+            (uintptr_t)&_lease);
+        _held = result == 0;
+        if (result != 0 ||
+            _lease.abi_version != RIN_DLINVENTORY_UNWIND_LEASE_V1_ABI_VERSION ||
+            _lease.flags != RIN_DLINVENTORY_UNWIND_LEASE_V1_FLAG_EXCLUSIVE_LOADER ||
+            (_lease.flags & ~RIN_DLINVENTORY_UNWIND_LEASE_V1_KNOWN_FLAGS) != 0u ||
+            _lease.token == 0u || _lease.launch_generation == 0u ||
+            _lease.reserved[0] != 0u)
+        {
+            if (_held)
+                (void)End();
+            return false;
+        }
+        return true;
+    }
+
+    bool End()
+    {
+        if (!_held)
+            return true;
+
+        const bool result = _syscall1(
+            (uintptr_t)RIN_SYS_DLINVENTORY_UNWIND_LEASE_END,
+            (uintptr_t)&_lease) == 0;
+        _held = false;
+        return result;
+    }
+
+    uint64_t Generation() const
+    {
+        return _lease.launch_generation;
+    }
+
+    ~RinOSUnwindLease()
+    {
+        // All normal paths call End explicitly so a release failure can be
+        // reported.  The destructor is only a last-resort leak guard.
+        if (_held)
+            (void)End();
+    }
+};
+
+static bool RinOSFindUnwindSections(PCODE pc,
+                                    RinOSUnwindLease& lease,
+                                    UnwindInfoSections& sections)
+{
+    uint32_t expectedCount = 0u;
+    uint64_t expectedGeneration = 0u;
+
+    for (uint32_t index = 0u; index < RIN_DLINVENTORY_V1_MAX_RECORDS; ++index)
+    {
+        RinDlInventoryUnwindRecordV1 record{};
+        if (_syscall2((uintptr_t)RIN_SYS_DLINVENTORY_UNWIND,
+                      (uintptr_t)index, (uintptr_t)&record) != 0 ||
+            !RinOSValidateUnwindRecord(record, index))
+        {
+            return false;
+        }
+
+        if (index == 0u)
+        {
+            expectedCount = record.record_count;
+            expectedGeneration = record.launch_generation;
+            if (expectedGeneration != lease.Generation())
+                return false;
+        }
+        else if (record.record_count != expectedCount ||
+                 record.launch_generation != expectedGeneration)
+        {
+            return false;
+        }
+
+        const uintptr_t loadAddress = (uintptr_t)record.load_address;
+        const uintptr_t mappedSize = (uintptr_t)record.mapped_size;
+        if ((uintptr_t)pc >= loadAddress &&
+            (uintptr_t)pc - loadAddress < mappedSize)
+        {
+            if ((record.flags & RIN_DLINVENTORY_UNWIND_V1_FLAG_PRESENT) == 0u)
+                return false;
+
+            sections = {};
+            sections.dso_base = loadAddress;
+            sections.dwarf_section = (uintptr_t)record.unwind_address;
+            sections.dwarf_section_length = (size_t)record.unwind_size;
+            return true;
+        }
+
+        if (index + 1u == expectedCount)
+            break;
+    }
+
+    return false;
+}
+
+static bool RinOSGetUnwindProcInfoWithLease(PCODE pc,
+                                            RinOSUnwindLease& lease,
+                                            unw_proc_info_t* procInfo)
+{
+#if _LIBUNWIND_SUPPORT_DWARF_UNWIND && defined(TARGET_AMD64)
+    UnwindInfoSections sections{};
+    if (!RinOSFindUnwindSections(pc, lease, sections))
+        return false;
+
+    libunwind::UnwindCursor<LocalAddressSpace, Registers_x86_64> uc(_addressSpace);
+    if (!uc.getInfoFromDwarfSection(pc, sections, 0, false))
+        return false;
+
+    uc.getInfo(procInfo);
+    return true;
+#else
+    (void)pc;
+    (void)lease;
+    (void)procInfo;
+    return false;
+#endif
+}
+
+#endif // TARGET_RINOS && !RINOS_CROSS_COMPONENTS_HOST
+
+bool UnwindHelpers::StepFrame(REGDISPLAY *regs, unw_word_t start_ip, uint32_t format, unw_word_t unwind_info)
+{
+#if defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST)
+    // FindMethodInfo stores pointers into the published UNWIND range in the
+    // generic MethodInfo.  Re-resolve on every step and keep the loader lease
+    // through the actual CFI instruction read, so an unload/rebind cannot
+    // invalidate the saved FDE between the two operations.
+    (void)start_ip;
+    (void)format;
+    (void)unwind_info;
+
+    RinOSUnwindLease lease;
+    if (!lease.Begin())
+        return false;
+
+    unw_proc_info_t procInfo{};
+    bool result = RinOSGetUnwindProcInfoWithLease(
+        (PCODE)regs->GetIP(), lease, &procInfo);
+    if (result)
+    {
+        result = StepFrameFromMetadata(
+            regs, procInfo.start_ip, procInfo.format, procInfo.unwind_info);
+    }
+
+    if (!lease.End())
+        return false;
+    return result;
+#else
+    return StepFrameFromMetadata(regs, start_ip, format, unwind_info);
+#endif
+}
+
 bool UnwindHelpers::GetUnwindProcInfo(PCODE pc, UnwindInfoSections &uwInfoSections, unw_proc_info_t *procInfo)
 {
+#if defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST)
+    (void)uwInfoSections;
+
+    RinOSUnwindLease lease;
+    if (!lease.Begin())
+        return false;
+
+    const bool result = RinOSGetUnwindProcInfoWithLease(pc, lease, procInfo);
+    if (!lease.End())
+        return false;
+    return result;
+#else
 #if defined(TARGET_AMD64)
     libunwind::UnwindCursor<LocalAddressSpace, Registers_x86_64> uc(_addressSpace);
 #elif defined(TARGET_ARM)
@@ -1394,6 +1632,7 @@ bool UnwindHelpers::GetUnwindProcInfo(PCODE pc, UnwindInfoSections &uwInfoSectio
 
     uc.getInfo(procInfo);
     return true;
+#endif
 }
 
 #if defined(TARGET_APPLE)

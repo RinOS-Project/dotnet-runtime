@@ -1075,7 +1075,8 @@ public:
 public:
   bool getInfoFromDwarfSection(typename R::link_hardened_reg_arg_t pc,
                                const UnwindInfoSections &sects,
-                               uint32_t fdeSectionOffsetHint = 0);
+                               uint32_t fdeSectionOffsetHint = 0,
+                               bool useFDECache = true);
 
 private:
   int stepWithDwarfFDE(bool stage2) {
@@ -1785,7 +1786,7 @@ bool UnwindCursor<A, R>::getInfoFromFdeCie(
 template <typename A, typename R>
 bool UnwindCursor<A, R>::getInfoFromDwarfSection(
     typename R::link_hardened_reg_arg_t pc, const UnwindInfoSections &sects,
-    uint32_t fdeSectionOffsetHint) {
+    uint32_t fdeSectionOffsetHint, bool useFDECache) {
   typename CFI_Parser<A>::FDE_Info fdeInfo;
   typename CFI_Parser<A>::CIE_Info cieInfo;
   bool foundFDE = false;
@@ -1806,7 +1807,7 @@ bool UnwindCursor<A, R>::getInfoFromDwarfSection(
   }
 #endif
 
-  if (!foundFDE) {
+  if (!foundFDE && useFDECache) {
     // otherwise, search cache of previously found FDEs.
     pint_t cachedFDE =
         DwarfFDECache<A>::template findFDE<R>(sects.dso_base, pc);
@@ -1827,7 +1828,7 @@ bool UnwindCursor<A, R>::getInfoFromDwarfSection(
     if (getInfoFromFdeCie(fdeInfo, cieInfo, pc, sects.dso_base)) {
       // Add to cache (to make next lookup faster) if we had no hint
       // and there was no index.
-      if (!foundInCache && (fdeSectionOffsetHint == 0)) {
+      if (useFDECache && !foundInCache && (fdeSectionOffsetHint == 0)) {
   #if defined(_LIBUNWIND_SUPPORT_DWARF_INDEX)
         if (sects.dwarf_index_section == 0)
   #endif

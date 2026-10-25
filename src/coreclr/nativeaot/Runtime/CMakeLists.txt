@@ -107,6 +107,15 @@ include_directories(${CLR_DIR}/pal/src/include)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/eventpipe/inc)
 include_directories(${RUNTIME_DIR})
 
+# NativeAOT's RinOS unwind adapter consumes the public inventory/lease ABI and
+# the target libc syscall frontend.  Keep these includes target-only: the
+# cross-components host is a Linux/Windows tool build and must not emit RinOS
+# syscall instructions.
+if(CLR_CMAKE_TARGET_RINOS AND NOT RINOS_CROSS_COMPONENTS_HOST)
+  include_directories(BEFORE ${CLR_DIR}/../../../../public-base/RinOS-SDK/include)
+  include_directories(BEFORE ${CLR_DIR}/../../../../public-base/libs/libc)
+endif()
+
 if (WIN32)
   set(GC_HEADERS
     ${GC_DIR}/env/common.h

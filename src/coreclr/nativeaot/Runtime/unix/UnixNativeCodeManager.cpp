@@ -64,8 +64,15 @@ UnixNativeCodeManager::UnixNativeCodeManager(TADDR moduleBase,
       m_pClasslibFunctions(pClasslibFunctions), m_nClasslibFunctions(nClasslibFunctions)
 {
     // Cache the location of unwind sections
+#if !defined(TARGET_RINOS) || defined(RINOS_CROSS_COMPONENTS_HOST)
     libunwind::LocalAddressSpace::sThisAddressSpace.findUnwindSections(
         (uintptr_t)pvManagedCodeStartRange, m_UnwindInfoSections);
+#else
+    // RinOS images have no ELF program headers.  GetUnwindProcInfo resolves
+    // the authenticated RIN UNWIND inventory under its loader lease instead
+    // of asking LLVM libunwind to call dl_iterate_phdr().
+    m_UnwindInfoSections = {};
+#endif
 }
 
 UnixNativeCodeManager::~UnixNativeCodeManager()

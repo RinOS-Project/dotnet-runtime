@@ -1321,6 +1321,13 @@ static bool RinOSUserRangeValid(uintptr_t begin, uintptr_t end)
            end >= begin && end <= RINOS_PAL_USER_ADDRESS_LIMIT;
 }
 
+static bool RinOSStackRangeValid(uintptr_t begin, uintptr_t end)
+{
+    return begin >= RINOS_PAL_USER_ADDRESS_MIN &&
+           begin < RINOS_PAL_STACK_ADDRESS_LIMIT &&
+           end >= begin && end <= RINOS_PAL_STACK_ADDRESS_LIMIT;
+}
+
 static bool RinOSPageRoundSize(size_t logicalSize, size_t* roundedSize)
 {
     if (roundedSize == nullptr || logicalSize == 0 || OS_PAGE_SIZE == 0)
@@ -2010,7 +2017,7 @@ bool PalGetMaximumStackBounds(_Out_ void** ppStackLowOut, _Out_ void** ppStackHi
     const uintptr_t stackBegin = (uintptr_t)pStackLowOut;
     if (pStackLowOut == NULL || stackSize == 0 ||
         stackBegin > UINTPTR_MAX - stackSize ||
-        !RinOSUserRangeValid(stackBegin, stackBegin + stackSize))
+        !RinOSStackRangeValid(stackBegin, stackBegin + stackSize))
     {
         return false;
     }

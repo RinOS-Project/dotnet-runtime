@@ -44,6 +44,12 @@
  * the kernel's native x86_64 user-space policy. */
 #define RINOS_PAL_USER_ADDRESS_LIMIT ((uintptr_t)RIN_USER_ADDR_TOP_EXCLUSIVE)
 
+/* Native x86_64 stacks have a narrower product-owned arena than arbitrary
+ * user mappings.  NativeAOT registers pthread-reported stack reservations
+ * with the unwinder; keep that admission check tied to the same kernel ABI
+ * instead of accepting a stack that is merely inside the general user range. */
+#define RINOS_PAL_STACK_ADDRESS_LIMIT ((uintptr_t)RIN_USER_STACK_TOP_EXCLUSIVE)
+
 /* RinOS has no Linux /proc or ptrace contract.  Cross-process register
  * inspection stays explicitly unavailable until a RinOS debugger ABI exists;
  * current-thread signal and exception contexts use ucontext_t instead. */

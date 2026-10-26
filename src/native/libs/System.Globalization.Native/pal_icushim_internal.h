@@ -203,7 +203,8 @@ extern ucol_safeClone_func ucol_safeClone_ptr;
 // The following are the list of the ICU APIs which are optional. If these APIs exist in the ICU version we load at runtime, then we'll use it.
 // Otherwise, we'll just not provide the functionality to users which needed these APIs.
 #define FOR_ALL_OPTIONAL_ICU_FUNCTIONS \
-    PER_FUNCTION_BLOCK(ucol_clone, libicui18n, false)
+    PER_FUNCTION_BLOCK(ucol_clone, libicui18n, false) \
+    PER_FUNCTION_BLOCK(unum_hasAttribute, libicui18n, false)
 
 #define FOR_ALL_ICU_FUNCTIONS \
     FOR_ALL_UNCONDITIONAL_ICU_FUNCTIONS \
@@ -308,6 +309,7 @@ FOR_ALL_ICU_FUNCTIONS
 #define unorm2_normalize(...) unorm2_normalize_ptr(__VA_ARGS__)
 #define unum_close(...) unum_close_ptr(__VA_ARGS__)
 #define unum_getAttribute(...) unum_getAttribute_ptr(__VA_ARGS__)
+#define unum_hasAttribute(...) unum_hasAttribute_ptr(__VA_ARGS__)
 #define unum_getSymbol(...) unum_getSymbol_ptr(__VA_ARGS__)
 #define unum_open(...) unum_open_ptr(__VA_ARGS__)
 #define unum_toPattern(...) unum_toPattern_ptr(__VA_ARGS__)

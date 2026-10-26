@@ -595,12 +595,58 @@ projection.
 int32_t GlobalizationNative_GetLocaleInfoMinimumGroupingDigits(
     const UChar* localeName, int32_t* minimumGroupingDigits)
 {
-    (void)localeName;
     if (minimumGroupingDigits == NULL)
     {
         return 0;
     }
 
+    // ICU 64 added the attribute to the C UNumberFormat API. Keep the
+    // numeric value here so this source still compiles against older ICU
+    // headers; the runtime capability check below prevents using it on an
+    // older loaded library. The enum value is part of ICU's stable ABI.
+    const UNumberFormatAttribute minimumGroupingDigitsAttribute =
+        (UNumberFormatAttribute)22;
+
     *minimumGroupingDigits = 1;
-    return 1;
+
+    UErrorCode status = U_ZERO_ERROR;
+    char locale[ULOC_FULLNAME_CAPACITY];
+    GetLocale(localeName, locale, ULOC_FULLNAME_CAPACITY, false, &status);
+    if (U_FAILURE(status))
+    {
+        return UErrorCodeToBool(status);
+    }
+
+    UNumberFormat* numformat = unum_open(UNUM_DECIMAL, NULL, 0, locale, NULL, &status);
+    if (U_FAILURE(status))
+    {
+        return UErrorCodeToBool(status);
+    }
+
+    bool hasMinimumGroupingDigits = false;
+#if defined(STATIC_ICU)
+    hasMinimumGroupingDigits = unum_hasAttribute(numformat, minimumGroupingDigitsAttribute);
+#else
+    // unum_hasAttribute was introduced well before the attribute itself, so
+    // resolve it as optional and retain the old-ICU compatibility path.
+    hasMinimumGroupingDigits =
+        unum_hasAttribute_ptr != NULL &&
+        unum_hasAttribute(numformat, minimumGroupingDigitsAttribute);
+#endif
+
+    if (hasMinimumGroupingDigits)
+    {
+        int32_t value = unum_getAttribute(numformat, minimumGroupingDigitsAttribute);
+        if (value < 1 || value > 3)
+        {
+            status = U_UNSUPPORTED_ERROR;
+        }
+        else
+        {
+            *minimumGroupingDigits = value;
+        }
+    }
+
+    unum_close(numformat);
+    return UErrorCodeToBool(status);
 }

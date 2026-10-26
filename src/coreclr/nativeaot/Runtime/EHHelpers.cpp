@@ -31,6 +31,10 @@
 #include <minipal/debugger.h>
 #include "corexcep.h"
 
+#if defined(TARGET_RINOS)
+#include "pal/rinos_contract.h"
+#endif
+
 struct MethodRegionInfo
 {
     void* hotStartAddress;
@@ -339,6 +343,20 @@ static uintptr_t UnwindSimpleHelperToCaller(
 #endif
     )
 {
+#if defined(TARGET_RINOS)
+    // The helper ABI treats SP as the address of the saved return slot.  A
+    // signal context is target input, not proof that the slot is readable:
+    // reject wrapped, low-page, and kernel/PAL addresses before the
+    // dereference.  The kernel-owned stack reservation is checked later by
+    // the regular NativeAOT stack walker; this boundary only prevents the
+    // exception shim from interpreting an invalid address as a return IP.
+    const auto rinOsUserRangeValid = [](uintptr_t begin, size_t size) {
+        return begin >= RINOS_PAL_USER_ADDRESS_MIN &&
+               size != 0 &&
+               begin <= UINTPTR_MAX - size &&
+               begin + size <= RINOS_PAL_USER_ADDRESS_LIMIT;
+    };
+#endif
 #if defined(_DEBUG)
     uintptr_t faultingIP = pContext->GetIp();
     ASSERT(InWriteBarrierHelper(faultingIP) ||
@@ -348,7 +366,15 @@ static uintptr_t UnwindSimpleHelperToCaller(
 #if defined(HOST_AMD64) || defined(HOST_X86)
     // simulate a ret instruction
     uintptr_t sp = pContext->GetSp();
+#if defined(TARGET_RINOS)
+    if (!rinOsUserRangeValid(sp, sizeof(uintptr_t)))
+        return 0;
+#endif
     uintptr_t adjustedFaultingIP = *(uintptr_t *)sp;
+#if defined(TARGET_RINOS)
+    if (!rinOsUserRangeValid(adjustedFaultingIP, 1))
+        return 0;
+#endif
     pContext->SetSp(sp+sizeof(uintptr_t)); // pop the stack
 #elif defined(HOST_ARM) || defined(HOST_ARM64)
     uintptr_t adjustedFaultingIP = pContext->GetLr();

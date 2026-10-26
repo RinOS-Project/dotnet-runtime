@@ -1487,6 +1487,15 @@ static int provider_operation_valid(uint16_t operation)
     }
 }
 
+/* These tables are retained by credential/context wrappers after the live
+ * capability probe.  Keep the full ABI validation available to those
+ * wrappers as well; checking only one callback would allow a mutated or
+ * incompatible table to cross the opaque-handle boundary. */
+static int provider_credential_owner_valid(
+    const RinKerberosCredentialOwnerV1* owner);
+static int provider_operation_owner_valid(
+    const RinKerberosOperationOwnerV1* owner);
+
 static int provider_credential_valid(
     const RinOsKerberosProviderCredential* credential, uint32_t kind)
 {
@@ -1494,7 +1503,7 @@ static int provider_credential_valid(
            credential->magic == RINOS_KERBEROS_CREDENTIAL_MAGIC &&
            credential->kind == kind && credential->owner != NULL &&
            credential->owner_credential != NULL &&
-           credential->owner->release_credential != NULL;
+           provider_credential_owner_valid(credential->owner);
 }
 
 static int provider_credential_releaseable(
@@ -1503,7 +1512,7 @@ static int provider_credential_releaseable(
     return credential != NULL &&
            credential->magic == RINOS_KERBEROS_CREDENTIAL_MAGIC &&
            credential->kind == kind && credential->owner != NULL &&
-           credential->owner->release_credential != NULL;
+           provider_credential_owner_valid(credential->owner);
 }
 
 static int provider_context_valid(
@@ -1516,13 +1525,12 @@ static int provider_context_valid(
            context->credential != NULL &&
            context->credential->magic == RINOS_KERBEROS_CREDENTIAL_MAGIC &&
            context->credential->kind == context->kind &&
-           context->credential->owner != NULL &&
-           context->credential->owner->release_credential != NULL &&
+           provider_credential_owner_valid(context->credential->owner) &&
            context->credential->owner_credential == context->owner_credential &&
            context->credential_ref_held <= 1u &&
            (context->credential_ref_held == 0u ||
             context->credential->active_contexts != 0u) &&
-           context->owner->operation != NULL &&
+           provider_operation_owner_valid(context->owner) &&
            (context->state == RINOS_KERBEROS_CONTEXT_NEGOTIATING ||
             context->state == RINOS_KERBEROS_CONTEXT_ESTABLISHED) &&
            context->token_size <= RIN_KERBEROS_OPERATION_MAX_CONTEXT_TOKEN_SIZE;

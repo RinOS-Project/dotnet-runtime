@@ -239,6 +239,16 @@ int32_t SystemNative_GetRinOSCredentialIdentity(char* identity, int32_t* capacit
         return -1;
     }
 
+    /* __rin_credentials_get currently validates this field, but keep the
+     * boundary defensive: this PAL is fed by a kernel ABI snapshot and must
+     * never turn an out-of-range count into an out-of-bounds read if an older
+     * libc shim or a future provider bypasses that helper validation. */
+    if (credentials.group_count > RIN_CREDENTIALS_MAX_GROUPS)
+    {
+        errno = EIO;
+        return -1;
+    }
+
     written = snprintf(
         value, sizeof(value),
         "rinos-cred-v1:uid=%u;gid=%u;euid=%u;egid=%u;caps=%016llx;"

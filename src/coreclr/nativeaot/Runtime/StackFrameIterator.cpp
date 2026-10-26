@@ -1963,8 +1963,24 @@ void StackFrameIterator::UnwindThrowSiteThunk()
     ASSERT_UNCONDITIONALLY("NYI for this arch");
 #endif
 
+#if defined(TARGET_RINOS)
+    /* The context itself is now proven to reside in the registered native
+     * stack, but its saved instruction and stack pointers are still input
+     * data.  Keep the RinOS unwind contract fail-closed before publishing
+     * either value in REGDISPLAY: the IP must resolve to a managed method and
+     * the resumed SP must remain inside the same NativeAOT stack reservation. */
+    const uintptr_t restoredIP = (uintptr_t)pContext->IP;
+    const uintptr_t restoredSP = (uintptr_t)pContext->GetSp();
+    FAILFAST_OR_DAC_FAIL(IsRinOSUniversalTransitionCallerIPValid(
+        m_pInstance, restoredIP));
+    FAILFAST_OR_DAC_FAIL(IsUniversalTransitionStackRangeValid(
+        m_pThread, restoredSP, sizeof(uintptr_t)));
+    m_RegDisplay.SetIP(ReturnAddressToCanonicalPC(restoredIP));
+    m_RegDisplay.SetSP(restoredSP);
+#else
     m_RegDisplay.SetIP(ReturnAddressToCanonicalPC(pContext->IP));
     m_RegDisplay.SetSP(pContext->GetSp());
+#endif
     SetControlPC(dac_cast<PTR_VOID>(m_RegDisplay.GetIP()));
 
     // We expect the throw site to be in managed code, and since this function's notion of how to unwind

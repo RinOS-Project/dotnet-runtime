@@ -1950,6 +1950,12 @@ int32_t PalGetProcessCpuCount()
 // the maximum bounds.
 bool PalGetMaximumStackBounds(_Out_ void** ppStackLowOut, _Out_ void** ppStackHighOut)
 {
+    // The NativeAOT thread registration path supplies both output slots, but
+    // this PAL entry point is still an ABI boundary.  Do not turn a malformed
+    // caller into an unchecked write after the platform stack query succeeds.
+    if (ppStackLowOut == NULL || ppStackHighOut == NULL)
+        return false;
+
     void* pStackHighOut = NULL;
     void* pStackLowOut = NULL;
 
@@ -2027,6 +2033,23 @@ bool PalGetMaximumStackBounds(_Out_ void** ppStackLowOut, _Out_ void** ppStackHi
 
     pStackHighOut = (uint8_t*)pStackLowOut + stackSize;
 #endif // __APPLE__
+
+    // Keep the common output validation after all platform-specific queries.
+    // In particular, the Apple/OpenBSD paths do not have the pthread_attr
+    // size check used by the RinOS path below.  A wrapped or empty range must
+    // never be published as a NativeAOT stack bound.
+    if (pStackLowOut == NULL || pStackHighOut == NULL ||
+        (uintptr_t)pStackHighOut <= (uintptr_t)pStackLowOut)
+    {
+        return false;
+    }
+#if defined(TARGET_RINOS)
+    if (!RinOSStackRangeValid((uintptr_t)pStackLowOut,
+                              (uintptr_t)pStackHighOut))
+    {
+        return false;
+    }
+#endif
 
     *ppStackLowOut = pStackLowOut;
     *ppStackHighOut = pStackHighOut;

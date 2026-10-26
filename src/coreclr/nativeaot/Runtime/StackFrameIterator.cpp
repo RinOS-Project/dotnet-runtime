@@ -1793,6 +1793,15 @@ void StackFrameIterator::UnwindUniversalTransitionThunk()
         m_pThread, lowerBoundValue, sizeof(uintptr_t)));
     FAILFAST_OR_DAC_FAIL(callerSPAddressValue > m_RegDisplay.SP);
     FAILFAST_OR_DAC_FAIL(lowerBoundValue < callerSPAddressValue);
+#if defined(TARGET_AMD64)
+    /* The amd64 CLR transition ABI restores the caller's pre-call stack
+     * pointer and the conservative return block on 16-byte boundaries.  The
+     * reservation checks above prove that the cells are readable, but a
+     * misaligned value would still publish an ABI-invalid SP to the next
+     * unwind step.  Reject corrupted frames before REGDISPLAY is updated. */
+    FAILFAST_OR_DAC_FAIL((callerSPAddressValue & 0x0Fu) == 0u);
+    FAILFAST_OR_DAC_FAIL((lowerBoundValue & 0x0Fu) == 0u);
+#endif
 
 #if defined(TARGET_RINOS)
     /* Do not publish a saved return address unless it is both inside RinOS

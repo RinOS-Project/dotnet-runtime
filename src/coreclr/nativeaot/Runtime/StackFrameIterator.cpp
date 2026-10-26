@@ -1863,8 +1863,23 @@ void StackFrameIterator::UnwindThrowSiteThunk()
     const uintptr_t SIZEOF_OutgoingScratch = 0;
 #endif
 
-    PTR_PAL_LIMITED_CONTEXT pContext = (PTR_PAL_LIMITED_CONTEXT)
-                                        (m_RegDisplay.SP + SIZEOF_OutgoingScratch + STACKSIZEOF_ExInfo);
+    /* The throw helper stores PAL_LIMITED_CONTEXT in the native stack frame.
+     * Do not form or dereference that address until both additions are checked
+     * and the complete context is inside the registered stack reservation.  A
+     * readable first word is not enough: the architecture branches below read
+     * preserved registers from the tail of the context as well. */
+    FAILFAST_OR_DAC_FAIL(
+        m_RegDisplay.SP <= UINTPTR_MAX - SIZEOF_OutgoingScratch);
+    const uintptr_t contextAfterScratch =
+        m_RegDisplay.SP + SIZEOF_OutgoingScratch;
+    FAILFAST_OR_DAC_FAIL(
+        contextAfterScratch <= UINTPTR_MAX - STACKSIZEOF_ExInfo);
+    const uintptr_t contextAddress =
+        contextAfterScratch + STACKSIZEOF_ExInfo;
+    FAILFAST_OR_DAC_FAIL(IsUniversalTransitionStackRangeValid(
+        m_pThread, contextAddress, sizeof(PAL_LIMITED_CONTEXT)));
+    PTR_PAL_LIMITED_CONTEXT pContext =
+        (PTR_PAL_LIMITED_CONTEXT)contextAddress;
 
 #if defined(UNIX_AMD64_ABI)
     m_RegDisplay.pRbp = (PTR_uintptr_t)PTR_TO_MEMBER_TADDR(PAL_LIMITED_CONTEXT, pContext, Rbp);

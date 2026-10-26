@@ -35,6 +35,10 @@ internal static partial class Interop
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static partial bool GetLocaleInfoGroupingSizes(string localeName, uint localeGroupingData, ref int primaryGroupSize, ref int secondaryGroupSize);
 
+        [LibraryImport(Libraries.GlobalizationNative, EntryPoint = "GlobalizationNative_GetLocaleInfoMinimumGroupingDigits", StringMarshalling = StringMarshalling.Utf16)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool GetLocaleInfoMinimumGroupingDigits(string localeName, ref int minimumGroupingDigits);
+
         [LibraryImport(Libraries.GlobalizationNative, EntryPoint = "GlobalizationNative_GetLocales", StringMarshalling = StringMarshalling.Utf16)]
         internal static partial int GetLocales([Out] char[]? value, int valueLength);
     }

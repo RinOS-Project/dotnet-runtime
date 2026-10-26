@@ -86,6 +86,13 @@ namespace System.Globalization
         internal int _percentNegativePattern;
         internal int _percentDecimalDigits = 2;
 
+        // CLDR minimumGroupingDigits is product globalization data. It is
+        // internal because NumberFormatInfo has no public property for it;
+        // custom instances retain the .NET compatibility default of 1.
+        internal int _minimumGroupingDigits = 1;
+
+        internal int MinimumGroupingDigits => _minimumGroupingDigits;
+
         internal int _digitSubstitution = (int)DigitShapes.None;
 
         internal bool _isReadOnly;

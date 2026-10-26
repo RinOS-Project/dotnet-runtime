@@ -198,6 +198,15 @@ int32_t GlobalizationNative_GetLocaleInfoGroupingSizes(
     return 0;
 }
 
+int32_t GlobalizationNative_GetLocaleInfoMinimumGroupingDigits(
+    const UChar* localeName, int32_t* minimumGroupingDigits)
+{
+    (void)localeName;
+    (void)minimumGroupingDigits;
+    assert_msg(false, "Not supported on this platform", 0);
+    return 0;
+}
+
 // Placeholder for icu shim data
 int32_t GlobalizationNative_LoadICU(void)
 {

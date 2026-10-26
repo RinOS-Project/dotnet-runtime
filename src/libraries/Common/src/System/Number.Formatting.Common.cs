@@ -231,7 +231,7 @@ namespace System
                             vlb.Append(info.NegativeSignTChar<TChar>());
                         }
 
-                        FormatFixed(ref vlb, ref number, nMaxDigits, null, info.NumberDecimalSeparatorTChar<TChar>(), null);
+                        FormatFixed(ref vlb, ref number, nMaxDigits, null, 1, info.NumberDecimalSeparatorTChar<TChar>(), null);
 
                         break;
                     }
@@ -785,7 +785,7 @@ namespace System
                 switch (ch)
                 {
                     case (byte)'#':
-                        FormatFixed(ref vlb, ref number, nMaxDigits, info.CurrencyGroupSizes(), info.CurrencyDecimalSeparatorTChar<TChar>(), info.CurrencyGroupSeparatorTChar<TChar>());
+                        FormatFixed(ref vlb, ref number, nMaxDigits, info.CurrencyGroupSizes(), info.MinimumGroupingDigits, info.CurrencyDecimalSeparatorTChar<TChar>(), info.CurrencyGroupSeparatorTChar<TChar>());
                         break;
 
                     case (byte)'-':
@@ -805,7 +805,7 @@ namespace System
 
         private static unsafe void FormatFixed<TChar>(
             ref ValueListBuilder<TChar> vlb, ref NumberBuffer number,
-            int nMaxDigits, int[]? groupDigits,
+            int nMaxDigits, int[]? groupDigits, int minimumGroupingDigits,
             ReadOnlySpan<TChar> sDecimal, ReadOnlySpan<TChar> sGroup) where TChar : unmanaged, IUtfChar<TChar>
         {
             Debug.Assert(sizeof(TChar) is sizeof(char) or sizeof(byte));
@@ -815,6 +815,12 @@ namespace System
 
             if (digPos > 0)
             {
+                if (groupDigits is not null && minimumGroupingDigits > 1 &&
+                    !HasMinimumGroupingDigits(digPos, groupDigits, minimumGroupingDigits))
+                {
+                    groupDigits = null;
+                }
+
                 if (groupDigits != null)
                 {
                     int groupSizeIndex = 0;                             // Index into the groupDigits array.
@@ -918,6 +924,32 @@ namespace System
             }
         }
 
+        private static bool HasMinimumGroupingDigits(int digitCount, int[] groupDigits, int minimumGroupingDigits)
+        {
+            if (minimumGroupingDigits <= 1 || groupDigits.Length == 0)
+            {
+                return true;
+            }
+
+            int groupIndex = 0;
+            int groupSize = groupDigits[0];
+            int leadingDigits = digitCount;
+
+            while (groupSize > 0 && leadingDigits > groupSize)
+            {
+                leadingDigits -= groupSize;
+                if (groupIndex < groupDigits.Length - 1)
+                {
+                    groupIndex++;
+                }
+                groupSize = groupDigits[groupIndex];
+            }
+
+            // No separator is emitted when there is no positive grouping size.
+            // Returning true preserves the existing ungrouped output in that case.
+            return groupSize <= 0 || leadingDigits >= minimumGroupingDigits;
+        }
+
         /// <summary>Appends a char to the builder when the char is not known to be ASCII.</summary>
         /// <remarks>This requires a helper as if the character isn't ASCII, for UTF-8 encoding it will result in multiple bytes added.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -953,7 +985,7 @@ namespace System
                 switch (ch)
                 {
                     case (byte)'#':
-                        FormatFixed(ref vlb, ref number, nMaxDigits, info.NumberGroupSizes(), info.NumberDecimalSeparatorTChar<TChar>(), info.NumberGroupSeparatorTChar<TChar>());
+                        FormatFixed(ref vlb, ref number, nMaxDigits, info.NumberGroupSizes(), info.MinimumGroupingDigits, info.NumberDecimalSeparatorTChar<TChar>(), info.NumberGroupSeparatorTChar<TChar>());
                         break;
 
                     case (byte)'-':
@@ -1080,7 +1112,7 @@ namespace System
                 switch (ch)
                 {
                     case (byte)'#':
-                        FormatFixed(ref vlb, ref number, nMaxDigits, info.PercentGroupSizes(), info.PercentDecimalSeparatorTChar<TChar>(), info.PercentGroupSeparatorTChar<TChar>());
+                        FormatFixed(ref vlb, ref number, nMaxDigits, info.PercentGroupSizes(), info.MinimumGroupingDigits, info.PercentDecimalSeparatorTChar<TChar>(), info.PercentGroupSeparatorTChar<TChar>());
                         break;
 
                     case (byte)'-':

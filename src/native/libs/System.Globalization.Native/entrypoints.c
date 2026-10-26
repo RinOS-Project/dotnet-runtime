@@ -33,6 +33,7 @@ static const Entry s_globalizationNative[] =
     DllImportEntry(GlobalizationNative_GetJapaneseEraStartDate)
     DllImportEntry(GlobalizationNative_GetLatestJapaneseEra)
     DllImportEntry(GlobalizationNative_GetLocaleInfoGroupingSizes)
+    DllImportEntry(GlobalizationNative_GetLocaleInfoMinimumGroupingDigits)
     DllImportEntry(GlobalizationNative_GetLocaleInfoInt)
     DllImportEntry(GlobalizationNative_GetLocaleInfoString)
     DllImportEntry(GlobalizationNative_GetLocaleName)

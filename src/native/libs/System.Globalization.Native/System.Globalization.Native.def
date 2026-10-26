@@ -15,6 +15,7 @@ EXPORTS
     GlobalizationNative_GetJapaneseEraStartDate
     GlobalizationNative_GetLatestJapaneseEra
     GlobalizationNative_GetLocaleInfoGroupingSizes
+    GlobalizationNative_GetLocaleInfoMinimumGroupingDigits
     GlobalizationNative_GetLocaleInfoInt
     GlobalizationNative_GetLocaleInfoString
     GlobalizationNative_GetLocaleName

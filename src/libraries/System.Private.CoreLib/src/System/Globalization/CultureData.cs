@@ -78,6 +78,7 @@ namespace System.Globalization
         // (nfi populates these 5, don't have to be = undef)
         private int _iDigits; // (user can override) number of fractional digits
         private int _iNegativeNumber; // (user can override) negative number format
+        private int _iMinimumGroupingDigits = undef; // CLDR grouping threshold
         private int[]? _waGrouping; // (user can override) grouping of digits
         private string? _sDecimalSeparator; // (user can override) decimal separator
         private string? _sThousandSeparator; // (user can override) thousands separator
@@ -1236,6 +1237,30 @@ namespace System.Globalization
         /// </summary>
         internal int[] NumberGroupSizes => _waGrouping ??= GetLocaleInfoCoreUserOverride(LocaleGroupingData.Digit);
 
+        internal int MinimumGroupingDigits
+        {
+            get
+            {
+                if (_iMinimumGroupingDigits == undef)
+                {
+                    int value = 1;
+                    if (!GlobalizationMode.Invariant && !GlobalizationMode.UseNls &&
+                        _sWindowsName is not null &&
+                        Interop.Globalization.GetLocaleInfoMinimumGroupingDigits(_sWindowsName, ref value) &&
+                        value is >= 1 and <= 3)
+                    {
+                        _iMinimumGroupingDigits = value;
+                    }
+                    else
+                    {
+                        _iMinimumGroupingDigits = 1;
+                    }
+                }
+
+                return _iMinimumGroupingDigits;
+            }
+        }
+
         /// <summary>
         /// Not a Number
         /// </summary>
@@ -2254,6 +2279,7 @@ namespace System.Globalization
             // Gather additional data
             nfi._numberGroupSizes = NumberGroupSizes;
             nfi._currencyGroupSizes = CurrencyGroupSizes;
+            nfi._minimumGroupingDigits = MinimumGroupingDigits;
 
             // prefer the cached value since these do not have user overrides
             nfi._percentNegativePattern = PercentNegativePattern;

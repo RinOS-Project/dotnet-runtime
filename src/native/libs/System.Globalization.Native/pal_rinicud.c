@@ -2727,6 +2727,18 @@ int32_t GlobalizationNative_GetLocaleInfoGroupingSizes(const UChar* locale, Loca
     return 1;
 }
 
+int32_t GlobalizationNative_GetLocaleInfoMinimumGroupingDigits(const UChar* locale, int32_t* minimum)
+{
+    RinIcuDataLocaleRecord record;
+    uint32_t value;
+    if (!minimum || !get_locale_record(locale, &record)) return 0;
+
+    value = rin_icu_data_minimum_grouping_digits(record.flags);
+    if (value < 1u || value > 3u) return 0;
+    *minimum = (int32_t)value;
+    return 1;
+}
+
 int32_t GlobalizationNative_GetCalendars(const UChar* locale, CalendarId* calendars, int32_t capacity)
 {
     RinIcuDataLocaleRecord record;

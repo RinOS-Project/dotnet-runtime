@@ -582,3 +582,25 @@ int32_t GlobalizationNative_GetLocaleInfoGroupingSizes(
 
     return UErrorCodeToBool(status);
 }
+
+/*
+PAL Function:
+GetLocaleInfoMinimumGroupingDigits
+
+The generic ICU PAL has historically not exposed CLDR's
+minimumGroupingDigits. Keep the compatibility default here; the RinOS
+rinicud backend overrides this entry point with the product-owned CLDR
+projection.
+*/
+int32_t GlobalizationNative_GetLocaleInfoMinimumGroupingDigits(
+    const UChar* localeName, int32_t* minimumGroupingDigits)
+{
+    (void)localeName;
+    if (minimumGroupingDigits == NULL)
+    {
+        return 0;
+    }
+
+    *minimumGroupingDigits = 1;
+    return 1;
+}

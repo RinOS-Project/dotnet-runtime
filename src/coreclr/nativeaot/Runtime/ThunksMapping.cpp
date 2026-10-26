@@ -1586,12 +1586,15 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
     }
 
     // The first mapping is the image-owned template and must remain live for
-    // the module lifetime.  Dynamically copied mappings are independent and
-    // can use the same PAL release operation as allocation failure cleanup.
+    // the module lifetime.  Its managed lease can still be relinquished: the
+    // caller must not retry it as a failed release just because the image
+    // storage itself is intentionally retained.  Dynamically copied mappings
+    // are independent and can use the same PAL release operation as
+    // allocation failure cleanup.
     if (pThunksSection == g_pThunksTemplateAddress)
     {
         UnlockTemplateThunkMappingOwners();
-        return E_NOTIMPL;
+        return S_OK;
     }
 
     RinOsTemplateThunkMappingOwner** ownerLink =

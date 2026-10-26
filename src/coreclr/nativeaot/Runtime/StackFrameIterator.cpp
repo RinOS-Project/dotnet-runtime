@@ -80,6 +80,22 @@ static TADDR ReturnAddressToCanonicalPC(TADDR returnAddress)
     return PCODEToPINSTR(dac_cast<PCODE>(returnAddress));
 }
 
+#if defined(TARGET_RINOS)
+/* A PAL_LIMITED_CONTEXT can originate at an exception or hijack boundary,
+ * but its register values are still input to the stack walker.  Keep this
+ * check separate from the registered native-stack reservation: the context
+ * only needs a readable user address at this entry point, while the later
+ * frame-specific helpers enforce the exact reservation for every dereference.
+ */
+static bool IsRinOSUserRangeValid(uintptr_t address, size_t size)
+{
+    return address >= RINOS_PAL_USER_ADDRESS_MIN &&
+           size != 0 &&
+           address <= UINTPTR_MAX - size &&
+           address + size <= RINOS_PAL_USER_ADDRESS_LIMIT;
+}
+#endif // TARGET_RINOS
+
 StackFrameIterator::StackFrameIterator(Thread * pThreadToWalk, PInvokeTransitionFrame* pInitialTransitionFrame)
 {
     STRESS_LOG0(LF_STACKWALK, LL_INFO10000, "----Init---- [ GC ]\n");
@@ -419,6 +435,16 @@ void StackFrameIterator::InternalInit(Thread * pThreadToWalk, PTR_PAL_LIMITED_CO
     ASSERT((dwFlags & MethodStateCalculated) == 0);
 
     EnterInitialInvalidState(pThreadToWalk);
+
+#if defined(TARGET_RINOS)
+    // Do not let a forged saved register reach ExInfo traversal or the code
+    // manager.  The subsequent stack walker still validates the exact native
+    // stack reservation before it dereferences a frame.
+    if (pCtx == nullptr ||
+        !IsRinOSUserRangeValid(pCtx->GetSp(), sizeof(uintptr_t)) ||
+        !IsRinOSUserRangeValid(pCtx->GetIp(), 1))
+        return;
+#endif // TARGET_RINOS
 
     m_dwFlags = dwFlags;
 

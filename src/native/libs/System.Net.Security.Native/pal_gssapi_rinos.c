@@ -126,8 +126,9 @@ static int rinos_gss_kerberos_owner_valid(const RinAuthProviderV1* provider)
  * PAL.  Capability discovery may temporarily return NULL when the authenticated
  * keyring owner is unavailable, but that must not strand objects which were
  * already allocated by the provider.  Keep the last structurally valid table
- * only for release callbacks; new operations still require a fresh live
- * capability probe through rinos_gss_provider(). */
+ * for release callbacks and established-context identity reads; acquire/init
+ * operations still require a fresh live capability probe through
+ * rinos_gss_provider(). */
 static const RinAuthProviderV1* g_last_valid_provider;
 
 static void rinos_gss_remember_provider(const RinAuthProviderV1* provider)
@@ -141,6 +142,17 @@ static const RinAuthProviderV1* rinos_gss_provider_for_release(
     return provider != NULL
         ? provider
         : __atomic_load_n(&g_last_valid_provider, __ATOMIC_ACQUIRE);
+}
+
+/* A context which was already established retains the provider's opaque
+ * owner.  Identity reads on that context are therefore not new capability
+ * discovery: a transient global owner probe must not erase the provider table
+ * needed to ask the retained owner for the authenticated principal.  The
+ * provider callback still validates the context and may return UNAVAILABLE;
+ * this helper only preserves the already-published table pointer. */
+static const RinAuthProviderV1* rinos_gss_provider_for_retained_context(void)
+{
+    return __atomic_load_n(&g_last_valid_provider, __ATOMIC_ACQUIRE);
 }
 
 static const RinAuthProviderV1* rinos_gss_provider(void)
@@ -1504,6 +1516,10 @@ PALEXPORT uint32_t NetSecurityNative_GetUser(
     const RinAuthProviderV1* provider = rinos_gss_provider();
     if (contextHandle == NULL)
     {
+        if (provider == NULL)
+        {
+            provider = rinos_gss_provider_for_retained_context();
+        }
         return rinos_gss_local_buffer_error(
             provider, minorStatus, outBuffer, PAL_GSS_S_NO_CONTEXT);
     }
@@ -1511,6 +1527,15 @@ PALEXPORT uint32_t NetSecurityNative_GetUser(
     {
         return rinos_gss_local_error(
             minorStatus, PAL_GSS_S_CALL_INACCESSIBLE_WRITE);
+    }
+
+    /* GetUser is a post-authentication operation on an existing context.  It
+     * must prefer a fresh capability probe, but keep the last valid table when
+     * the authenticated owner is temporarily unavailable.  Do not apply this
+     * fallback to acquire/init paths: those remain live-capability-gated. */
+    if (provider == NULL)
+    {
+        provider = rinos_gss_provider_for_retained_context();
     }
     if (provider != NULL)
     {

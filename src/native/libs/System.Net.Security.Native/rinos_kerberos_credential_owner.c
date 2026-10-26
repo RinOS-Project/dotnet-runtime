@@ -262,6 +262,18 @@ static uint32_t owner_get_session_principal(
     }
     result = rin_keyring_client_kerberos_principal(
         &slot->handle, output, output_capacity, output_size, generation);
+    /* The current keyring client validates this bound while decoding the
+     * authenticated IPC response, but keep the runtime owner defensive at
+     * the provider ABI as well.  A provider that reports success with an
+     * impossible principal length must not make an oversized value visible
+     * to the Kerberos implementation. */
+    if (result == RIN_KEYRING_OK &&
+        (*output_size == 0u || *output_size > output_capacity)) {
+        owner_zero(output, output_capacity);
+        *output_size = 0u;
+        *generation = 0u;
+        result = RIN_KEYRING_TOO_LARGE;
+    }
     if (result == RIN_KEYRING_OK && *generation != slot->handle.generation) {
         owner_zero(output, output_capacity);
         *output_size = 0u;

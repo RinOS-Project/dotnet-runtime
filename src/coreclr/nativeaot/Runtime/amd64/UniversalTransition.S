@@ -44,7 +44,7 @@
 // Inputs:
 //      rdi, rsi, rcx, rdx, r8, r9, stack space: arguments as normal
 //      r10: The location of the target code the UniversalTransition thunk will call
-//      r11: The only parameter to the target function (passed in rdx to callee)
+//      r11: The only parameter to the target function (passed in rsi to callee)
 //
 
 //

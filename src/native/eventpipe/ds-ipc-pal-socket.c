@@ -42,6 +42,10 @@
 #include <sys/un.h>
 #include <sys/stat.h>
 
+#if defined(TARGET_RINOS)
+#include <rin/net/socket_abi.h>
+#endif
+
 #if __GNUC__
 #include <poll.h>
 #else
@@ -276,6 +280,54 @@ ipc_set_last_error (int error)
 	errno = error;
 #endif
 }
+
+#if defined(TARGET_RINOS) && defined(DS_IPC_PAL_AF_UNIX)
+/*
+ * RinOS diagnostic IPC is a local, session-scoped capability.  The socket
+ * pathname and the peer PID are only routing data; neither is an
+ * authentication boundary.  The kernel captures both records at connect
+ * time, so validate them before the EventPipe protocol reads any request.
+ *
+ * The diagnostic client must be an authenticated user-scope RIN application
+ * belonging to the same session UID.  System-scope service clients are not
+ * admitted by this first product policy; a future service-owner capability
+ * must be added explicitly rather than weakening this check.
+ */
+static
+bool
+ipc_rinos_peer_is_authorized (ds_ipc_socket_t socket)
+{
+	rin_unix_peer_session_identity_v1 session = { 0 };
+	rin_unix_peer_app_identity_v1 application = { 0 };
+	socklen_t session_size = (socklen_t)sizeof (session);
+	socklen_t application_size = (socklen_t)sizeof (application);
+
+	if (getsockopt (
+			socket,
+			SOL_SOCKET,
+			SO_RIN_UNIX_PEER_SESSION_IDENTITY,
+			&session,
+			&session_size) != 0 ||
+		session_size != (socklen_t)sizeof (session) ||
+		!rin_unix_peer_session_identity_valid (&session)) {
+		return false;
+	}
+
+	if (getsockopt (
+			socket,
+			SOL_SOCKET,
+			SO_RIN_UNIX_PEER_APP_IDENTITY,
+			&application,
+			&application_size) != 0 ||
+		application_size != (socklen_t)sizeof (application) ||
+		!rin_unix_peer_app_identity_valid (&application)) {
+		return false;
+	}
+
+	return application.scope == RIN_UNIX_SCOPE_USER &&
+		application.owner_uid == session.uid;
+}
+#endif
 
 static
 inline
@@ -1271,6 +1323,20 @@ ds_ipc_accept (
 			callback (strerror (ipc_get_last_error ()), ipc_get_last_error ());
 		ep_raise_error ();
 	}
+
+#if defined(TARGET_RINOS) && defined(DS_IPC_PAL_AF_UNIX)
+	if (!ipc_rinos_peer_is_authorized (client_socket)) {
+		/* Do not let an unauthenticated peer reach the managed diagnostic
+		 * protocol.  Preserve the transport error for the caller, but close
+		 * this accepted descriptor before reporting failure. */
+		ipc_set_last_error (EACCES);
+		(void)ipc_socket_close (client_socket);
+		client_socket = DS_IPC_INVALID_SOCKET;
+		if (callback)
+			callback ("RinOS diagnostic peer identity rejected", EACCES);
+		ep_raise_error ();
+	}
+#endif
 
 	stream = ipc_stream_alloc (client_socket, ipc->mode);
 

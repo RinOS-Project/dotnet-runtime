@@ -289,17 +289,22 @@ ipc_set_last_error (int error)
  * time, so validate them before the EventPipe protocol reads any request.
  *
  * The diagnostic client must be an authenticated user-scope RIN application
- * belonging to the same session UID.  System-scope service clients are not
+ * belonging to the same active session.  System-scope service clients are not
  * admitted by this first product policy; a future service-owner capability
- * must be added explicitly rather than weakening this check.
+ * must be added explicitly rather than weakening this check.  The separate
+ * session-state query is required because the peer-session record is a
+ * connection snapshot and may become stale during lock/logout/generation
+ * replacement.
  */
 static
 bool
 ipc_rinos_peer_is_authorized (ds_ipc_socket_t socket)
 {
 	rin_unix_peer_session_identity_v1 session = { 0 };
+	rin_unix_peer_session_state_v1 state = { 0 };
 	rin_unix_peer_app_identity_v1 application = { 0 };
 	socklen_t session_size = (socklen_t)sizeof (session);
+	socklen_t state_size = (socklen_t)sizeof (state);
 	socklen_t application_size = (socklen_t)sizeof (application);
 
 	if (getsockopt (
@@ -310,6 +315,22 @@ ipc_rinos_peer_is_authorized (ds_ipc_socket_t socket)
 			&session_size) != 0 ||
 		session_size != (socklen_t)sizeof (session) ||
 		!rin_unix_peer_session_identity_valid (&session)) {
+		return false;
+	}
+
+	if (getsockopt (
+			socket,
+			SOL_SOCKET,
+			SO_RIN_UNIX_PEER_SESSION_STATE,
+			&state,
+			&state_size) != 0 ||
+		state_size != (socklen_t)sizeof (state) ||
+		!rin_unix_peer_session_state_valid (&state) ||
+		(state.state != RIN_UNIX_SESSION_STATE_ACTIVE_FOREGROUND &&
+		 state.state != RIN_UNIX_SESSION_STATE_ACTIVE_BACKGROUND) ||
+		state.identity.session_id != session.session_id ||
+		state.identity.uid != session.uid ||
+		state.identity.instance_cookie != session.instance_cookie) {
 		return false;
 	}
 

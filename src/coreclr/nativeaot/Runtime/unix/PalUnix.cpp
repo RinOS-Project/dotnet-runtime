@@ -1966,8 +1966,14 @@ bool PalGetMaximumStackBounds(_Out_ void** ppStackLowOut, _Out_ void** ppStackHi
     if (ppStackLowOut == NULL || ppStackHighOut == NULL)
         return false;
 #if defined(TARGET_RINOS)
-    if ((uintptr_t)ppStackLowOut > UINTPTR_MAX - sizeof(*ppStackLowOut) ||
-        (uintptr_t)ppStackHighOut > UINTPTR_MAX - sizeof(*ppStackHighOut) ||
+    const uintptr_t lowOutputAddress = (uintptr_t)ppStackLowOut;
+    const uintptr_t highOutputAddress = (uintptr_t)ppStackHighOut;
+    if (lowOutputAddress > UINTPTR_MAX - sizeof(*ppStackLowOut) ||
+        highOutputAddress > UINTPTR_MAX - sizeof(*ppStackHighOut) ||
+        (lowOutputAddress < highOutputAddress &&
+         lowOutputAddress + sizeof(*ppStackLowOut) > highOutputAddress) ||
+        (highOutputAddress < lowOutputAddress &&
+         highOutputAddress + sizeof(*ppStackHighOut) > lowOutputAddress) ||
         !RinOSUserRangeValid((uintptr_t)ppStackLowOut,
                              (uintptr_t)ppStackLowOut + sizeof(*ppStackLowOut)) ||
         !RinOSUserRangeValid((uintptr_t)ppStackHighOut,

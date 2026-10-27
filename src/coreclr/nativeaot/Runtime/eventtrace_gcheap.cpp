@@ -1505,7 +1505,23 @@ namespace
             return;
         }
 
-        const int maxEntries = (cbMaxEtwEvent - 0x30) / sizeof(NativeAotEventCCWEntry);
+        // cbMaxEtwEvent is runtime/provider configuration, so a malformed or
+        // unusually small value must not turn into a zero/negative-length
+        // allocation.  Fail closed before deriving the batch capacity.
+        if (cbMaxEtwEvent <= 0x30)
+        {
+            FreeNativeAotComHandleBatches(&enumeration);
+            return;
+        }
+
+        const int eventPayloadCapacity = cbMaxEtwEvent - 0x30;
+        if (eventPayloadCapacity < (int)sizeof(NativeAotEventCCWEntry))
+        {
+            FreeNativeAotComHandleBatches(&enumeration);
+            return;
+        }
+
+        const int maxEntries = eventPayloadCapacity / sizeof(NativeAotEventCCWEntry);
         NativeAotEventCCWEntry* entries = new (nothrow) NativeAotEventCCWEntry[maxEntries];
         if (entries == nullptr)
         {

@@ -302,6 +302,14 @@ namespace System.Net.Security
                 throw new RinTlsException(
                     result, "RinTLS rejected the managed server certificate.");
             }
+
+            result = Interop.RinTls.SetServerClientCertificateRequired(
+                handle, sslAuthenticationOptions.RemoteCertRequired);
+            if (result != 0)
+            {
+                throw new RinTlsException(
+                    result, "RinTLS rejected the server client-certificate policy.");
+            }
         }
 
         private static byte[] BuildServerCertificateList(

@@ -50,6 +50,11 @@ internal static partial class Interop
             IntPtr signer, IntPtr signerOpaque);
 
         [LibraryImport(Libraries.CryptoNative,
+            EntryPoint = "CryptoNative_RinTlsSetServerClientCertificateRequired")]
+        private static partial int SetServerClientCertificateRequiredNative(
+            IntPtr handle, int required);
+
+        [LibraryImport(Libraries.CryptoNative,
             EntryPoint = "CryptoNative_RinTlsClientCertificateRequested")]
         private static partial int ClientCertificateRequestedNative(
             IntPtr handle);
@@ -357,6 +362,11 @@ internal static partial class Interop
                     certificateList.Length, signer, signerOpaque);
             }
         }
+
+        internal static int SetServerClientCertificateRequired(
+            RinSslHandle handle, bool required)
+            => SetServerClientCertificateRequiredNative(
+                handle.DangerousGetHandle(), required ? 1 : 0);
 
         internal static int GetPeerCertificateChainLength(RinSslHandle handle,
                                                            out int length)

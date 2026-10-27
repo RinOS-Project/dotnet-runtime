@@ -1647,6 +1647,16 @@ uint16_t PalCaptureStackBackTrace(uint32_t arg1, uint32_t arg2, void* arg3, uint
 
     const uintptr_t stackBegin = (uintptr_t)stackAddress;
     const uintptr_t stackEnd = stackBegin + stackSize;
+#if defined(TARGET_RINOS)
+    // pthread metadata is still an input at this PAL boundary.  Do not use
+    // it to read a frame chain until the complete reservation is inside the
+    // product's native stack VA contract; checking only each frame later
+    // would already have trusted the unvalidated stack endpoint.
+    if (!RinOSStackRangeValid(stackBegin, stackEnd))
+    {
+        return 0;
+    }
+#endif
     const uintptr_t firstFrame = (uintptr_t)__builtin_frame_address(0);
     const uintptr_t lastReadableFrame = stackEnd - (2 * sizeof(uintptr_t));
     if (firstFrame < stackBegin || firstFrame > lastReadableFrame ||

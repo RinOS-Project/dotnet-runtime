@@ -1791,6 +1791,13 @@ void StackFrameIterator::UnwindUniversalTransitionThunk()
 
     // The current PC is within RhpUniversalTransition, so establish a view of the surrounding stack frame.
     // NOTE: In DAC builds, the pointer will refer to a newly constructed object in the DAC host.
+#if defined(UNIX_AMD64_ABI)
+    /* UniversalTransition.S allocates the SysV frame at a 16-byte boundary.
+     * A readable but shifted SP would make every packed field below refer to
+     * a different stack word while still remaining inside the registered
+     * reservation.  Reject that corrupted frame before materializing it. */
+    FAILFAST_OR_DAC_FAIL(((uintptr_t)m_RegDisplay.SP & 0x0Fu) == 0u);
+#endif
     FAILFAST_OR_DAC_FAIL(IsUniversalTransitionStackRangeValid(
         m_pThread, m_RegDisplay.SP, sizeof(UniversalTransitionStackFrame)));
     UniversalTransitionStackFrame * stackFrame = (PTR_UniversalTransitionStackFrame)m_RegDisplay.SP;

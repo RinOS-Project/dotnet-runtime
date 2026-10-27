@@ -15,6 +15,9 @@
 #include <new>
 #include <string.h>
 
+#if defined(TARGET_RINOS)
+#include "pal/rinos_contract.h"
+#endif
 
 #ifdef FEATURE_RX_THUNKS
 
@@ -58,8 +61,27 @@ static bool IsValidRxThunkMappingAddress(void* mapping, size_t mappingSize)
     }
 
     const uintptr_t baseAddress = (uintptr_t)mapping;
-    return (baseAddress % (uintptr_t)OS_PAGE_SIZE) == 0 &&
-        baseAddress <= UINTPTR_MAX - (uintptr_t)mappingSize;
+    if ((baseAddress % (uintptr_t)OS_PAGE_SIZE) != 0 ||
+        baseAddress > UINTPTR_MAX - (uintptr_t)mappingSize)
+    {
+        return false;
+    }
+
+#if defined(TARGET_RINOS)
+    // The PAL allocator is product-owned, but the NativeAOT owner must not
+    // publish a malformed result merely because it is page-aligned.  Keep
+    // the complete RX/data pair inside the same user-VA contract used by
+    // PalVirtualAlloc/PalVirtualFreeChecked and the kernel VMM.
+    const uintptr_t mappingEnd = baseAddress + (uintptr_t)mappingSize;
+    if (baseAddress < RINOS_PAL_USER_ADDRESS_MIN ||
+        baseAddress >= RINOS_PAL_USER_ADDRESS_LIMIT ||
+        mappingEnd > RINOS_PAL_USER_ADDRESS_LIMIT)
+    {
+        return false;
+    }
+#endif
+
+    return true;
 }
 
 // NativeAOT normally serializes mapping allocation/release through the

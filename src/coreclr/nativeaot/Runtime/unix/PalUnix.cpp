@@ -1965,6 +1965,17 @@ bool PalGetMaximumStackBounds(_Out_ void** ppStackLowOut, _Out_ void** ppStackHi
     // caller into an unchecked write after the platform stack query succeeds.
     if (ppStackLowOut == NULL || ppStackHighOut == NULL)
         return false;
+#if defined(TARGET_RINOS)
+    if ((uintptr_t)ppStackLowOut > UINTPTR_MAX - sizeof(*ppStackLowOut) ||
+        (uintptr_t)ppStackHighOut > UINTPTR_MAX - sizeof(*ppStackHighOut) ||
+        !RinOSUserRangeValid((uintptr_t)ppStackLowOut,
+                             (uintptr_t)ppStackLowOut + sizeof(*ppStackLowOut)) ||
+        !RinOSUserRangeValid((uintptr_t)ppStackHighOut,
+                             (uintptr_t)ppStackHighOut + sizeof(*ppStackHighOut)))
+    {
+        return false;
+    }
+#endif
 
     void* pStackHighOut = NULL;
     void* pStackLowOut = NULL;

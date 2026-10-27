@@ -783,6 +783,25 @@ UInt32_BOOL PalAllocateThunksFromTemplate(HANDLE hTemplateModule, uint32_t templ
     }
 #endif
 
+#if defined(TARGET_RINOS)
+    // PalVirtualAlloc is the product allocator, but keep the destination side
+    // of this copy explicit as well. A malformed allocator result must not
+    // reach memcpy or the W^X publication path: template thunk ownership is
+    // valid only for a page-aligned, overflow-free mapping wholly inside the
+    // RinOS user address contract.
+    uintptr_t mappingAddress = (uintptr_t)mapping;
+    if (mappingAddress == 0 || OS_PAGE_SIZE == 0 ||
+        (mappingAddress % (uintptr_t)OS_PAGE_SIZE) != 0 ||
+        mappingAddress > UINTPTR_MAX - (uintptr_t)mappingSize ||
+        !RinOSUserRangeValid(
+            mappingAddress, mappingAddress + (uintptr_t)mappingSize))
+    {
+        PreserveTemplateMappingAfterReleaseFailure(
+            mapping, mappingSize, newThunksOut);
+        return UInt32_FALSE;
+    }
+#endif
+
     memcpy(mapping, (const void*)templateAddress, templateSize);
     if (!PalVirtualProtect(mapping, templateSize, PAGE_EXECUTE_READ))
     {

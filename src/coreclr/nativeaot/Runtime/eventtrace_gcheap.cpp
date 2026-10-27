@@ -1197,9 +1197,15 @@ namespace
 
     void WalkGCStaticRootsForETW()
     {
-        const int maxBytes = cbMaxEtwEvent - 0x30;
-        if (maxBytes <= 0)
+        // cbMaxEtwEvent is runtime/provider configuration.  Reject an invalid
+        // or unusually small event budget before subtracting the fixed event
+        // header; otherwise a malformed value could wrap the signed
+        // arithmetic and turn the bounded scratch allocation into an
+        // attacker-controlled size.
+        if (cbMaxEtwEvent <= 0x30)
             return;
+
+        const int maxBytes = cbMaxEtwEvent - 0x30;
 
         BYTE* entries = new (nothrow) BYTE[maxBytes];
         if (entries == nullptr)

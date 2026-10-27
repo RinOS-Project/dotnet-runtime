@@ -843,11 +843,10 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
     }
 
     RinOsRxThunkMappingOwner* owner = *ownerLink;
-    if (owner->pendingRelease || owner->releaseInProgress)
+    if (owner->releaseInProgress)
     {
-        // A previous PAL release failed.  Keep the owner queued for the
-        // retry path; never submit the same address to the PAL twice while
-        // the original release is still unresolved.
+        // Never submit the same address to the PAL twice while the original
+        // release is still unresolved.
         UnlockRxThunkMappingOwners();
         return E_FAIL;
     }
@@ -870,8 +869,13 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
     }
     else
     {
+        // Keep a failed release retryable from this entry point.  The
+        // allocation path also retries pending owners, but an application
+        // that is destroying its last thunk mapping must not depend on a
+        // future allocation to make progress.
         owner->pendingRelease = true;
         owner->releaseInProgress = false;
+        owner->releaseAttempted = false;
     }
     UnlockRxThunkMappingOwners();
 

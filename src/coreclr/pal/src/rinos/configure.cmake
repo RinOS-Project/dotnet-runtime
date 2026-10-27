@@ -96,11 +96,13 @@ set(HAVE_UCONTEXT_H 1)
 set(HAVE_UCONTEXT_T 1)
 set(HAVE_SYS_UCONTEXT_H 1)
 
-# RinOS scheduler exposes a bounded fixed-size cpuset ABI.  The generic PAL
-# affinity implementation requires CPU_ALLOC/CPU_COUNT_S, which is a
-# host-libc extension and cannot be enabled by a target-only symbol probe.
-# Keep these feature probes disabled; the target-specific PAL and
-# System.Native branches use rinos_affinity.h and the fixed ABI directly.
+# RinOS scheduler exposes a product current-CPU query and a bounded fixed-size
+# cpuset ABI.  The generic PAL affinity implementation requires
+# CPU_ALLOC/CPU_COUNT_S, which is a host-libc extension and cannot be enabled
+# by a target-only symbol probe.  Keep only the affinity probes disabled; the
+# current-CPU query is an explicit product ABI and is consumed by
+# System.Native_SchedGetCpu().
+set(HAVE_SCHED_GETCPU 1)
 set(HAVE_SCHED_GETAFFINITY 0)
 set(HAVE_SCHED_SETAFFINITY 0)
 set(HAVE_SCHED_GET_PRIORITY 0)

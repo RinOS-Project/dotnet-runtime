@@ -268,7 +268,11 @@ namespace System.Net.Security
         }
 
         private const int MaxClientCertificateChain = 16 * 1024;
-        private const int MaxServerCertificateList = 16 * 1024 - 5;
+        // tls_send_server_certificate() emits a one-byte type, a three-byte
+        // handshake length, a one-byte certificate-request context length,
+        // and the three-byte certificate-list length before the entries.
+        // Keep the complete list within the native pending-send buffer.
+        private const int MaxServerCertificateListBytes = 16 * 1024 - 5;
 
         private static void ConfigureServerCertificate(
             RinSslHandle handle, SslAuthenticationOptions sslAuthenticationOptions)
@@ -338,7 +342,7 @@ namespace System.Net.Security
                 }
 
                 listLength = checked(listLength + 3 + certificate.Length + 2);
-                if (listLength > MaxServerCertificateList)
+                if (listLength > MaxServerCertificateListBytes - 3)
                 {
                     throw new AuthenticationException(
                         "The RinTLS server certificate chain exceeds 16 KiB.");

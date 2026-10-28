@@ -342,19 +342,30 @@ namespace System.Security.Cryptography.X509Certificates
         public byte[] Export(X509ContentType contentType, SafePasswordHandle password)
         {
             ThrowIfDisposed();
-            if (contentType != X509ContentType.Cert || !password.DangerousGetSpan().IsEmpty)
+            if (contentType == X509ContentType.Cert && password.DangerousGetSpan().IsEmpty)
             {
-                throw new PlatformNotSupportedException("RinOS certificate PAL exports DER certificates only.");
+                return RawData;
             }
 
-            return RawData;
+            using IExportPal storePal = StorePal.FromCertificate(this);
+            return storePal.Export(contentType, password) ??
+                throw new CryptographicException(
+                    "RinOS certificate export returned no data.");
         }
 
-        public byte[] ExportPkcs12(Pkcs12ExportPbeParameters exportParameters, SafePasswordHandle password) =>
-            throw new PlatformNotSupportedException("RinOS certificate PAL does not export PKCS#12.");
+        public byte[] ExportPkcs12(Pkcs12ExportPbeParameters exportParameters, SafePasswordHandle password)
+        {
+            ThrowIfDisposed();
+            using IExportPal storePal = StorePal.FromCertificate(this);
+            return storePal.ExportPkcs12(exportParameters, password);
+        }
 
-        public byte[] ExportPkcs12(PbeParameters exportParameters, SafePasswordHandle password) =>
-            throw new PlatformNotSupportedException("RinOS certificate PAL does not export PKCS#12.");
+        public byte[] ExportPkcs12(PbeParameters exportParameters, SafePasswordHandle password)
+        {
+            ThrowIfDisposed();
+            using IExportPal storePal = StorePal.FromCertificate(this);
+            return storePal.ExportPkcs12(exportParameters, password);
+        }
 
         public void Dispose()
         {

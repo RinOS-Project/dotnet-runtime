@@ -60,9 +60,8 @@ namespace System.Security.Cryptography
                     HashAlgorithmNames.SHA256 or HashAlgorithmNames.SHA384 or HashAlgorithmNames.SHA512 or
                     HashAlgorithmNames.SHA3_256 or HashAlgorithmNames.SHA3_384 or
                     HashAlgorithmNames.SHA3_512 => true,
-                    HashAlgorithmNames.SHA1 or HashAlgorithmNames.MD5 or
-                    HashAlgorithmNames.SHAKE128 or
-                    HashAlgorithmNames.SHAKE256 => false,
+                    HashAlgorithmNames.SHA1 or HashAlgorithmNames.MD5 => false,
+                    HashAlgorithmNames.SHAKE128 or HashAlgorithmNames.SHAKE256 => true,
                     _ => throw Unknown(id),
                 };
             }
@@ -387,6 +386,17 @@ internal static partial class Interop
 
         [LibraryImport(Libraries.CryptoNative, EntryPoint = "CryptoNative_RinOSHmacDestroy")]
         internal static partial void RinOSHmacDestroy(IntPtr context);
+
+        [LibraryImport(Libraries.CryptoNative, EntryPoint = "CryptoNative_RinOSXofOneShot")]
+        internal static unsafe partial int RinOSXofOneShot(
+            int algorithm, byte* source, int sourceLength,
+            byte* destination, int destinationLength);
+
+        [LibraryImport(Libraries.CryptoNative, EntryPoint = "CryptoNative_RinOSKmacOneShot")]
+        internal static unsafe partial int RinOSKmacOneShot(
+            int algorithm, byte* key, int keyLength, byte* source, int sourceLength,
+            byte* customization, int customizationLength, byte* destination,
+            int destinationLength, int xof);
     }
 }
 

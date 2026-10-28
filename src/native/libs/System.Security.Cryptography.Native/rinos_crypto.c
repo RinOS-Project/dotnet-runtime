@@ -20,6 +20,8 @@
 #include "hmac.h"
 
 #define RINOS_CRYPTO_MAGIC UINT32_C(0x52494E43)
+#define RINOS_XOF_MAGIC UINT32_C(0x52494E58)
+#define RINOS_KMAC_MAGIC UINT32_C(0x52494E4B)
 
 enum
 {
@@ -29,6 +31,10 @@ enum
     RINOS_SHA3_256 = 4,
     RINOS_SHA3_384 = 5,
     RINOS_SHA3_512 = 6,
+    RINOS_SHAKE128 = 7,
+    RINOS_SHAKE256 = 8,
+    RINOS_KMAC128 = 1,
+    RINOS_KMAC256 = 2,
 };
 
 typedef struct
@@ -54,6 +60,22 @@ typedef struct
         hmac_sha512_ctx sha512;
     } state;
 } rinos_hmac_context;
+
+typedef struct
+{
+    uint32_t magic;
+    uint32_t algorithm;
+    sha3_ctx state;
+} rinos_xof_context;
+
+typedef struct
+{
+    uint32_t magic;
+    uint32_t algorithm;
+    uint32_t xof;
+    sha3_ctx seed;
+    sha3_ctx state;
+} rinos_kmac_context;
 
 static int rinos_hash_size(uint32_t algorithm)
 {
@@ -101,6 +123,44 @@ static int rinos_hmac_valid(const rinos_hmac_context* context)
 {
     return context != NULL && context->magic == RINOS_CRYPTO_MAGIC &&
         rinos_hmac_size(context->algorithm) != 0;
+}
+
+static u32 rinos_xof_rate(uint32_t algorithm)
+{
+    switch (algorithm)
+    {
+        case RINOS_SHAKE128:
+            return 168u;
+        case RINOS_SHAKE256:
+            return 136u;
+        default:
+            return 0u;
+    }
+}
+
+static u32 rinos_kmac_rate(uint32_t algorithm)
+{
+    switch (algorithm)
+    {
+        case RINOS_KMAC128:
+            return 168u;
+        case RINOS_KMAC256:
+            return 136u;
+        default:
+            return 0u;
+    }
+}
+
+static int rinos_xof_valid(const rinos_xof_context* context)
+{
+    return context != NULL && context->magic == RINOS_XOF_MAGIC &&
+        rinos_xof_rate(context->algorithm) != 0u;
+}
+
+static int rinos_kmac_valid(const rinos_kmac_context* context)
+{
+    return context != NULL && context->magic == RINOS_KMAC_MAGIC &&
+        rinos_kmac_rate(context->algorithm) != 0u && context->xof <= 1u;
 }
 
 PALEXPORT void* CryptoNative_RinOSHashCreate(int32_t algorithm)
@@ -230,6 +290,210 @@ PALEXPORT void CryptoNative_RinOSHashDestroy(void* handle)
         return;
     rintls_secure_zero(context, sizeof(*context));
     rintls_mem_free(context);
+}
+
+PALEXPORT void* CryptoNative_RinOSXofCreate(int32_t algorithm)
+{
+    u32 rate = rinos_xof_rate((uint32_t)algorithm);
+    rinos_xof_context* context;
+
+    if (rate == 0u) return NULL;
+    context = (rinos_xof_context*)rintls_malloc(sizeof(*context));
+    if (context == NULL) return NULL;
+    context->magic = RINOS_XOF_MAGIC;
+    context->algorithm = (uint32_t)algorithm;
+    sha3_xof_init(&context->state, rate, 0x1fu);
+    return context;
+}
+
+PALEXPORT void* CryptoNative_RinOSXofClone(const void* source)
+{
+    const rinos_xof_context* source_context = (const rinos_xof_context*)source;
+    rinos_xof_context* clone;
+
+    if (!rinos_xof_valid(source_context)) return NULL;
+    clone = (rinos_xof_context*)rintls_malloc(sizeof(*clone));
+    if (clone != NULL) rintls_memcpy(clone, source_context, sizeof(*clone));
+    return clone;
+}
+
+PALEXPORT int32_t CryptoNative_RinOSXofUpdate(void* handle, const uint8_t* data, int32_t length)
+{
+    rinos_xof_context* context = (rinos_xof_context*)handle;
+    if (!rinos_xof_valid(context) || length < 0 || (data == NULL && length != 0))
+        return 0;
+    sha3_update(&context->state, data, (rin_size_t)length);
+    return 1;
+}
+
+PALEXPORT int32_t CryptoNative_RinOSXofFinal(void* handle, uint8_t* destination, int32_t destination_length)
+{
+    rinos_xof_context* context = (rinos_xof_context*)handle;
+    if (!rinos_xof_valid(context) || destination_length < 0 ||
+        (destination == NULL && destination_length != 0)) return 0;
+    return sha3_xof_squeeze(&context->state, destination, (rin_size_t)destination_length);
+}
+
+PALEXPORT int32_t CryptoNative_RinOSXofCurrent(const void* handle, uint8_t* destination, int32_t destination_length)
+{
+    const rinos_xof_context* context = (const rinos_xof_context*)handle;
+    sha3_ctx copy;
+    int result;
+
+    if (!rinos_xof_valid(context) || destination_length < 0 ||
+        (destination == NULL && destination_length != 0)) return 0;
+    rintls_memcpy(&copy, &context->state, sizeof(copy));
+    result = sha3_xof_squeeze(&copy, destination, (rin_size_t)destination_length);
+    rintls_secure_zero(&copy, sizeof(copy));
+    return result;
+}
+
+PALEXPORT int32_t CryptoNative_RinOSXofReset(void* handle)
+{
+    rinos_xof_context* context = (rinos_xof_context*)handle;
+    u32 rate;
+
+    if (!rinos_xof_valid(context)) return 0;
+    rate = rinos_xof_rate(context->algorithm);
+    sha3_xof_init(&context->state, rate, 0x1fu);
+    return 1;
+}
+
+PALEXPORT int32_t CryptoNative_RinOSXofRead(void* handle, uint8_t* destination, int32_t destination_length)
+{
+    return CryptoNative_RinOSXofFinal(handle, destination, destination_length);
+}
+
+PALEXPORT int32_t CryptoNative_RinOSXofOneShot(
+    int32_t algorithm, const uint8_t* source, int32_t source_length,
+    uint8_t* destination, int32_t destination_length)
+{
+    rinos_xof_context* context;
+    int32_t result;
+
+    if (source_length < 0 || destination_length < 0 ||
+        (source == NULL && source_length != 0) ||
+        (destination == NULL && destination_length != 0)) return 0;
+    context = (rinos_xof_context*)CryptoNative_RinOSXofCreate(algorithm);
+    if (context == NULL) return 0;
+    if (!CryptoNative_RinOSXofUpdate(context, source, source_length)) {
+        CryptoNative_RinOSXofDestroy(context);
+        return 0;
+    }
+    result = CryptoNative_RinOSXofFinal(context, destination, destination_length);
+    CryptoNative_RinOSXofDestroy(context);
+    return result;
+}
+
+PALEXPORT void CryptoNative_RinOSXofDestroy(void* handle)
+{
+    rinos_xof_context* context = (rinos_xof_context*)handle;
+    if (context == NULL) return;
+    rintls_secure_zero(context, sizeof(*context));
+    rintls_mem_free(context);
+}
+
+PALEXPORT void* CryptoNative_RinOSKmacCreate(
+    int32_t algorithm, const uint8_t* key, int32_t key_length,
+    const uint8_t* customization, int32_t customization_length, int32_t xof)
+{
+    u32 rate = rinos_kmac_rate((uint32_t)algorithm);
+    rinos_kmac_context* context;
+
+    if (rate == 0u || key_length < 0 || customization_length < 0 ||
+        xof < 0 || xof > 1 || (key == NULL && key_length != 0) ||
+        (customization == NULL && customization_length != 0)) return NULL;
+    context = (rinos_kmac_context*)rintls_malloc(sizeof(*context));
+    if (context == NULL) return NULL;
+    context->magic = RINOS_KMAC_MAGIC;
+    context->algorithm = (uint32_t)algorithm;
+    context->xof = (uint32_t)xof;
+    if (!sha3_kmac_init(&context->seed, rate, key, (rin_size_t)key_length,
+                        customization, (rin_size_t)customization_length, xof)) {
+        rintls_secure_zero(context, sizeof(*context));
+        rintls_mem_free(context);
+        return NULL;
+    }
+    rintls_memcpy(&context->state, &context->seed, sizeof(context->state));
+    return context;
+}
+
+PALEXPORT void* CryptoNative_RinOSKmacClone(const void* source)
+{
+    const rinos_kmac_context* source_context = (const rinos_kmac_context*)source;
+    rinos_kmac_context* clone;
+
+    if (!rinos_kmac_valid(source_context)) return NULL;
+    clone = (rinos_kmac_context*)rintls_malloc(sizeof(*clone));
+    if (clone != NULL) rintls_memcpy(clone, source_context, sizeof(*clone));
+    return clone;
+}
+
+PALEXPORT int32_t CryptoNative_RinOSKmacUpdate(void* handle, const uint8_t* data, int32_t length)
+{
+    rinos_kmac_context* context = (rinos_kmac_context*)handle;
+    if (!rinos_kmac_valid(context) || length < 0 || (data == NULL && length != 0))
+        return 0;
+    sha3_update(&context->state, data, (rin_size_t)length);
+    return 1;
+}
+
+PALEXPORT int32_t CryptoNative_RinOSKmacFinal(void* handle, uint8_t* destination, int32_t destination_length)
+{
+    rinos_kmac_context* context = (rinos_kmac_context*)handle;
+    if (!rinos_kmac_valid(context) || destination_length < 0 ||
+        (destination == NULL && destination_length != 0)) return 0;
+    return sha3_kmac_finalize(&context->state, destination,
+                              (rin_size_t)destination_length, (int)context->xof);
+}
+
+PALEXPORT int32_t CryptoNative_RinOSKmacCurrent(const void* handle, uint8_t* destination, int32_t destination_length)
+{
+    const rinos_kmac_context* context = (const rinos_kmac_context*)handle;
+    if (!rinos_kmac_valid(context) || destination_length < 0 ||
+        (destination == NULL && destination_length != 0)) return 0;
+    return sha3_kmac_finalize((sha3_ctx*)&context->state, destination,
+                              (rin_size_t)destination_length, (int)context->xof);
+}
+
+PALEXPORT int32_t CryptoNative_RinOSKmacReset(void* handle)
+{
+    rinos_kmac_context* context = (rinos_kmac_context*)handle;
+    if (!rinos_kmac_valid(context)) return 0;
+    rintls_memcpy(&context->state, &context->seed, sizeof(context->state));
+    return 1;
+}
+
+PALEXPORT void CryptoNative_RinOSKmacDestroy(void* handle)
+{
+    rinos_kmac_context* context = (rinos_kmac_context*)handle;
+    if (context == NULL) return;
+    rintls_secure_zero(context, sizeof(*context));
+    rintls_mem_free(context);
+}
+
+PALEXPORT int32_t CryptoNative_RinOSKmacOneShot(
+    int32_t algorithm, const uint8_t* key, int32_t key_length,
+    const uint8_t* source, int32_t source_length,
+    const uint8_t* customization, int32_t customization_length,
+    uint8_t* destination, int32_t destination_length, int32_t xof)
+{
+    rinos_kmac_context* context;
+    int32_t result;
+
+    if (source_length < 0 || destination_length < 0 ||
+        (source == NULL && source_length != 0) ||
+        (destination == NULL && destination_length != 0)) return 0;
+    context = (rinos_kmac_context*)CryptoNative_RinOSKmacCreate(
+        algorithm, key, key_length, customization, customization_length, xof);
+    if (context == NULL) return 0;
+    if (!CryptoNative_RinOSKmacUpdate(context, source, source_length)) {
+        CryptoNative_RinOSKmacDestroy(context);
+        return 0;
+    }
+    result = CryptoNative_RinOSKmacFinal(context, destination, destination_length);
+    CryptoNative_RinOSKmacDestroy(context);
+    return result;
 }
 
 PALEXPORT void* CryptoNative_RinOSHmacCreate(int32_t algorithm, const uint8_t* key, int32_t key_length)

@@ -34,6 +34,33 @@ PALEXPORT int32_t CryptoNative_RinOSHashCurrent(const void* handle, uint8_t* des
 PALEXPORT int32_t CryptoNative_RinOSHashReset(void* handle);
 PALEXPORT void CryptoNative_RinOSHashDestroy(void* handle);
 
+PALEXPORT void* CryptoNative_RinOSXofCreate(int32_t algorithm);
+PALEXPORT void* CryptoNative_RinOSXofClone(const void* source);
+PALEXPORT int32_t CryptoNative_RinOSXofUpdate(void* handle, const uint8_t* data, int32_t length);
+PALEXPORT int32_t CryptoNative_RinOSXofFinal(void* handle, uint8_t* destination, int32_t destination_length);
+PALEXPORT int32_t CryptoNative_RinOSXofCurrent(const void* handle, uint8_t* destination, int32_t destination_length);
+PALEXPORT int32_t CryptoNative_RinOSXofReset(void* handle);
+PALEXPORT int32_t CryptoNative_RinOSXofRead(void* handle, uint8_t* destination, int32_t destination_length);
+PALEXPORT int32_t CryptoNative_RinOSXofOneShot(
+    int32_t algorithm, const uint8_t* source, int32_t source_length,
+    uint8_t* destination, int32_t destination_length);
+PALEXPORT void CryptoNative_RinOSXofDestroy(void* handle);
+
+PALEXPORT void* CryptoNative_RinOSKmacCreate(
+    int32_t algorithm, const uint8_t* key, int32_t key_length,
+    const uint8_t* customization, int32_t customization_length, int32_t xof);
+PALEXPORT void* CryptoNative_RinOSKmacClone(const void* source);
+PALEXPORT int32_t CryptoNative_RinOSKmacUpdate(void* handle, const uint8_t* data, int32_t length);
+PALEXPORT int32_t CryptoNative_RinOSKmacFinal(void* handle, uint8_t* destination, int32_t destination_length);
+PALEXPORT int32_t CryptoNative_RinOSKmacCurrent(const void* handle, uint8_t* destination, int32_t destination_length);
+PALEXPORT int32_t CryptoNative_RinOSKmacReset(void* handle);
+PALEXPORT int32_t CryptoNative_RinOSKmacOneShot(
+    int32_t algorithm, const uint8_t* key, int32_t key_length,
+    const uint8_t* source, int32_t source_length,
+    const uint8_t* customization, int32_t customization_length,
+    uint8_t* destination, int32_t destination_length, int32_t xof);
+PALEXPORT void CryptoNative_RinOSKmacDestroy(void* handle);
+
 PALEXPORT void* CryptoNative_RinOSHmacCreate(int32_t algorithm, const uint8_t* key, int32_t key_length);
 PALEXPORT void* CryptoNative_RinOSHmacClone(const void* source);
 PALEXPORT int32_t CryptoNative_RinOSHmacUpdate(void* handle, const uint8_t* data, int32_t length);

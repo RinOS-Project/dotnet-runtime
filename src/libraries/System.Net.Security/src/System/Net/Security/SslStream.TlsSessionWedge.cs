@@ -43,6 +43,19 @@ namespace System.Net.Security
 
         private partial bool TryNextMessageViaTlsSession(ReadOnlySpan<byte> incomingBuffer, out ProtocolToken token, out int consumed)
         {
+            // ServerOptionsSelectionCallback is asynchronous and is dispatched by
+            // SslStream.IO while it is pre-fetching ClientHello. The TlsSession
+            // wedge is entered from the synchronous NextMessage path, so it cannot
+            // invoke that callback or resume with the options it returns. Let the
+            // existing async path handle this API instead of starting a handshake
+            // with the empty template options from TlsContext.WrapShared.
+            if (_sslAuthenticationOptions?.ServerOptionDelegate is not null)
+            {
+                token = default;
+                consumed = 0;
+                return false;
+            }
+
             EnsureTlsSession();
 
             // The legacy GenerateToken acquires credentials before the first PAL call.

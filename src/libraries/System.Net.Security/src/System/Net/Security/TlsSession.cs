@@ -1744,9 +1744,16 @@ namespace System.Net.Security
                 return true;
             }
 
+            // The public callback contract uses null when the ClientHello did
+            // not carry SNI.  Keep the internal empty-string storage so the
+            // session state remains allocation-free, but do not expose that
+            // sentinel to the selector or its SslStream wrapper.
+            string? selectorTargetHost = string.IsNullOrEmpty(_sessionTargetHost)
+                ? null
+                : _sessionTargetHost;
             X509Certificate? selected = ServerCertificateSelectionOverride is not null
-                ? ServerCertificateSelectionOverride(_sessionTargetHost)
-                : selector(this, _sessionTargetHost);
+                ? ServerCertificateSelectionOverride(selectorTargetHost)
+                : selector(this, selectorTargetHost);
             if (selected is null)
             {
                 throw new AuthenticationException(SR.net_ssl_io_no_server_cert);

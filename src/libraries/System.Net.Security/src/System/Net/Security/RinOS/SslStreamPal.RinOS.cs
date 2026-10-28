@@ -436,6 +436,8 @@ namespace System.Net.Security
             }
 
             *signatureLength = 0u;
+            byte[] signedData = Array.Empty<byte>();
+            byte[] signed = Array.Empty<byte>();
             try
             {
                 if (opaque == IntPtr.Zero || signature is null)
@@ -449,9 +451,9 @@ namespace System.Net.Security
                     return -1;
                 }
 
-                byte[] signedData = new ReadOnlySpan<byte>(
+                signedData = new ReadOnlySpan<byte>(
                     message, checked((int)messageLength)).ToArray();
-                byte[] signed = state.Sign(signatureScheme, signedData);
+                signed = state.Sign(signatureScheme, signedData);
                 if (signed.Length == 0 || signed.Length > (int)signatureCapacity)
                 {
                     return -1;
@@ -464,6 +466,11 @@ namespace System.Net.Security
             catch
             {
                 return -1;
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(signed);
+                CryptographicOperations.ZeroMemory(signedData);
             }
         }
 

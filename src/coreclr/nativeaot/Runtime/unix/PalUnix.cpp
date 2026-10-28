@@ -49,6 +49,9 @@
 
 #if defined(TARGET_RINOS)
 #include "pal/rinos_contract.h"
+#if !defined(RINOS_CROSS_COMPONENTS_HOST)
+#include "rinos/rinos_affinity.h"
+#endif
 
 // Defined with the other RinOS PAL address helpers below.  Template thunk
 // allocation needs the same user-VA contract before it copies the source
@@ -490,7 +493,23 @@ void InitializeCurrentProcessCpuCount()
 #endif
     else
     {
-#if HAVE_SCHED_GETAFFINITY
+#if defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST)
+
+        // RinOS uses the fixed-size scheduler cpuset ABI.  The generic
+        // CPU_ALLOC path is intentionally disabled by the target configure,
+        // so query the product mask before falling back to total CPUs.
+        cpu_set_t cpuSet;
+        if (rinos_affinity_get(getpid(), &cpuSet) == 0)
+        {
+            count = (uint32_t)CPU_COUNT(&cpuSet);
+        }
+
+        if (count == 0)
+        {
+            count = GCToOSInterface::GetTotalProcessorCount();
+        }
+
+#elif HAVE_SCHED_GETAFFINITY
 
         int configuredCpuCount = minipal_get_cpu_max_possible_count();
         if (configuredCpuCount == -1)

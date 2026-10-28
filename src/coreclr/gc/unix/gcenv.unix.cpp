@@ -92,6 +92,10 @@ typedef cpuset_t cpu_set_t;
 #include "globals.h"
 #include "cgroup.h"
 
+#if defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST)
+#include "rinos/rinos_affinity.h"
+#endif
+
 #ifndef __APPLE__
 #if HAVE_SYSCONF && HAVE__SC_AVPHYS_PAGES
 #define SYSCONF_PAGES _SC_AVPHYS_PAGES
@@ -180,7 +184,38 @@ bool GCToOSInterface::Initialize()
 
     InitializeCGroup();
 
-#if HAVE_SCHED_GETAFFINITY
+#if defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST)
+
+    {
+        // RinOS exposes a fixed-size cpuset ABI.  Do not use CPU_ALLOC here:
+        // its byte count is a host/glibc contract and is not the product
+        // kernel's fixed syscall object size.
+        cpu_set_t cpuSet;
+        if (rinos_affinity_get(getpid(), &cpuSet) == 0)
+        {
+            const size_t cpuCount = std::min((size_t)configuredCpuCount, (size_t)CPU_SETSIZE);
+            for (size_t i = 0; i < cpuCount; i++)
+            {
+                if (CPU_ISSET(i, &cpuSet))
+                {
+                    g_processAffinitySet.Add(i);
+                }
+            }
+        }
+
+        // Keep GC startup safe if the scheduler query is unavailable during
+        // early process initialization; this is the same logical fallback as
+        // the generic Unix path below, but after attempting the product ABI.
+        if (g_processAffinitySet.IsEmpty())
+        {
+            for (int i = 0; i < configuredCpuCount; i++)
+            {
+                g_processAffinitySet.Add(i);
+            }
+        }
+    }
+
+#elif HAVE_SCHED_GETAFFINITY
 
     {
         // Use a dynamically allocated cpu_set_t to support systems with more than CPU_SETSIZE (typically 1024) CPUs.
@@ -900,7 +935,19 @@ size_t GCToOSInterface::GetCacheSizePerLogicalCpu(bool trueSize)
 //  true if setting the affinity was successful, false otherwise.
 bool GCToOSInterface::SetThreadAffinity(uint16_t procNo)
 {
-#if HAVE_SCHED_SETAFFINITY || HAVE_PTHREAD_SETAFFINITY_NP
+#if defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST)
+
+    if ((size_t)procNo >= (size_t)CPU_SETSIZE || (size_t)procNo >= (size_t)g_configuredCpuCount)
+    {
+        return false;
+    }
+
+    cpu_set_t cpuSet;
+    CPU_ZERO(&cpuSet);
+    CPU_SET(procNo, &cpuSet);
+    return rinos_affinity_set(0, &cpuSet) == 0;
+
+#elif HAVE_SCHED_SETAFFINITY || HAVE_PTHREAD_SETAFFINITY_NP
 
     size_t cpuSetSize = CPU_ALLOC_SIZE(g_configuredCpuCount);
     cpu_set_t* pCpuSet = CPU_ALLOC(g_configuredCpuCount);

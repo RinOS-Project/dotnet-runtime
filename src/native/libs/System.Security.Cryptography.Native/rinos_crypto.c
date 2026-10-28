@@ -58,6 +58,9 @@ typedef struct
         hmac_sha256_ctx sha256;
         hmac_sha384_ctx sha384;
         hmac_sha512_ctx sha512;
+        hmac_sha3_256_ctx sha3_256;
+        hmac_sha3_384_ctx sha3_384;
+        hmac_sha3_512_ctx sha3_512;
     } state;
 } rinos_hmac_context;
 
@@ -108,6 +111,12 @@ static int rinos_hmac_size(uint32_t algorithm)
             return HMAC_SHA384_SIZE;
         case RINOS_SHA512:
             return HMAC_SHA512_SIZE;
+        case RINOS_SHA3_256:
+            return HMAC_SHA3_256_SIZE;
+        case RINOS_SHA3_384:
+            return HMAC_SHA3_384_SIZE;
+        case RINOS_SHA3_512:
+            return HMAC_SHA3_512_SIZE;
         default:
             return 0;
     }
@@ -512,8 +521,14 @@ PALEXPORT void* CryptoNative_RinOSHmacCreate(int32_t algorithm, const uint8_t* k
         hmac_sha256_init(&context->state.sha256, key, (rin_size_t)key_length);
     else if (algorithm == RINOS_SHA384)
         hmac_sha384_init(&context->state.sha384, key, (rin_size_t)key_length);
-    else
+    else if (algorithm == RINOS_SHA512)
         hmac_sha512_init(&context->state.sha512, key, (rin_size_t)key_length);
+    else if (algorithm == RINOS_SHA3_256)
+        hmac_sha3_256_init(&context->state.sha3_256, key, (rin_size_t)key_length);
+    else if (algorithm == RINOS_SHA3_384)
+        hmac_sha3_384_init(&context->state.sha3_384, key, (rin_size_t)key_length);
+    else
+        hmac_sha3_512_init(&context->state.sha3_512, key, (rin_size_t)key_length);
     return context;
 }
 
@@ -539,8 +554,14 @@ PALEXPORT int32_t CryptoNative_RinOSHmacUpdate(void* handle, const uint8_t* data
         hmac_sha256_update(&context->state.sha256, data, (rin_size_t)length);
     else if (context->algorithm == RINOS_SHA384)
         hmac_sha384_update(&context->state.sha384, data, (rin_size_t)length);
-    else
+    else if (context->algorithm == RINOS_SHA512)
         hmac_sha512_update(&context->state.sha512, data, (rin_size_t)length);
+    else if (context->algorithm == RINOS_SHA3_256)
+        hmac_sha3_256_update(&context->state.sha3_256, data, (rin_size_t)length);
+    else if (context->algorithm == RINOS_SHA3_384)
+        hmac_sha3_384_update(&context->state.sha3_384, data, (rin_size_t)length);
+    else
+        hmac_sha3_512_update(&context->state.sha3_512, data, (rin_size_t)length);
     return 1;
 }
 
@@ -557,8 +578,14 @@ PALEXPORT int32_t CryptoNative_RinOSHmacFinal(void* handle, uint8_t* destination
         hmac_sha256_final(&context->state.sha256, destination);
     else if (context->algorithm == RINOS_SHA384)
         hmac_sha384_final(&context->state.sha384, destination);
-    else
+    else if (context->algorithm == RINOS_SHA512)
         hmac_sha512_final(&context->state.sha512, destination);
+    else if (context->algorithm == RINOS_SHA3_256)
+        hmac_sha3_256_final(&context->state.sha3_256, destination);
+    else if (context->algorithm == RINOS_SHA3_384)
+        hmac_sha3_384_final(&context->state.sha3_384, destination);
+    else
+        hmac_sha3_512_final(&context->state.sha3_512, destination);
     return size;
 }
 
@@ -577,8 +604,14 @@ PALEXPORT int32_t CryptoNative_RinOSHmacCurrent(const void* handle, uint8_t* des
         hmac_sha256_final(&copy.state.sha256, destination);
     else if (copy.algorithm == RINOS_SHA384)
         hmac_sha384_final(&copy.state.sha384, destination);
-    else
+    else if (copy.algorithm == RINOS_SHA512)
         hmac_sha512_final(&copy.state.sha512, destination);
+    else if (copy.algorithm == RINOS_SHA3_256)
+        hmac_sha3_256_final(&copy.state.sha3_256, destination);
+    else if (copy.algorithm == RINOS_SHA3_384)
+        hmac_sha3_384_final(&copy.state.sha3_384, destination);
+    else
+        hmac_sha3_512_final(&copy.state.sha3_512, destination);
     rintls_secure_zero(&copy, sizeof(copy));
     return size;
 }
@@ -595,8 +628,14 @@ PALEXPORT int32_t CryptoNative_RinOSHmacReset(void* handle)
         hmac_sha256_init(&context->state.sha256, context->state.sha256.key_block, SHA256_BLOCK_SIZE);
     else if (context->algorithm == RINOS_SHA384)
         hmac_sha384_init(&context->state.sha384, context->state.sha384.key_block, SHA384_BLOCK_SIZE);
-    else
+    else if (context->algorithm == RINOS_SHA512)
         hmac_sha512_init(&context->state.sha512, context->state.sha512.key_block, SHA512_BLOCK_SIZE);
+    else if (context->algorithm == RINOS_SHA3_256)
+        hmac_sha3_256_init(&context->state.sha3_256, context->state.sha3_256.key_block, SHA3_256_RATE);
+    else if (context->algorithm == RINOS_SHA3_384)
+        hmac_sha3_384_init(&context->state.sha3_384, context->state.sha3_384.key_block, SHA3_384_RATE);
+    else
+        hmac_sha3_512_init(&context->state.sha3_512, context->state.sha3_512.key_block, SHA3_512_RATE);
     return 1;
 }
 

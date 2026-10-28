@@ -1940,10 +1940,12 @@ namespace System.Net.Security
         // call. OpenSSL handles credential acquisition lazily inside the PAL,
         // but SChannel rejects ASC/ISC with a null credentials handle.
         //
-        // Server requires a pre-set CertificateContext (or one resolved via
-        // ServerCertSelectionDelegate above); the client connects anonymously.
-        // SslSessionsCache, the legacy CertSelectionDelegate, and client
-        // certificate selection are not yet integrated.
+        // A server must have a CertificateContext (or one resolved via
+        // ServerCertSelectionDelegate above). A client may carry a certificate
+        // context supplied by TlsContext or SetClientCertificateContext; when
+        // neither is present it proceeds anonymously. SslStream's wedge owns
+        // callback selection and SslSessionsCache integration before entering
+        // this standalone TlsSession state machine.
         private void EnsureCredentialsAcquired()
         {
             // If SetContext or SetClientCertificateContext already produced a

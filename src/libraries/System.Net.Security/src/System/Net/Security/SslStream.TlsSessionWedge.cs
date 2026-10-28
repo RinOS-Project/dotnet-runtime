@@ -52,14 +52,25 @@ namespace System.Net.Security
             bool cachedCreds = false;
             bool sendTrustList = false;
             byte[]? thumbPrint = null;
+            // Resolve the SNI callback only after TlsSession has parsed the
+            // ClientHello.  Calling AcquireServerCredentials first invokes
+            // ServerCertificateSelectionCallback with the server options'
+            // TargetHost (normally empty) and fixes the wrong certificate.
+            bool deferServerCertificateSelection =
+                _securityContext is null &&
+                _sslAuthenticationOptions!.IsServer &&
+                _sslAuthenticationOptions.ServerCertSelectionDelegate is not null;
             try
             {
                 if (refreshCredentialNeeded)
                 {
                     if (_sslAuthenticationOptions!.IsServer)
                     {
-                        sendTrustList = _sslAuthenticationOptions.CertificateContext?.Trust?._sendTrustInHandshake ?? false;
-                        cachedCreds = AcquireServerCredentials(ref thumbPrint);
+                        if (!deferServerCertificateSelection)
+                        {
+                            sendTrustList = _sslAuthenticationOptions.CertificateContext?.Trust?._sendTrustInHandshake ?? false;
+                            cachedCreds = AcquireServerCredentials(ref thumbPrint);
+                        }
                     }
                     else
                     {
@@ -73,6 +84,13 @@ namespace System.Net.Security
                 }
 
                 token = _tlsSession!.HandshakeStepForSslStream(incomingBuffer, out consumed);
+
+                // ResolveServerCertificateFromClientHello mirrors the selected
+                // context into the shared wedge options before the PAL call.
+                if (deferServerCertificateSelection)
+                {
+                    sendTrustList = _sslAuthenticationOptions!.CertificateContext?.Trust?._sendTrustInHandshake ?? false;
+                }
 
                 // SChannel server-side ALPN: when the first ASC call returns
                 // HandshakeStarted, the wire bytes were consumed but ASC stopped so we

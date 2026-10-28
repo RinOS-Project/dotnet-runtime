@@ -1385,6 +1385,61 @@ static bool RinOSValidateUnwindRecord(const RinDlInventoryUnwindRecordV1& record
     return true;
 }
 
+static bool RinOSAddressRangeContains(uint64_t container_address,
+                                      uint64_t container_size,
+                                      uint64_t address,
+                                      uint64_t size)
+{
+    if (container_address == 0u || container_size == 0u ||
+        address < container_address ||
+        address > UINT64_MAX - size)
+    {
+        return false;
+    }
+
+    const uint64_t container_end = container_address + container_size;
+    const uint64_t end = address + size;
+    return container_end >= container_address && end >= address &&
+           end <= container_end;
+}
+
+static bool RinOSValidateProcInfo(const unw_proc_info_t& proc_info,
+                                  uint64_t image_address,
+                                  uint64_t image_size,
+                                  uint64_t unwind_address,
+                                  uint64_t unwind_size,
+                                  PCODE pc)
+{
+    if (proc_info.start_ip >= proc_info.end_ip ||
+        !RinOSAddressRangeContains(
+            image_address, image_size, proc_info.start_ip,
+            (uint64_t)(proc_info.end_ip - proc_info.start_ip)) ||
+        (uint64_t)pc < proc_info.start_ip ||
+        (uint64_t)pc >= proc_info.end_ip)
+    {
+        return false;
+    }
+
+    /* A DWARF FDE returned by getInfoFromDwarfSection must remain wholly
+     * inside the authenticated UNWIND section.  Do not let a malformed FDE
+     * turn the later StepFrame parser into an arbitrary read. */
+    if (proc_info.unwind_info == 0u || proc_info.unwind_info_size == 0u ||
+        !RinOSAddressRangeContains(
+            unwind_address, unwind_size, proc_info.unwind_info,
+            proc_info.unwind_info_size))
+    {
+        return false;
+    }
+
+    /* LSDA is image data, not CFI data.  It may be absent for a method with
+     * no exception data, but a present pointer must be inside the same
+     * authenticated mapped image before UnixNativeCodeManager dereferences
+     * it to decode NativeAOT GC/EH metadata. */
+    return proc_info.lsda == 0u ||
+           RinOSAddressRangeContains(
+               image_address, image_size, proc_info.lsda, 1u);
+}
+
 class RinOSUnwindLease final
 {
     RinDlInventoryUnwindLeaseV1 _lease{};
@@ -1440,8 +1495,23 @@ public:
 
 static bool RinOSFindUnwindSections(PCODE pc,
                                     RinOSUnwindLease& lease,
-                                    UnwindInfoSections& sections)
+                                    UnwindInfoSections& sections,
+                                    uint64_t* image_address_out,
+                                    uint64_t* image_size_out,
+                                    uint64_t* unwind_address_out,
+                                    uint64_t* unwind_size_out)
 {
+    if (image_address_out == nullptr || image_size_out == nullptr ||
+        unwind_address_out == nullptr || unwind_size_out == nullptr)
+    {
+        return false;
+    }
+
+    *image_address_out = 0u;
+    *image_size_out = 0u;
+    *unwind_address_out = 0u;
+    *unwind_size_out = 0u;
+
     uint32_t expectedCount = 0u;
     uint64_t expectedGeneration = 0u;
 
@@ -1480,6 +1550,10 @@ static bool RinOSFindUnwindSections(PCODE pc,
             sections.dso_base = loadAddress;
             sections.dwarf_section = (uintptr_t)record.unwind_address;
             sections.dwarf_section_length = (size_t)record.unwind_size;
+            *image_address_out = record.load_address;
+            *image_size_out = record.mapped_size;
+            *unwind_address_out = record.unwind_address;
+            *unwind_size_out = record.unwind_size;
             return true;
         }
 
@@ -1495,8 +1569,17 @@ static bool RinOSGetUnwindProcInfoWithLease(PCODE pc,
                                             unw_proc_info_t* procInfo)
 {
 #if _LIBUNWIND_SUPPORT_DWARF_UNWIND && defined(TARGET_AMD64)
+    if (procInfo == nullptr)
+        return false;
+
     UnwindInfoSections sections{};
-    if (!RinOSFindUnwindSections(pc, lease, sections))
+    uint64_t imageAddress = 0u;
+    uint64_t imageSize = 0u;
+    uint64_t unwindAddress = 0u;
+    uint64_t unwindSize = 0u;
+    if (!RinOSFindUnwindSections(
+            pc, lease, sections, &imageAddress, &imageSize,
+            &unwindAddress, &unwindSize))
         return false;
 
     libunwind::UnwindCursor<LocalAddressSpace, Registers_x86_64> uc(_addressSpace);
@@ -1504,7 +1587,8 @@ static bool RinOSGetUnwindProcInfoWithLease(PCODE pc,
         return false;
 
     uc.getInfo(procInfo);
-    return true;
+    return RinOSValidateProcInfo(
+        *procInfo, imageAddress, imageSize, unwindAddress, unwindSize, pc);
 #else
     (void)pc;
     (void)lease;

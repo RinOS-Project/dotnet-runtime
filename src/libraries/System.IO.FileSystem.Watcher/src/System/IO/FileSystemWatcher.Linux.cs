@@ -888,7 +888,12 @@ namespace System.IO
                         notifyEvent = default(NotifyEvent);
                         return false;
                     }
-                    Debug.Assert(_bufferAvailable >= INotifyEventSize);
+                    if (_bufferAvailable < INotifyEventSize)
+                    {
+                        // A native read must contain at least one complete record. Do not
+                        // let a truncated product-ABI record reach BitConverter below.
+                        throw new InvalidDataException();
+                    }
                     _bufferPos = 0;
                 }
 
@@ -900,13 +905,29 @@ namespace System.IO
                 //         uint32_t len;
                 //         char     name[]; // length determined by len; at least 1 for required null termination
                 //     };
-                Debug.Assert(_bufferPos + INotifyEventSize <= _bufferAvailable);
+                if (_bufferAvailable - _bufferPos < INotifyEventSize)
+                {
+                    throw new InvalidDataException();
+                }
+
                 NotifyEvent readEvent;
                 readEvent.wd = BitConverter.ToInt32(_buffer, _bufferPos);
                 readEvent.mask = BitConverter.ToUInt32(_buffer, _bufferPos + 4);       // +4  to get past wd
                 readEvent.cookie = BitConverter.ToUInt32(_buffer, _bufferPos + 8);     // +8  to get past wd, mask
-                int nameLength = (int)BitConverter.ToUInt32(_buffer, _bufferPos + 12); // +12 to get past wd, mask, cookie
-                readEvent.name = ReadName(_bufferPos + INotifyEventSize, nameLength);  // +16 to get past wd, mask, cookie, len
+                uint nameLengthValue = BitConverter.ToUInt32(_buffer, _bufferPos + 12); // +12 to get past wd, mask, cookie
+                if (nameLengthValue > int.MaxValue)
+                {
+                    throw new InvalidDataException();
+                }
+
+                int nameLength = (int)nameLengthValue;
+                int namePosition = _bufferPos + INotifyEventSize;
+                if (nameLength > _bufferAvailable - namePosition)
+                {
+                    throw new InvalidDataException();
+                }
+
+                readEvent.name = ReadName(namePosition, nameLength);  // +16 to get past wd, mask, cookie, len
                 _bufferPos += INotifyEventSize + nameLength;
 
                 notifyEvent = readEvent;

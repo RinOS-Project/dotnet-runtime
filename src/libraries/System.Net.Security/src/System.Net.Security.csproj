@@ -432,6 +432,7 @@
     <Compile Include="System\Net\Security\CipherSuitesPolicyPal.RinOS.cs" />
     <Compile Include="System\Net\Security\SslConnectionInfo.RinOS.cs" />
     <Compile Include="System\Net\Security\SslStreamCertificateContext.RinOS.cs" />
+    <Compile Include="System\Net\Security\TlsSession.RinOS.cs" />
     <Compile Include="System\Net\Security\RinOS\SslStreamPal.RinOS.cs" />
     <Compile Include="System\Net\Security\StreamSizes.RinOS.cs" />
     <Compile Include="System\Net\Security\RinOS\Interop.RinTls.cs" />

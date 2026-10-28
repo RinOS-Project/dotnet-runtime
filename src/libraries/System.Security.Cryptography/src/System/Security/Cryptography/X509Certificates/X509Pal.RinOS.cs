@@ -7,6 +7,7 @@ using System;
 using System.Formats.Asn1;
 using System.IO;
 using System.Security.Cryptography;
+using System.Security.Cryptography.Asn1.Pkcs7;
 
 namespace System.Security.Cryptography.X509Certificates
 {
@@ -68,8 +69,30 @@ namespace System.Security.Cryptography.X509Certificates
             }
             catch (CryptographicException)
             {
-                return X509ContentType.Unknown;
             }
+
+            if (X509CertificateLoader.IsPkcs12(rawData))
+            {
+                return X509ContentType.Pkcs12;
+            }
+
+            try
+            {
+                ValueContentInfoAsn.Decode(
+                    rawData,
+                    AsnEncodingRules.BER,
+                    out ValueContentInfoAsn contentInfo);
+
+                if (contentInfo.ContentType is Oids.Pkcs7Signed or Oids.Pkcs7SignedEnveloped)
+                {
+                    return X509ContentType.Pkcs7;
+                }
+            }
+            catch (CryptographicException)
+            {
+            }
+
+            return X509ContentType.Unknown;
         }
 
         public X509ContentType GetCertContentType(string fileName) =>

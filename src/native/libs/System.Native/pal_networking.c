@@ -3717,6 +3717,8 @@ static int32_t WaitForSocketEventsInner(int32_t port, SocketEvent* buffer, int32
     uintptr_t data[RINOS_SOCKET_EVENT_REGISTRATION_CAPACITY + 1];
     if (buffer == NULL || count == NULL || *count < 0)
         return Error_EFAULT;
+    if (*count == 0)
+        return Error_EINVAL;
 
     pthread_mutex_lock(&g_rinosSocketEventPortsLock);
     RinOSSocketEventPort* slot = FindRinOSSocketEventPort(port);

@@ -93,14 +93,14 @@ typedef struct RinOsKerberosProviderContext {
     struct RinOsKerberosProviderContext* next_live;
 } RinOsKerberosProviderContext;
 
-static uint32_t provider_verify_mic(
+static uint32_t provider_verify_mic_impl(
     void* context, uint32_t* minor_status, void* security_context,
     uint8_t* input, int32_t input_length, uint8_t* token, int32_t token_length);
 static uint32_t provider_verify_mic_bytes(
     void* context, uint32_t* minor_status, void* security_context,
     const uint8_t* input, int32_t input_length, const uint8_t* token,
     int32_t token_length);
-static uint32_t provider_get_mic(
+static uint32_t provider_get_mic_impl(
     void* context, uint32_t* minor_status, void* security_context,
     uint8_t* input, int32_t input_length, RinAuthProviderBufferV1* output);
 
@@ -135,6 +135,27 @@ static volatile unsigned int g_provider_credential_lock;
 static RinOsKerberosProviderCredential* g_provider_credentials;
 static volatile unsigned int g_provider_context_lock;
 static RinOsKerberosProviderContext* g_provider_contexts;
+
+/* Provider callbacks may be entered concurrently by separate managed
+ * authentication flows.  The opaque-handle registries are protected while
+ * validating a handle, but a validation followed by an unlocked callback
+ * would still permit release to unlink and free that handle in between.  Keep
+ * the provider's handle-bearing callbacks serialized until their operation has
+ * completed.  Internal helpers call one another directly, so this lock is
+ * acquired only by the callback wrappers below and never recursively. */
+static volatile unsigned int g_provider_callback_lock;
+
+static void provider_callback_lock(void)
+{
+    while (__atomic_exchange_n(
+               &g_provider_callback_lock, 1u, __ATOMIC_ACQUIRE) != 0u) {
+    }
+}
+
+static void provider_callback_unlock(void)
+{
+    __atomic_store_n(&g_provider_callback_lock, 0u, __ATOMIC_RELEASE);
+}
 
 /* Names are provider-owned opaque handles too.  Do not inspect a caller-
  * supplied pointer before establishing that it is one of our live
@@ -1864,7 +1885,7 @@ static uint32_t provider_release_pending_credential(
     return RIN_AUTH_PROVIDER_OK;
 }
 
-static uint32_t provider_acquire_acceptor_cred(
+static uint32_t provider_acquire_acceptor_cred_impl(
     void* context, uint32_t* minor_status, void** output)
 {
     const RinKerberosCredentialOwnerV1* owner = provider_credential_owner();
@@ -1909,7 +1930,17 @@ static uint32_t provider_acquire_acceptor_cred(
     return RIN_AUTH_PROVIDER_OK;
 }
 
-static uint32_t provider_initiate_cred_spnego(
+static uint32_t provider_acquire_acceptor_cred(
+    void* context, uint32_t* minor_status, void** output)
+{
+    uint32_t status;
+    provider_callback_lock();
+    status = provider_acquire_acceptor_cred_impl(context, minor_status, output);
+    provider_callback_unlock();
+    return status;
+}
+
+static uint32_t provider_initiate_cred_spnego_impl(
     void* context, uint32_t* minor_status, void* desired_name, void** output)
 {
     const RinKerberosCredentialOwnerV1* owner = provider_credential_owner();
@@ -1987,8 +2018,19 @@ static uint32_t provider_initiate_cred_spnego(
     return RIN_AUTH_PROVIDER_OK;
 }
 
-static uint32_t provider_release_cred(void* context, uint32_t* minor_status,
-                                      void** input)
+static uint32_t provider_initiate_cred_spnego(
+    void* context, uint32_t* minor_status, void* desired_name, void** output)
+{
+    uint32_t status;
+    provider_callback_lock();
+    status = provider_initiate_cred_spnego_impl(
+        context, minor_status, desired_name, output);
+    provider_callback_unlock();
+    return status;
+}
+
+static uint32_t provider_release_cred_impl(void* context, uint32_t* minor_status,
+                                           void** input)
 {
     RinOsKerberosProviderCredential* credential;
     uint32_t pending_status;
@@ -2040,6 +2082,16 @@ static uint32_t provider_release_cred(void* context, uint32_t* minor_status,
                ? pending_status
                : provider_status_from_owner(
                      RIN_KERBEROS_CREDENTIAL_OWNER_OK, minor_status);
+}
+
+static uint32_t provider_release_cred(void* context, uint32_t* minor_status,
+                                      void** input)
+{
+    uint32_t status;
+    provider_callback_lock();
+    status = provider_release_cred_impl(context, minor_status, input);
+    provider_callback_unlock();
+    return status;
 }
 
 static uint32_t provider_build_sec_context_input(
@@ -2536,7 +2588,7 @@ static uint32_t provider_refresh_initiator_credential(
     return RIN_AUTH_PROVIDER_OK;
 }
 
-static uint32_t provider_init_sec_context(
+static uint32_t provider_init_sec_context_impl(
     void* context, uint32_t* minor_status, void* claimant_cred,
     void** security_context, uint32_t package_type, void* target_name,
     uint32_t requested_flags, uint8_t* input, uint32_t input_length,
@@ -2789,7 +2841,7 @@ static uint32_t provider_init_sec_context(
         spnego_input.neg_state == 3u && status == RIN_AUTH_PROVIDER_OK &&
         ((*return_flags & RIN_KERBEROS_OPERATION_RETURN_FLAG_INTEGRITY) != 0u)) {
         if (provider_context->mech_list_size == 0u ||
-            provider_get_mic(context, minor_status, provider_context,
+            provider_get_mic_impl(context, minor_status, provider_context,
                              provider_context->mech_list,
                              (int32_t)provider_context->mech_list_size,
                              &mic_output) != RIN_AUTH_PROVIDER_OK ||
@@ -2861,7 +2913,24 @@ static uint32_t provider_init_sec_context(
     return status;
 }
 
-static uint32_t provider_init_sec_context_ex(
+static uint32_t provider_init_sec_context(
+    void* context, uint32_t* minor_status, void* claimant_cred,
+    void** security_context, uint32_t package_type, void* target_name,
+    uint32_t requested_flags, uint8_t* input, uint32_t input_length,
+    RinAuthProviderBufferV1* output, uint32_t* return_flags,
+    int32_t* ntlm_used)
+{
+    uint32_t status;
+    provider_callback_lock();
+    status = provider_init_sec_context_impl(
+        context, minor_status, claimant_cred, security_context, package_type,
+        target_name, requested_flags, input, input_length, output,
+        return_flags, ntlm_used);
+    provider_callback_unlock();
+    return status;
+}
+
+static uint32_t provider_init_sec_context_ex_impl(
     void* context, uint32_t* minor_status, void* claimant_cred,
     void** security_context, uint32_t package_type, void* channel_binding,
     int32_t channel_binding_size, void* target_name, uint32_t requested_flags,
@@ -3107,7 +3176,7 @@ static uint32_t provider_init_sec_context_ex(
         spnego_input.neg_state == 3u && status == RIN_AUTH_PROVIDER_OK &&
         ((*return_flags & RIN_KERBEROS_OPERATION_RETURN_FLAG_INTEGRITY) != 0u)) {
         if (provider_context->mech_list_size == 0u ||
-            provider_get_mic(context, minor_status, provider_context,
+            provider_get_mic_impl(context, minor_status, provider_context,
                              provider_context->mech_list,
                              (int32_t)provider_context->mech_list_size,
                              &mic_output) != RIN_AUTH_PROVIDER_OK ||
@@ -3177,7 +3246,24 @@ static uint32_t provider_init_sec_context_ex(
     return status;
 }
 
-static uint32_t provider_accept_sec_context(
+static uint32_t provider_init_sec_context_ex(
+    void* context, uint32_t* minor_status, void* claimant_cred,
+    void** security_context, uint32_t package_type, void* channel_binding,
+    int32_t channel_binding_size, void* target_name, uint32_t requested_flags,
+    uint8_t* input, uint32_t input_length, RinAuthProviderBufferV1* output,
+    uint32_t* return_flags, int32_t* ntlm_used)
+{
+    uint32_t status;
+    provider_callback_lock();
+    status = provider_init_sec_context_ex_impl(
+        context, minor_status, claimant_cred, security_context, package_type,
+        channel_binding, channel_binding_size, target_name, requested_flags,
+        input, input_length, output, return_flags, ntlm_used);
+    provider_callback_unlock();
+    return status;
+}
+
+static uint32_t provider_accept_sec_context_impl(
     void* context, uint32_t* minor_status, void* acceptor_cred,
     void** security_context, void* channel_binding, int32_t channel_binding_size,
     uint8_t* input, uint32_t input_length, RinAuthProviderBufferV1* output,
@@ -3371,7 +3457,7 @@ static uint32_t provider_accept_sec_context(
         provider_context->spnego_mic_required = 1u;
         if (status == RIN_AUTH_PROVIDER_OK) {
             if (provider_context->mech_list_size == 0u ||
-                provider_get_mic(context, minor_status, provider_context,
+                provider_get_mic_impl(context, minor_status, provider_context,
                                  provider_context->mech_list,
                                  (int32_t)provider_context->mech_list_size,
                                  &mic_output) != RIN_AUTH_PROVIDER_OK ||
@@ -3439,7 +3525,23 @@ spnego_accept_output:
     return status;
 }
 
-static uint32_t provider_delete_sec_context(
+static uint32_t provider_accept_sec_context(
+    void* context, uint32_t* minor_status, void* acceptor_cred,
+    void** security_context, void* channel_binding, int32_t channel_binding_size,
+    uint8_t* input, uint32_t input_length, RinAuthProviderBufferV1* output,
+    uint32_t* return_flags, int32_t* ntlm_used)
+{
+    uint32_t status;
+    provider_callback_lock();
+    status = provider_accept_sec_context_impl(
+        context, minor_status, acceptor_cred, security_context, channel_binding,
+        channel_binding_size, input, input_length, output, return_flags,
+        ntlm_used);
+    provider_callback_unlock();
+    return status;
+}
+
+static uint32_t provider_delete_sec_context_impl(
     void* context, uint32_t* minor_status, void** security_context)
 {
     RinOsKerberosProviderContext* provider_context;
@@ -3490,6 +3592,17 @@ static uint32_t provider_delete_sec_context(
     provider_context_dispose(provider_context);
     *security_context = NULL;
     if (minor_status != NULL) *minor_status = 0u;
+    return status;
+}
+
+static uint32_t provider_delete_sec_context(
+    void* context, uint32_t* minor_status, void** security_context)
+{
+    uint32_t status;
+    provider_callback_lock();
+    status = provider_delete_sec_context_impl(
+        context, minor_status, security_context);
+    provider_callback_unlock();
     return status;
 }
 
@@ -3564,7 +3677,7 @@ static uint32_t provider_message_operation(
     return status;
 }
 
-static uint32_t provider_wrap(
+static uint32_t provider_wrap_impl(
     void* context, uint32_t* minor_status, void* security_context,
     int32_t* encrypt, uint8_t* input, int32_t input_length,
     RinAuthProviderBufferV1* output)
@@ -3575,7 +3688,21 @@ static uint32_t provider_wrap(
                                       input, input_length, output);
 }
 
-static uint32_t provider_unwrap(
+static uint32_t provider_wrap(
+    void* context, uint32_t* minor_status, void* security_context,
+    int32_t* encrypt, uint8_t* input, int32_t input_length,
+    RinAuthProviderBufferV1* output)
+{
+    uint32_t status;
+    provider_callback_lock();
+    status = provider_wrap_impl(
+        context, minor_status, security_context, encrypt, input, input_length,
+        output);
+    provider_callback_unlock();
+    return status;
+}
+
+static uint32_t provider_unwrap_impl(
     void* context, uint32_t* minor_status, void* security_context,
     int32_t* encrypt, uint8_t* input, int32_t input_length,
     RinAuthProviderBufferV1* output)
@@ -3586,7 +3713,21 @@ static uint32_t provider_unwrap(
                                       input, input_length, output);
 }
 
-static uint32_t provider_get_mic(
+static uint32_t provider_unwrap(
+    void* context, uint32_t* minor_status, void* security_context,
+    int32_t* encrypt, uint8_t* input, int32_t input_length,
+    RinAuthProviderBufferV1* output)
+{
+    uint32_t status;
+    provider_callback_lock();
+    status = provider_unwrap_impl(
+        context, minor_status, security_context, encrypt, input, input_length,
+        output);
+    provider_callback_unlock();
+    return status;
+}
+
+static uint32_t provider_get_mic_impl(
     void* context, uint32_t* minor_status, void* security_context,
     uint8_t* input, int32_t input_length, RinAuthProviderBufferV1* output)
 {
@@ -3607,6 +3748,18 @@ static uint32_t provider_get_mic(
         }
         return provider_unavailable(minor_status);
     }
+    return status;
+}
+
+static uint32_t provider_get_mic(
+    void* context, uint32_t* minor_status, void* security_context,
+    uint8_t* input, int32_t input_length, RinAuthProviderBufferV1* output)
+{
+    uint32_t status;
+    provider_callback_lock();
+    status = provider_get_mic_impl(
+        context, minor_status, security_context, input, input_length, output);
+    provider_callback_unlock();
     return status;
 }
 
@@ -3682,12 +3835,25 @@ static uint32_t provider_verify_mic_bytes(
     return status;
 }
 
-static uint32_t provider_verify_mic(
+static uint32_t provider_verify_mic_impl(
     void* context, uint32_t* minor_status, void* security_context,
     uint8_t* input, int32_t input_length, uint8_t* token, int32_t token_length)
 {
     return provider_verify_mic_bytes(context, minor_status, security_context,
                                      input, input_length, token, token_length);
+}
+
+static uint32_t provider_verify_mic(
+    void* context, uint32_t* minor_status, void* security_context,
+    uint8_t* input, int32_t input_length, uint8_t* token, int32_t token_length)
+{
+    uint32_t status;
+    provider_callback_lock();
+    status = provider_verify_mic_impl(
+        context, minor_status, security_context, input, input_length, token,
+        token_length);
+    provider_callback_unlock();
+    return status;
 }
 
 static void provider_release_buffer(void* context, void* buffer,
@@ -3965,7 +4131,7 @@ static int provider_escaped_principal_valid(const uint8_t* bytes,
     return !escaped && seen_realm && component_has_value && realm_has_value;
 }
 
-static uint32_t provider_get_user(
+static uint32_t provider_get_user_impl(
     void* context, uint32_t* minor_status, void* security_context,
     RinAuthProviderBufferV1* output)
 {
@@ -4068,6 +4234,18 @@ static uint32_t provider_get_user(
     output->length = principal_size;
     if (minor_status != NULL) *minor_status = 0u;
     return RIN_AUTH_PROVIDER_OK;
+}
+
+static uint32_t provider_get_user(
+    void* context, uint32_t* minor_status, void* security_context,
+    RinAuthProviderBufferV1* output)
+{
+    uint32_t status;
+    provider_callback_lock();
+    status = provider_get_user_impl(
+        context, minor_status, security_context, output);
+    provider_callback_unlock();
+    return status;
 }
 
 static RinAuthProviderV1 g_provider = {

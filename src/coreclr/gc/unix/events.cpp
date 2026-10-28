@@ -14,6 +14,29 @@
 namespace
 {
 
+class PthreadCondAttrHolder
+{
+    pthread_condattr_t* m_attributes;
+
+public:
+    explicit PthreadCondAttrHolder(pthread_condattr_t* attributes)
+      : m_attributes(attributes)
+    {
+    }
+
+    PthreadCondAttrHolder(const PthreadCondAttrHolder&) = delete;
+    PthreadCondAttrHolder& operator=(const PthreadCondAttrHolder&) = delete;
+
+    ~PthreadCondAttrHolder()
+    {
+        if (m_attributes != nullptr)
+        {
+            int st = pthread_condattr_destroy(m_attributes);
+            assert(st == 0 && "Failed to destroy UnixEvent condition attributes");
+        }
+    }
+};
+
 #if HAVE_PTHREAD_CONDATTR_SETCLOCK
 void TimeSpecAdd(timespec* time, uint32_t milliseconds)
 {
@@ -68,9 +91,7 @@ public:
             assert(!"Failed to initialize UnixEvent condition attribute");
             return false;
         }
-
-        // TODO(segilles) implement this for CoreCLR
-        //PthreadCondAttrHolder attrsHolder(&attrs);
+        PthreadCondAttrHolder attrsHolder(&attrs);
 
 #if HAVE_PTHREAD_CONDATTR_SETCLOCK && !HAVE_CLOCK_GETTIME_NSEC_NP
         // Ensure that the pthread_cond_timedwait will use CLOCK_MONOTONIC

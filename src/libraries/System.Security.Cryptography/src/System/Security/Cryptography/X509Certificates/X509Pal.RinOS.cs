@@ -25,7 +25,7 @@ namespace System.Security.Cryptography.X509Certificates
             {
                 Oids.Rsa => ImportRsa(subjectPublicKeyInfo),
                 Oids.EcPublicKey => ImportEcdsa(subjectPublicKeyInfo),
-                _ => throw new PlatformNotSupportedException("RinOS public-key decoding supports RSA and P-256 EC keys.")
+                _ => throw new PlatformNotSupportedException("RinOS public-key decoding supports RSA and named NIST EC keys.")
             };
         }
 

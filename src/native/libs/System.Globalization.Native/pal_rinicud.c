@@ -1746,7 +1746,10 @@ static int product_locale_display_name(rin_icu_client_t* client,
             dialect_length < sizeof(dialect_name)) {
             if (!append_display_name_text(dest, capacity, &length, dialect_name))
                 return RIN_ICU_STATUS_NO_SPACE;
-            if (out_length) *out_length = dialect_length;
+            /* The language name was appended before the dialect name.  The
+             * PAL length describes the complete UTF-8 buffer, not just the
+             * final display-name component. */
+            if (out_length) *out_length = length;
             return RIN_ICU_STATUS_OK;
         }
     }

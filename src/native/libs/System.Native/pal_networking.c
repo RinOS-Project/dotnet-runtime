@@ -3503,7 +3503,16 @@ static SocketEvents GetRinOSSocketEvents(short revents)
     if ((revents & POLLRDHUP) != 0)
         events |= SocketEvents_SA_READCLOSE;
     if ((revents & POLLHUP) != 0)
-        events |= SocketEvents_SA_CLOSE;
+    {
+        /*
+         * A disconnected stream can report POLLHUP without POLLIN or
+         * POLLOUT.  As with the upstream epoll backend, surface both normal
+         * directions so SocketAsyncContext can perform its usual EOF/error
+         * probe instead of receiving a close-only event that it cannot
+         * process.
+         */
+        events |= SocketEvents_SA_READ | SocketEvents_SA_WRITE;
+    }
     if ((revents & (POLLERR | POLLNVAL)) != 0)
         events |= SocketEvents_SA_ERROR;
     return events;
@@ -3699,7 +3708,6 @@ static int32_t WaitForSocketEventsInner(int32_t port, SocketEvent* buffer, int32
 {
     struct pollfd pollFds[RINOS_SOCKET_EVENT_REGISTRATION_CAPACITY + 1];
     uintptr_t data[RINOS_SOCKET_EVENT_REGISTRATION_CAPACITY + 1];
-    int pollCount = 1;
     if (buffer == NULL || count == NULL || *count < 0)
         return Error_EFAULT;
 
@@ -3718,61 +3726,82 @@ static int32_t WaitForSocketEventsInner(int32_t port, SocketEvent* buffer, int32
     }
 
     int readFd = slot->ReadFd;
+    int outputCapacity = *count;
     ++slot->WaiterCount;
 
-    pollFds[0].fd = readFd;
-    pollFds[0].events = POLLIN;
-    pollFds[0].revents = 0;
-    data[0] = 0;
-    for (int i = 0; i < RINOS_SOCKET_EVENT_REGISTRATION_CAPACITY; ++i)
+    int32_t error = Error_SUCCESS;
+    for (;;)
     {
-        if (!slot->Registrations[i].Active)
-            continue;
-        pollFds[pollCount].fd = slot->Registrations[i].Socket;
-        pollFds[pollCount].events = slot->Registrations[i].Events;
-        pollFds[pollCount].revents = 0;
-        data[pollCount] = slot->Registrations[i].Data;
-        ++pollCount;
-    }
-    pthread_mutex_unlock(&slot->Lock);
-
-    int result;
-    do
-    {
-        result = poll(pollFds, (nfds_t)pollCount, -1);
-    } while (result < 0 && errno == EINTR);
-
-    int pollError = result < 0 ? errno : 0;
-    pthread_mutex_lock(&slot->Lock);
-
-    if (result < 0)
-    {
-        *count = 0;
-        errno = pollError;
-        int32_t error = SystemNative_ConvertErrorPlatformToPal(errno);
-        --slot->WaiterCount;
-        if (slot->Closing && slot->WaiterCount == 0)
-            pthread_cond_signal(&slot->Condition);
+        int pollCount = 1;
+        pollFds[0].fd = readFd;
+        pollFds[0].events = POLLIN;
+        pollFds[0].revents = 0;
+        data[0] = 0;
+        for (int i = 0; i < RINOS_SOCKET_EVENT_REGISTRATION_CAPACITY; ++i)
+        {
+            if (!slot->Registrations[i].Active)
+                continue;
+            pollFds[pollCount].fd = slot->Registrations[i].Socket;
+            pollFds[pollCount].events = slot->Registrations[i].Events;
+            pollFds[pollCount].revents = 0;
+            data[pollCount] = slot->Registrations[i].Data;
+            ++pollCount;
+        }
         pthread_mutex_unlock(&slot->Lock);
-        return error;
-    }
 
-    int outputCount = 0;
-    if ((pollFds[0].revents & POLLIN) != 0)
-    {
-        char wakeBuffer[64];
-        (void)read(readFd, wakeBuffer, sizeof(wakeBuffer));
-    }
-    for (int i = 1; i < pollCount && outputCount < *count; ++i)
-    {
-        SocketEvents events = GetRinOSSocketEvents(pollFds[i].revents);
-        if (events == SocketEvents_SA_NONE)
+        int result;
+        do
+        {
+            result = poll(pollFds, (nfds_t)pollCount, -1);
+        } while (result < 0 && errno == EINTR);
+
+        int pollError = result < 0 ? errno : 0;
+        pthread_mutex_lock(&slot->Lock);
+
+        if (result < 0)
+        {
+            *count = 0;
+            errno = pollError;
+            error = SystemNative_ConvertErrorPlatformToPal(errno);
+            break;
+        }
+
+        int wakeReady = (pollFds[0].revents & (POLLIN | POLLERR | POLLHUP)) != 0;
+        if ((pollFds[0].revents & POLLIN) != 0)
+        {
+            char wakeBuffer[64];
+            (void)read(readFd, wakeBuffer, sizeof(wakeBuffer));
+        }
+
+        if (slot->Closing)
+        {
+            *count = 0;
+            error = Error_EBADF;
+            break;
+        }
+
+        int outputCount = 0;
+        for (int i = 1; i < pollCount && outputCount < outputCapacity; ++i)
+        {
+            SocketEvents events = GetRinOSSocketEvents(pollFds[i].revents);
+            if (events == SocketEvents_SA_NONE)
+                continue;
+            buffer[outputCount].Data = data[i];
+            buffer[outputCount].Events = events;
+            ++outputCount;
+        }
+
+        if (outputCount == 0 && wakeReady)
+        {
+            /* Registration changes use the wake pipe.  Rebuild the poll set
+             * before returning so the managed event loop never observes a
+             * zero-event wake and never waits on a stale registration set. */
             continue;
-        buffer[outputCount].Data = data[i];
-        buffer[outputCount].Events = events;
-        ++outputCount;
+        }
+
+        *count = outputCount;
+        break;
     }
-    *count = outputCount;
 
     /* Keep the waiter lease until every descriptor access and output write is
      * complete.  CloseSocketEventPortInner waits for this count before it
@@ -3782,7 +3811,7 @@ static int32_t WaitForSocketEventsInner(int32_t port, SocketEvent* buffer, int32
     if (slot->Closing && slot->WaiterCount == 0)
         pthread_cond_signal(&slot->Condition);
     pthread_mutex_unlock(&slot->Lock);
-    return Error_SUCCESS;
+    return error;
 }
 
 #else // !HAVE_KQUEUE !HAVE_EPOLL

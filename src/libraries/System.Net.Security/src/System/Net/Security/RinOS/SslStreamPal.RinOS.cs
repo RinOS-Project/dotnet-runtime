@@ -521,7 +521,12 @@ namespace System.Net.Security
                     : hashAlgorithm == HashAlgorithmName.SHA384
                         ? SHA384.HashData(message)
                         : SHA512.HashData(message);
-                return ecdsa.SignHash(hash);
+                // TLS ECDSA signatures use the RFC 3279 DER Ecdsa-Sig-Value
+                // encoding. ECDsa.SignHash(ReadOnlySpan<byte>) defaults to
+                // IEEE P1363 in the managed API, while RinTLS parses the
+                // DER sequence before verifying r and s.
+                return ecdsa.SignHash(
+                    hash, DSASignatureFormat.Rfc3279DerSequence);
             }
 
             private byte[] SignRsa(

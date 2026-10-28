@@ -450,37 +450,42 @@ namespace System.Net.Security
             out byte[] response)
         {
             response = Array.Empty<byte>();
-            if (!TryEncodeUrl(url, out byte[] urlBytes) ||
-                (source != OcspSource && source != CrlSource))
+            if (!TryEncodeUrl(url, out byte[] urlBytes))
             {
                 return false;
             }
 
-            int requestId = Interlocked.Increment(ref s_nextRequestId);
-            if (requestId == 0)
-            {
-                requestId = Interlocked.Increment(ref s_nextRequestId);
-            }
-
-            byte[] message = new byte[32 + 16 + urlBytes.Length];
-            WriteUInt32(message, 0, WorkerdMagic);
-            WriteUInt32(message, 4, WorkerdVersion);
-            WriteUInt32(message, 8, FetchRevocationCommand);
-            WriteInt32(message, 12, 0);
-            WriteUInt32(message, 16, unchecked((uint)requestId));
-            WriteUInt32(message, 20, checked((uint)(16 + urlBytes.Length)));
-            WriteUInt32(message, 24, 0);
-            WriteUInt32(message, 28, 0);
-            WriteUInt32(message, 32, checked((uint)timeoutMilliseconds));
-            WriteUInt32(message, 36, source);
-            WriteUInt32(message, 40, checked((uint)urlBytes.Length));
-            WriteUInt32(message, 44, 0);
-            Buffer.BlockCopy(urlBytes, 0, message, 48, urlBytes.Length);
-
+            byte[] message = Array.Empty<byte>();
             byte[] payload = Array.Empty<byte>();
             bool responseComplete = false;
             try
             {
+                if (source != OcspSource && source != CrlSource)
+                {
+                    return false;
+                }
+
+                int requestId = Interlocked.Increment(ref s_nextRequestId);
+                if (requestId == 0)
+                {
+                    requestId = Interlocked.Increment(ref s_nextRequestId);
+                }
+
+                message = new byte[32 + 16 + urlBytes.Length];
+                WriteUInt32(message, 0, WorkerdMagic);
+                WriteUInt32(message, 4, WorkerdVersion);
+                WriteUInt32(message, 8, FetchRevocationCommand);
+                WriteInt32(message, 12, 0);
+                WriteUInt32(message, 16, unchecked((uint)requestId));
+                WriteUInt32(message, 20, checked((uint)(16 + urlBytes.Length)));
+                WriteUInt32(message, 24, 0);
+                WriteUInt32(message, 28, 0);
+                WriteUInt32(message, 32, checked((uint)timeoutMilliseconds));
+                WriteUInt32(message, 36, source);
+                WriteUInt32(message, 40, checked((uint)urlBytes.Length));
+                WriteUInt32(message, 44, 0);
+                Buffer.BlockCopy(urlBytes, 0, message, 48, urlBytes.Length);
+
                 using Socket socket = new Socket(
                     AddressFamily.Unix, SocketType.Stream,
                     ProtocolType.Unspecified);

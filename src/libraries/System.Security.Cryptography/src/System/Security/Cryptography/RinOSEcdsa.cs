@@ -11,17 +11,21 @@ namespace System.Security.Cryptography
     internal sealed unsafe class RinOSEcdsa : ECDsa
     {
         private const string P256Oid = "1.2.840.10045.3.1.7";
-        private const int PrivateKeySize = 32;
-        private const int PublicKeySize = 65;
-        private const int SignatureSize = 64;
-        private const int Sha256Size = 32;
+        private const string P384Oid = "1.3.132.0.34";
+        private const string P521Oid = "1.3.132.0.35";
+        private const int CurveP256 = 23;
+        private const int CurveP384 = 24;
+        private const int CurveP521 = 25;
 
         private static readonly KeySizes[] s_legalKeySizes =
         {
             new KeySizes(256, 256, 0),
+            new KeySizes(384, 384, 0),
+            new KeySizes(521, 521, 0),
         };
 
         private IntPtr _context;
+        private int _curve;
 
         internal RinOSEcdsa()
         {
@@ -43,10 +47,14 @@ namespace System.Security.Cryptography
 
         internal RinOSEcdsa(ECCurve curve) : this()
         {
-            if (!IsP256(curve))
+            try
+            {
+                GenerateKey(curve);
+            }
+            catch
             {
                 Dispose();
-                throw new PlatformNotSupportedException("RinOS ECDSA supports only named P-256.");
+                throw;
             }
         }
 
@@ -61,9 +69,16 @@ namespace System.Security.Cryptography
             set
             {
                 ThrowIfDisposed();
-                if (value != 256)
+                int curve = value switch
+                {
+                    256 => CurveP256,
+                    384 => CurveP384,
+                    521 => CurveP521,
+                    _ => 0,
+                };
+                if (curve == 0)
                     throw new CryptographicException(SR.Cryptography_InvalidKeySize);
-                GenerateKey(ECCurve.NamedCurves.nistP256);
+                GenerateKey(GetCurve(curve));
             }
         }
 
@@ -71,17 +86,19 @@ namespace System.Security.Cryptography
         {
             ArgumentNullException.ThrowIfNull(hash);
             ThrowIfDisposed();
-            if (hash.Length != Sha256Size)
-                throw new PlatformNotSupportedException("RinOS ECDSA currently supports SHA-256 hashes.");
+            int hashSize = GetHashSize(_curve);
+            int signatureSize = GetCoordinateSize(_curve) * 2;
+            if (hash.Length != hashSize)
+                throw new CryptographicException(SR.Cryptography_InvalidHashSize);
 
-            byte[] signature = new byte[SignatureSize];
+            byte[] signature = new byte[signatureSize];
             int signatureLength = 0;
             fixed (byte* pHash = hash)
             fixed (byte* pSignature = signature)
             {
                 if (Interop.Crypto.RinOSEcdsaSignHash(
                         _context, pHash, hash.Length, pSignature, signature.Length,
-                        &signatureLength) == 0 || signatureLength != SignatureSize)
+                        &signatureLength) == 0 || signatureLength != signatureSize)
                 {
                     CryptographicOperations.ZeroMemory(signature);
                     throw new CryptographicException("RinOS ECDSA signing failed.");
@@ -95,7 +112,8 @@ namespace System.Security.Cryptography
             ArgumentNullException.ThrowIfNull(hash);
             ArgumentNullException.ThrowIfNull(signature);
             ThrowIfDisposed();
-            if (hash.Length != Sha256Size || signature.Length != SignatureSize)
+            int coordinateSize = GetCoordinateSize(_curve);
+            if (hash.Length != GetHashSize(_curve) || signature.Length != coordinateSize * 2)
                 return false;
 
             fixed (byte* pHash = hash)
@@ -109,8 +127,11 @@ namespace System.Security.Cryptography
         public override ECParameters ExportParameters(bool includePrivateParameters)
         {
             ThrowIfDisposed();
-            byte[] privateKey = includePrivateParameters ? new byte[PrivateKeySize] : Array.Empty<byte>();
-            byte[] publicKey = new byte[PublicKeySize];
+            int coordinateSize = GetCoordinateSize(_curve);
+            int privateKeySize = coordinateSize;
+            int publicKeySize = 1 + coordinateSize * 2;
+            byte[] privateKey = includePrivateParameters ? new byte[privateKeySize] : Array.Empty<byte>();
+            byte[] publicKey = new byte[publicKeySize];
             int privateKeyLength = 0;
             int publicKeyLength = 0;
 
@@ -121,8 +142,8 @@ namespace System.Security.Cryptography
                         _context, includePrivateParameters ? 1 : 0,
                         pPrivateKey, privateKey.Length, &privateKeyLength,
                         pPublicKey, publicKey.Length, &publicKeyLength) == 0 ||
-                    publicKeyLength != PublicKeySize ||
-                    (includePrivateParameters && privateKeyLength != PrivateKeySize))
+                    publicKeyLength != publicKeySize ||
+                    (includePrivateParameters && privateKeyLength != privateKeySize))
                 {
                     CryptographicOperations.ZeroMemory(privateKey);
                     CryptographicOperations.ZeroMemory(publicKey);
@@ -136,11 +157,11 @@ namespace System.Security.Cryptography
 
             return new ECParameters
             {
-                Curve = ECCurve.NamedCurves.nistP256,
+                Curve = GetCurve(_curve),
                 Q = new ECPoint
                 {
-                    X = publicKey.AsSpan(1, PrivateKeySize).ToArray(),
-                    Y = publicKey.AsSpan(1 + PrivateKeySize, PrivateKeySize).ToArray(),
+                    X = publicKey.AsSpan(1, coordinateSize).ToArray(),
+                    Y = publicKey.AsSpan(1 + coordinateSize, coordinateSize).ToArray(),
                 },
                 D = exportedPrivateKey,
             };
@@ -149,30 +170,30 @@ namespace System.Security.Cryptography
         public override void ImportParameters(ECParameters parameters)
         {
             ThrowIfDisposed();
-            if (!IsP256(parameters.Curve))
-                throw new PlatformNotSupportedException("RinOS ECDSA supports only named P-256.");
+            int curve = GetCurveId(parameters.Curve);
+            int coordinateSize = GetCoordinateSize(curve);
 
             byte[] x = parameters.Q.X ?? Array.Empty<byte>();
             byte[] y = parameters.Q.Y ?? Array.Empty<byte>();
             byte[] privateKey = parameters.D is { Length: > 0 }
                 ? (byte[])parameters.D.Clone()
                 : Array.Empty<byte>();
-            if (x.Length != PrivateKeySize || y.Length != PrivateKeySize ||
-                (privateKey.Length != 0 && privateKey.Length != PrivateKeySize))
+            if (x.Length != coordinateSize || y.Length != coordinateSize ||
+                (privateKey.Length != 0 && privateKey.Length != coordinateSize))
             {
                 CryptographicOperations.ZeroMemory(privateKey);
                 throw new CryptographicException(SR.Cryptography_InvalidCurveKeyParameters);
             }
 
-            byte[] publicKey = new byte[PublicKeySize];
+            byte[] publicKey = new byte[1 + coordinateSize * 2];
             publicKey[0] = 4;
-            x.AsSpan().CopyTo(publicKey.AsSpan(1, PrivateKeySize));
-            y.AsSpan().CopyTo(publicKey.AsSpan(1 + PrivateKeySize, PrivateKeySize));
+            x.AsSpan().CopyTo(publicKey.AsSpan(1, coordinateSize));
+            y.AsSpan().CopyTo(publicKey.AsSpan(1 + coordinateSize, coordinateSize));
             fixed (byte* pPrivateKey = privateKey)
             fixed (byte* pPublicKey = publicKey)
             {
                 if (Interop.Crypto.RinOSEcdsaImportParameters(
-                        _context, pPrivateKey, privateKey.Length,
+                        _context, curve, pPrivateKey, privateKey.Length,
                         pPublicKey, publicKey.Length) == 0)
                 {
                     CryptographicOperations.ZeroMemory(privateKey);
@@ -182,17 +203,30 @@ namespace System.Security.Cryptography
             }
             CryptographicOperations.ZeroMemory(privateKey);
             CryptographicOperations.ZeroMemory(publicKey);
-            KeySizeValue = 256;
+            _curve = curve;
+            KeySizeValue = curve switch
+            {
+                CurveP256 => 256,
+                CurveP384 => 384,
+                CurveP521 => 521,
+                _ => throw new CryptographicException(SR.Cryptography_InvalidCurveKeyParameters),
+            };
         }
 
         public override void GenerateKey(ECCurve curve)
         {
             ThrowIfDisposed();
-            if (!IsP256(curve))
-                throw new PlatformNotSupportedException("RinOS ECDSA supports only named P-256.");
-            if (Interop.Crypto.RinOSEcdsaGenerateKey(_context) == 0)
+            int curveId = GetCurveId(curve);
+            if (Interop.Crypto.RinOSEcdsaGenerateKey(_context, curveId) == 0)
                 throw new CryptographicException("RinOS ECDSA key generation failed.");
-            KeySizeValue = 256;
+            _curve = curveId;
+            KeySizeValue = curveId switch
+            {
+                CurveP256 => 256,
+                CurveP384 => 384,
+                CurveP521 => 521,
+                _ => throw new CryptographicException(SR.Cryptography_InvalidKeySize),
+            };
         }
 
         protected override void Dispose(bool disposing)
@@ -210,9 +244,50 @@ namespace System.Security.Cryptography
             ObjectDisposedException.ThrowIf(_context == IntPtr.Zero, this);
         }
 
-        private static bool IsP256(ECCurve curve)
+        private static int GetCurveId(ECCurve curve)
         {
-            return curve.IsNamed && curve.Oid.Value == P256Oid;
+            if (!curve.IsNamed)
+                throw new PlatformNotSupportedException("RinOS ECDSA requires a named NIST curve.");
+            return curve.Oid.Value switch
+            {
+                P256Oid => CurveP256,
+                P384Oid => CurveP384,
+                P521Oid => CurveP521,
+                _ => throw new PlatformNotSupportedException("RinOS ECDSA supports only named P-256, P-384, and P-521."),
+            };
+        }
+
+        private static int GetCoordinateSize(int curve)
+        {
+            return curve switch
+            {
+                CurveP256 => 32,
+                CurveP384 => 48,
+                CurveP521 => 66,
+                _ => throw new CryptographicException(SR.Cryptography_InvalidKeySize),
+            };
+        }
+
+        private static int GetHashSize(int curve)
+        {
+            return curve switch
+            {
+                CurveP256 => 32,
+                CurveP384 => 48,
+                CurveP521 => 64,
+                _ => throw new CryptographicException(SR.Cryptography_InvalidKeySize),
+            };
+        }
+
+        private static ECCurve GetCurve(int curve)
+        {
+            return curve switch
+            {
+                CurveP256 => ECCurve.NamedCurves.nistP256,
+                CurveP384 => ECCurve.NamedCurves.nistP384,
+                CurveP521 => ECCurve.NamedCurves.nistP521,
+                _ => throw new CryptographicException(SR.Cryptography_InvalidKeySize),
+            };
         }
     }
 }
@@ -225,11 +300,11 @@ internal static partial class Interop
         internal static partial IntPtr RinOSEcdsaCreate();
 
         [LibraryImport(Libraries.CryptoNative, EntryPoint = "CryptoNative_RinOSEcdsaGenerateKey")]
-        internal static partial int RinOSEcdsaGenerateKey(IntPtr context);
+        internal static partial int RinOSEcdsaGenerateKey(IntPtr context, int curve);
 
         [LibraryImport(Libraries.CryptoNative, EntryPoint = "CryptoNative_RinOSEcdsaImportParameters")]
         internal static unsafe partial int RinOSEcdsaImportParameters(
-            IntPtr context, byte* privateKey, int privateKeyLength,
+            IntPtr context, int curve, byte* privateKey, int privateKeyLength,
             byte* publicKey, int publicKeyLength);
 
         [LibraryImport(Libraries.CryptoNative, EntryPoint = "CryptoNative_RinOSEcdsaGetKeySize")]

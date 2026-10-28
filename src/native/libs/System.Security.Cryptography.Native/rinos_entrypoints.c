@@ -90,10 +90,11 @@ int32_t CryptoNative_RinOSRsaVerifyHash(
 void CryptoNative_RinOSRsaDestroy(void* handle);
 
 void* CryptoNative_RinOSEcdsaCreate(void);
-int32_t CryptoNative_RinOSEcdsaGenerateKey(void* handle);
+int32_t CryptoNative_RinOSEcdsaGenerateKey(void* handle, int32_t curve);
 int32_t CryptoNative_RinOSEcdsaImportParameters(
-    void* handle, const uint8_t* private_key, int32_t private_key_length,
-    const uint8_t* public_key, int32_t public_key_length);
+    void* handle, int32_t curve, const uint8_t* private_key,
+    int32_t private_key_length, const uint8_t* public_key,
+    int32_t public_key_length);
 int32_t CryptoNative_RinOSEcdsaGetKeySize(const void* handle);
 int32_t CryptoNative_RinOSEcdsaExportParameters(
     const void* handle, int32_t include_private, uint8_t* private_key,

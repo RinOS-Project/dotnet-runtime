@@ -16,6 +16,11 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+/* EventPipe writes are a diagnostic boundary.  A permanently interrupted
+ * descriptor must not pin the runtime's helper thread forever.  Keep this
+ * limit local to the PAL instead of changing EventPipe's framing semantics. */
+static constexpr uint32_t RinOSEventPipeIoInterruptionLimit = 32u;
 #endif
 
 #include <minipal/random.h>
@@ -691,14 +696,29 @@ ep_rt_aot_file_write (
     uint32_t bytes_to_write,
     uint32_t *bytes_written)
 {
+    if (bytes_written != NULL)
+        *bytes_written = 0;
+
+    /* A zero-length write is valid and must not require a dummy buffer.  Any
+     * non-empty write, however, needs a real source buffer on every PAL
+     * flavor; otherwise Windows would dereference an invalid output pointer
+     * while Unix would only happen to return EFAULT. */
+    if (bytes_to_write != 0 && buffer == NULL)
+        return false;
+    if (bytes_to_write == 0)
+        return true;
+
 #ifdef TARGET_WINDOWS
-    return ::WriteFile (file_handle, buffer, bytes_to_write, reinterpret_cast<LPDWORD>(bytes_written), NULL) != FALSE;
+    DWORD transferred = 0;
+    if (!::WriteFile(file_handle, buffer, bytes_to_write, &transferred, NULL))
+        return false;
+    if (bytes_written != NULL)
+        *bytes_written = transferred;
+    return true;
 #else
     int fd = (int)(ptrdiff_t)file_handle;
     uint32_t total_written = 0;
-
-    if (bytes_written != NULL)
-        *bytes_written = 0;
+    uint32_t interrupted = 0;
 
     while (total_written < bytes_to_write) {
         ssize_t ret;
@@ -706,7 +726,11 @@ ep_rt_aot_file_write (
             ret = write (fd,
                          buffer + total_written,
                          (size_t)(bytes_to_write - total_written));
-        } while (ret == -1 && errno == EINTR);
+            if (ret != -1 || errno != EINTR)
+                break;
+            if (++interrupted >= RinOSEventPipeIoInterruptionLimit)
+                return false;
+        } while (true);
 
         if (ret <= 0)
             return false;

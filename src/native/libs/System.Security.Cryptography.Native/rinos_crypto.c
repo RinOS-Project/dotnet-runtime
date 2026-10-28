@@ -459,10 +459,16 @@ PALEXPORT int32_t CryptoNative_RinOSKmacFinal(void* handle, uint8_t* destination
 PALEXPORT int32_t CryptoNative_RinOSKmacCurrent(const void* handle, uint8_t* destination, int32_t destination_length)
 {
     const rinos_kmac_context* context = (const rinos_kmac_context*)handle;
+    rinos_kmac_context copy;
+    int32_t result;
     if (!rinos_kmac_valid(context) || destination_length < 0 ||
         (destination == NULL && destination_length != 0)) return 0;
-    return sha3_kmac_finalize(&context->state, destination,
-                              (rin_size_t)destination_length, (int)context->xof);
+    rintls_memcpy(&copy, context, sizeof(copy));
+    result = sha3_kmac_finalize(&copy.state, destination,
+                                (rin_size_t)destination_length,
+                                (int)copy.xof);
+    rintls_secure_zero(&copy, sizeof(copy));
+    return result;
 }
 
 PALEXPORT int32_t CryptoNative_RinOSKmacReset(void* handle)

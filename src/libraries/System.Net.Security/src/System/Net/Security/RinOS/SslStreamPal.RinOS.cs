@@ -285,7 +285,7 @@ namespace System.Net.Security
             RinCertificateSignerState state =
                 new RinCertificateSignerState(certificateContext.TargetCertificate);
             IntPtr stateHandle = handle.AttachCertificateSignerState(state);
-            int result;
+            int result = -1;
             try
             {
                 result = Interop.RinTls.SetServerCertificate(
@@ -296,6 +296,10 @@ namespace System.Net.Security
             finally
             {
                 CryptographicOperations.ZeroMemory(certificateList);
+                if (result != 0)
+                {
+                    handle.DetachCertificateSignerState();
+                }
             }
             if (result != 0)
             {

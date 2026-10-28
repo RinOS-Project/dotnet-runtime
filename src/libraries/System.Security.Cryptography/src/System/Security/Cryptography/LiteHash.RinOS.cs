@@ -4,6 +4,7 @@
 #if TARGET_RINOS
 
 using System;
+using System.Runtime.InteropServices;
 
 namespace System.Security.Cryptography
 {

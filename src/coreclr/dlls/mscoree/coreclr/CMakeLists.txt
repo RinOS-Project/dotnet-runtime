@@ -108,6 +108,7 @@ if(CLR_CMAKE_TARGET_RINOS AND NOT RINOS_CROSS_COMPONENTS_HOST)
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/time_zone.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/stdlib_random.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/pthread_cancel_runtime.c"
+        "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/pthread_atfork_runtime.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/pthread_runtime.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/timer_thread_runtime.c"
         "${RINOS_RUNTIME_ROOT}/public-base/libs/libc/pthread_tls.c"

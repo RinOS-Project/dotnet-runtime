@@ -188,7 +188,10 @@
       <BuildArgs>$(BuildArgs) -cmakeargs "-DCLR_CMAKE_BUILD_HOST_PRODUCT=$(BuildNativeHostProduct.ToUpper())"</BuildArgs>
     </PropertyGroup>
     <ItemGroup>
-      <_RinOSCMakeArgs Include="$(RinOSCMakeArgs)" />
+      <!-- The Windows-hosted cross build is a separate target from the Unix
+           corehost target above; split the shell-safe delimiter here too so
+           each CMake option remains an independent argument. -->
+      <_RinOSCMakeArgs Include="$([System.Text.RegularExpressions.Regex]::Split('$(RinOSCMakeArgs)', '__RINOS_CMAKE_ARG__'))" />
       <_RinOSCoreHostCMakeArgs Include="@(_RinOSCMakeArgs->'-cmakeargs &quot;%(Identity)&quot;')" />
     </ItemGroup>
     <PropertyGroup>

@@ -910,6 +910,9 @@
     <Compile Include="System\Security\Cryptography\X509Certificates\LegacyBasicConstraintsDecoder.NotSupported.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\StorePal.RinOS.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\UnixChainVerifier.cs" />
+    <!-- The PFX/PKCS#12 reader is managed and platform-neutral.  RinOS
+         supplies the PAL-specific key import/attachment hooks below. -->
+    <Compile Include="System\Security\Cryptography\X509Certificates\X509CertificateLoader.Unix.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\X509CertificateLoader.RinOS.cs" />
     <Compile Include="System\Security\Cryptography\X509Certificates\X509Pal.RinOS.cs" />
     <Compile Include="System\Security\Cryptography\Interop.RinOS.X509.cs" />

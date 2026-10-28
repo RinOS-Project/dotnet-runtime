@@ -1744,9 +1744,16 @@ namespace System.Net.Security
                 return true;
             }
 
+            // SslStream's ServerCertificateSelectionCallback receives null when
+            // the ClientHello has no SNI extension. Keep that distinction from
+            // the empty TargetHost used by the server authentication options;
+            // callers may use it to choose the default certificate explicitly.
+            string? selectorTargetHost = string.IsNullOrEmpty(_sessionTargetHost)
+                ? null
+                : _sessionTargetHost;
             X509Certificate? selected = ServerCertificateSelectionOverride is not null
-                ? ServerCertificateSelectionOverride(_sessionTargetHost)
-                : selector(this, _sessionTargetHost);
+                ? ServerCertificateSelectionOverride(selectorTargetHost)
+                : selector(this, selectorTargetHost);
             if (selected is null)
             {
                 throw new AuthenticationException(SR.net_ssl_io_no_server_cert);

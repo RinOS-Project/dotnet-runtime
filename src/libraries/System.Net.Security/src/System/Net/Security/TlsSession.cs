@@ -1711,7 +1711,6 @@ namespace System.Net.Security
                 return null;
             }
 
-            frameLength = frameInfo.Header.Length;
             return new SslClientHelloInfo(frameInfo.TargetName ?? string.Empty, frameInfo.SupportedVersions);
         }
 

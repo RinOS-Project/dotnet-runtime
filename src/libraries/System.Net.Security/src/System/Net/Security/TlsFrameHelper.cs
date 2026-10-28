@@ -289,6 +289,34 @@ namespace System.Net.Security
             return isComplete;
         }
 
+        // Parse a complete handshake message that has been reassembled from one
+        // or more TLS records. TLS permits a handshake message to cross record
+        // boundaries, while TryGetFrameInfo intentionally describes one record.
+        // SNI/ALPN selection uses this entry point after the caller has bounded
+        // and reassembled the ClientHello payload.
+        internal static bool TryGetFrameInfoFromHandshake(
+            ReadOnlySpan<byte> handshake,
+            SslProtocols recordVersion,
+            ref TlsFrameInfo info,
+            ProcessingOptions options,
+            HelloExtensionCallback? callback = null)
+        {
+            if (handshake.Length < 4)
+            {
+                return false;
+            }
+
+            info.Header = new TlsFrameHeader
+            {
+                Type = TlsContentType.Handshake,
+                Version = recordVersion,
+                Length = HeaderSize + handshake.Length,
+            };
+            info.HandshakeType = (TlsHandshakeType)handshake[0];
+            info.SupportedVersions = recordVersion;
+            return TryParseHelloFrame(handshake, ref info, options, callback);
+        }
+
         // This is similar to TryGetFrameInfo, but it will only process SNI.
         // It returns TargetName as string or NULL if SNI is missing or parsing error happened.
         public static string? GetServerName(ReadOnlySpan<byte> frame)

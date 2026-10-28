@@ -1009,7 +1009,7 @@ namespace System.Net.Security
                 {
                     ReadOnlySpan<byte> rawAlpn = ReadOnlySpan<byte>.Empty;
                     TlsFrameHelper.TlsFrameInfo frameInfo = default;
-                    if (TlsFrameHelper.TryGetFrameInfo(input, ref frameInfo,
+                    if (TryGetClientHelloFrameInfo(input, ref frameInfo, out _,
                             TlsFrameHelper.ProcessingOptions.ApplicationProtocol | TlsFrameHelper.ProcessingOptions.RawApplicationProtocol) &&
                         frameInfo.RawApplicationProtocols is byte[] rawAlpnBytes)
                     {
@@ -1592,15 +1592,116 @@ namespace System.Net.Security
             }
         }
 
+        private const int MaxClientHelloHandshakeBytes = 1 << 20;
+
+        // TLS permits a ClientHello handshake message to span multiple records.
+        // The PAL still receives the original wire records; this bounded helper
+        // only assembles enough plaintext to make SNI/ALPN selection correct
+        // before a server context or certificate is allocated.
+        private static bool TryGetClientHelloFrameInfo(
+            ReadOnlySpan<byte> input,
+            ref TlsFrameHelper.TlsFrameInfo info,
+            out int frameLength,
+            TlsFrameHelper.ProcessingOptions options =
+                TlsFrameHelper.ProcessingOptions.ServerName |
+                TlsFrameHelper.ProcessingOptions.Versions)
+        {
+            frameLength = 0;
+            if (input.Length < TlsFrameHelper.HeaderSize)
+            {
+                return false;
+            }
+
+            ArrayBufferWriter<byte> handshake = new(capacity: Math.Min(
+                input.Length, MaxClientHelloHandshakeBytes));
+            int expectedHandshakeLength = 0;
+            int wireOffset = 0;
+            SslProtocols recordVersion = SslProtocols.None;
+
+            while (wireOffset < input.Length)
+            {
+                ReadOnlySpan<byte> record = input.Slice(wireOffset);
+                TlsFrameHeader header = default;
+                if (!TlsFrameHelper.TryGetFrameHeader(record, ref header) ||
+                    header.Type != TlsContentType.Handshake ||
+                    header.Length < TlsFrameHelper.HeaderSize ||
+                    header.Length > record.Length)
+                {
+                    return false;
+                }
+
+                if (recordVersion == SslProtocols.None)
+                {
+                    recordVersion = header.Version;
+                }
+
+                ReadOnlySpan<byte> payload = record.Slice(
+                    TlsFrameHelper.HeaderSize,
+                    header.Length - TlsFrameHelper.HeaderSize);
+                int copyLength = payload.Length;
+                if (expectedHandshakeLength != 0)
+                {
+                    copyLength = Math.Min(
+                        copyLength,
+                        expectedHandshakeLength - handshake.WrittenCount);
+                }
+
+                if (copyLength < 0 ||
+                    copyLength > MaxClientHelloHandshakeBytes - handshake.WrittenCount)
+                {
+                    return false;
+                }
+
+                if (copyLength != 0)
+                {
+                    payload.Slice(0, copyLength).CopyTo(handshake.GetSpan(copyLength));
+                    handshake.Advance(copyLength);
+                }
+
+                if (expectedHandshakeLength == 0 && handshake.WrittenCount >= 4)
+                {
+                    ReadOnlySpan<byte> prefix = handshake.WrittenSpan;
+                    if ((TlsHandshakeType)prefix[0] != TlsHandshakeType.ClientHello)
+                    {
+                        return false;
+                    }
+
+                    int helloLength = (prefix[1] << 16) |
+                        (prefix[2] << 8) | prefix[3];
+                    expectedHandshakeLength = 4 + helloLength;
+                    if (expectedHandshakeLength > MaxClientHelloHandshakeBytes)
+                    {
+                        return false;
+                    }
+                }
+
+                wireOffset += header.Length;
+                if (expectedHandshakeLength != 0 &&
+                    handshake.WrittenCount >= expectedHandshakeLength)
+                {
+                    if (!TlsFrameHelper.TryGetFrameInfoFromHandshake(
+                            handshake.WrittenSpan.Slice(0, expectedHandshakeLength),
+                            recordVersion, ref info, options))
+                    {
+                        return false;
+                    }
+
+                    frameLength = wireOffset;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         // Server-side: parses the ClientHello and returns a populated
         // SslClientHelloInfo (SNI + supported versions), or null if more bytes
-        // are needed or the record is not a ClientHello. Used by the
+        // are needed or the input is not a ClientHello. Used by the
         // deferred-options path; does not mutate session state.
         private static SslClientHelloInfo? TryParseClientHello(ReadOnlySpan<byte> input, out int frameLength)
         {
-            frameLength = 0;
             TlsFrameHelper.TlsFrameInfo frameInfo = default;
-            if (!TlsFrameHelper.TryGetFrameInfo(input, ref frameInfo))
+            if (!TryGetClientHelloFrameInfo(input, ref frameInfo, out frameLength))
             {
                 return null;
             }
@@ -1623,7 +1724,7 @@ namespace System.Net.Security
         private bool ResolveServerCertificateFromClientHello(ReadOnlySpan<byte> input)
         {
             TlsFrameHelper.TlsFrameInfo frameInfo = default;
-            if (!TlsFrameHelper.TryGetFrameInfo(input, ref frameInfo))
+            if (!TryGetClientHelloFrameInfo(input, ref frameInfo, out _))
             {
                 return false;
             }

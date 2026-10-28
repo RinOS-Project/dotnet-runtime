@@ -17,6 +17,7 @@ namespace System.Net.Security
     internal static class SslStreamPal
     {
         private const string TrustStorePath = "/System/Trust/roots.rinca";
+        private const uint RinTlsOptionAlpnHttp11 = 0x0010u;
         private const int MaxTrustStoreBytes = 4 * 1024 * 1024;
         private const int MaxCustomTrustAnchors = 256;
         private const int MaxServerCertificateAuthoritiesBytes = 4098;
@@ -764,6 +765,10 @@ namespace System.Net.Security
 
             uint options = GetRinTlsOptions(
                 sslAuthenticationOptions.EnabledSslProtocols, isServer);
+            if (sslAuthenticationOptions.ApplicationProtocols is { Count: > 0 })
+            {
+                options |= RinTlsOptionAlpnHttp11;
+            }
             ulong trustedTime = GetTrustedUnixTime(chainPolicy);
             IntPtr raw = Interop.RinTls.Create(
                 isServer,

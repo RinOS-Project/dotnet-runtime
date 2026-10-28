@@ -604,6 +604,17 @@ int32_t CryptoNative_RinTlsSetServerClientCertificateRequired(
         adapter->context, required);
 }
 
+int32_t CryptoNative_RinTlsSetServerClientCertificateAuthorities(
+    void* handle, const uint8_t* authorities, int32_t authorities_length)
+{
+    rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;
+    if (!adapter || authorities_length < 0 ||
+        (authorities_length != 0 && !authorities))
+        return RINTLS_ERR_MEMORY;
+    return rintls_set_server_client_certificate_authorities(
+        adapter->context, authorities, (rin_size_t)authorities_length);
+}
+
 int32_t CryptoNative_RinTlsGetPeerCertificateChainLength(void* handle,
                                                          int32_t* length)
 {

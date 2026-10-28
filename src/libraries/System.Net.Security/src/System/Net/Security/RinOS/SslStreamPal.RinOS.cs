@@ -19,6 +19,7 @@ namespace System.Net.Security
         private const string TrustStorePath = "/System/Trust/roots.rinca";
         private const int MaxTrustStoreBytes = 4 * 1024 * 1024;
         private const int MaxCustomTrustAnchors = 256;
+        private const int MaxServerCertificateAuthoritiesBytes = 4098;
         private const long MaxTrustedUnixTime = 253402300799L;
 
         internal const bool StartMutualAuthAsAnonymous = false;
@@ -311,6 +312,27 @@ namespace System.Net.Security
                     result, "RinTLS rejected the managed server certificate.");
             }
 
+            if (certificateContext.Trust?._sendTrustInHandshake == true)
+            {
+                byte[] authorities = BuildServerCertificateAuthorities(
+                    certificateContext.Trust);
+                try
+                {
+                    result = Interop.RinTls.SetServerClientCertificateAuthorities(
+                        handle, authorities);
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(authorities);
+                }
+                if (result != 0)
+                {
+                    throw new RinTlsException(
+                        result,
+                        "RinTLS rejected the server client-certificate authorities.");
+                }
+            }
+
             result = Interop.RinTls.SetServerClientCertificateRequired(
                 handle, sslAuthenticationOptions.RemoteCertRequired);
             if (result != 0)
@@ -318,6 +340,53 @@ namespace System.Net.Security
                 throw new RinTlsException(
                     result, "RinTLS rejected the server client-certificate policy.");
             }
+        }
+
+        private static byte[] BuildServerCertificateAuthorities(
+            SslCertificateTrust trust)
+        {
+            X509Certificate2Collection certificates =
+                new X509Certificate2Collection();
+            if (trust._store is not null)
+            {
+                certificates.AddRange(trust._store.Certificates);
+            }
+            if (trust._trustList is not null)
+            {
+                certificates.AddRange(trust._trustList);
+            }
+
+            int totalLength = 2;
+            foreach (X509Certificate2 certificate in certificates)
+            {
+                int distinguishedNameLength = certificate.SubjectName.RawData.Length;
+                if (distinguishedNameLength == 0 || distinguishedNameLength > ushort.MaxValue)
+                {
+                    throw new AuthenticationException(
+                        "RinTLS received an invalid client-certificate authority.");
+                }
+
+                totalLength = checked(totalLength + 2 + distinguishedNameLength);
+                if (totalLength > MaxServerCertificateAuthoritiesBytes)
+                {
+                    throw new AuthenticationException(
+                        "RinTLS client-certificate authorities exceed the TLS limit.");
+                }
+            }
+
+            byte[] authorities = new byte[totalLength];
+            WriteUInt16(authorities, 0, totalLength - 2);
+            int offset = 2;
+            foreach (X509Certificate2 certificate in certificates)
+            {
+                byte[] distinguishedName = certificate.SubjectName.RawData;
+                WriteUInt16(authorities, offset, distinguishedName.Length);
+                offset += 2;
+                distinguishedName.AsSpan().CopyTo(authorities.AsSpan(offset));
+                offset += distinguishedName.Length;
+            }
+
+            return authorities;
         }
 
         private static byte[] BuildServerCertificateList(
@@ -416,6 +485,12 @@ namespace System.Net.Security
             destination[offset] = (byte)(value >> 16);
             destination[offset + 1] = (byte)(value >> 8);
             destination[offset + 2] = (byte)value;
+        }
+
+        private static void WriteUInt16(Span<byte> destination, int offset, int value)
+        {
+            destination[offset] = (byte)(value >> 8);
+            destination[offset + 1] = (byte)value;
         }
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]

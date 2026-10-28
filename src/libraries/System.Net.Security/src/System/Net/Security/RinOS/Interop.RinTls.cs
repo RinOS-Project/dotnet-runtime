@@ -55,6 +55,11 @@ internal static partial class Interop
             IntPtr handle, int required);
 
         [LibraryImport(Libraries.CryptoNative,
+            EntryPoint = "CryptoNative_RinTlsSetServerClientCertificateAuthorities")]
+        private static unsafe partial int SetServerClientCertificateAuthoritiesNative(
+            IntPtr handle, byte* authorities, int authoritiesLength);
+
+        [LibraryImport(Libraries.CryptoNative,
             EntryPoint = "CryptoNative_RinTlsClientCertificateRequested")]
         private static partial int ClientCertificateRequestedNative(
             IntPtr handle);
@@ -248,6 +253,18 @@ internal static partial class Interop
 
         internal static bool ClientCertificateRequested(RinSslHandle handle)
             => ClientCertificateRequestedNative(handle.DangerousGetHandle()) != 0;
+
+        internal static unsafe int SetServerClientCertificateAuthorities(
+            RinSslHandle handle, ReadOnlySpan<byte> authorities)
+        {
+            fixed (byte* authoritiesPtr = authorities)
+            {
+                return SetServerClientCertificateAuthoritiesNative(
+                    handle.DangerousGetHandle(),
+                    authorities.IsEmpty ? null : authoritiesPtr,
+                    authorities.Length);
+            }
+        }
 
         internal static int GetClientCertificateAuthoritiesLength(
             RinSslHandle handle, out int length)

@@ -33,6 +33,11 @@ namespace System.Net.Security
                 // its own callback so the user delegate sees the SslStream as sender
                 // and isn't invoked twice.
                 _tlsSession.SuppressInternalCertificateValidation = true;
+                if (_sslAuthenticationOptions.ServerCertSelectionDelegate is { } selector)
+                {
+                    _tlsSession.ServerCertificateSelectionOverride = hostName =>
+                        selector(this, hostName);
+                }
             }
         }
 

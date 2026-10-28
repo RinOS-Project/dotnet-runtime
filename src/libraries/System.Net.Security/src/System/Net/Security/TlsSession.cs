@@ -1644,7 +1644,9 @@ namespace System.Net.Security
                 return true;
             }
 
-            X509Certificate? selected = selector(this, _sessionTargetHost);
+            X509Certificate? selected = ServerCertificateSelectionOverride is not null
+                ? ServerCertificateSelectionOverride(_sessionTargetHost)
+                : selector(this, _sessionTargetHost);
             if (selected is null)
             {
                 throw new AuthenticationException(SR.net_ssl_io_no_server_cert);
@@ -1676,6 +1678,11 @@ namespace System.Net.Security
             get => _suppressInternalCertificateValidation;
             set => _suppressInternalCertificateValidation = value;
         }
+
+        // SslStream defers server certificate selection until this session has
+        // parsed ClientHello. Keep the public callback's sender as SslStream
+        // while retaining the standalone TlsSession sender for direct callers.
+        internal Func<string?, X509Certificate?>? ServerCertificateSelectionOverride { get; set; }
 
         internal TlsSecurityContext? SecurityContext => _securityContext;
         internal TlsContext Context => _context!;

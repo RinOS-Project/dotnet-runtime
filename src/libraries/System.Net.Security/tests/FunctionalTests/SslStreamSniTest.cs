@@ -38,6 +38,7 @@ namespace System.Net.Security.Tests
                     options.ServerCertificateSelectionCallback = (sender, actualHostName) =>
                     {
                         timesCallbackCalled++;
+                        Assert.IsType<SslStream>(sender, exactMatch: true);
                         Assert.Equal(hostName, actualHostName);
                         return serverCert;
                     };

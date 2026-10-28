@@ -1563,6 +1563,9 @@ static int provider_name_valid(const RinOsKerberosProviderName* name)
     return provider_name_snapshot(name, NULL, &size);
 }
 
+static int provider_escaped_principal_valid(const uint8_t* bytes,
+                                             uint32_t size);
+
 /* RinOS does not have a caller-selected credential namespace.  A named
  * initiator credential is therefore permitted only when its provider-owned
  * principal is exactly the authenticated session principal returned by the
@@ -1594,7 +1597,8 @@ static uint32_t provider_validate_named_session_credential(
         sizeof(principal), &principal_size, &generation);
     if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK || owner_minor != 0u ||
         principal_size == 0u ||
-        principal_size > RINOS_KERBEROS_MAX_PRINCIPAL_SIZE || generation == 0u) {
+        principal_size > RINOS_KERBEROS_MAX_PRINCIPAL_SIZE || generation == 0u ||
+        !provider_escaped_principal_valid(principal, principal_size)) {
         if (status == RIN_KERBEROS_CREDENTIAL_OWNER_OK)
             status = RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
         goto cleanup;

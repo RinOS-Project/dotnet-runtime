@@ -336,6 +336,14 @@ int32_t SystemNative_CreateThread(uintptr_t stackSize, void *(*startAddress)(voi
     bool result = false;
     pthread_attr_t attrs;
 
+    /* pthread_create requires a valid entry point.  Keep this native PAL
+     * boundary failure-atomic instead of relying on libc's handling of a
+     * null function pointer. */
+    if (startAddress == NULL)
+    {
+        return false;
+    }
+
     int error = pthread_attr_init(&attrs);
     if (error != 0)
     {
@@ -344,7 +352,7 @@ int32_t SystemNative_CreateThread(uintptr_t stackSize, void *(*startAddress)(voi
     }
 
     error = pthread_attr_setdetachstate(&attrs, PTHREAD_CREATE_DETACHED);
-    assert(error == 0);
+    if (error != 0) goto CreateThreadExit;
 
 #ifdef HOST_APPLE
     // Match Windows stack size
@@ -372,8 +380,11 @@ int32_t SystemNative_CreateThread(uintptr_t stackSize, void *(*startAddress)(voi
     result = true;
 
 CreateThreadExit:
-    error = pthread_attr_destroy(&attrs);
-    assert(error == 0);
+    /* Once pthread_create succeeds there is no rollback for a detached
+     * thread.  Do not assert on attribute cleanup and turn a valid thread
+     * creation into a process abort; the creation result remains authoritative
+     * for the managed caller. */
+    (void)pthread_attr_destroy(&attrs);
 
     return result;
 }

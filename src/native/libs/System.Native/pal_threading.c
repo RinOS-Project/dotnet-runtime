@@ -87,16 +87,18 @@ LowLevelMonitor* SystemNative_LowLevelMonitor_Create(void)
     error = pthread_condattr_setclock(&conditionAttributes, CLOCK_MONOTONIC);
     if (error != 0)
     {
-        error = pthread_condattr_destroy(&conditionAttributes);
-        assert(error == 0);
+        /* Attribute cleanup is not a reason to turn a recoverable monitor
+         * allocation failure into a process abort.  In particular, the
+         * RinOS libc may report an independent cleanup error while the
+         * condition attribute is already unusable; the monitor creation
+         * failure remains the authoritative result. */
+        (void)pthread_condattr_destroy(&conditionAttributes);
         goto mutex_destroy;
     }
 
     error = pthread_cond_init(&monitor->Condition, &conditionAttributes);
 
-    int condAttrDestroyError;
-    condAttrDestroyError = pthread_condattr_destroy(&conditionAttributes);
-    assert(condAttrDestroyError == 0);
+    (void)pthread_condattr_destroy(&conditionAttributes);
 #else
     error = pthread_cond_init(&monitor->Condition, NULL);
 #endif
@@ -112,8 +114,7 @@ LowLevelMonitor* SystemNative_LowLevelMonitor_Create(void)
     return monitor;
 
 mutex_destroy:
-    error = pthread_mutex_destroy(&monitor->Mutex);
-    assert(error == 0);
+    (void)pthread_mutex_destroy(&monitor->Mutex);
     free(monitor);
     return NULL;
 }

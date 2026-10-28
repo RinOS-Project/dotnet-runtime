@@ -1989,6 +1989,7 @@ bool PalGetMaximumStackBounds(_Out_ void** ppStackLowOut, _Out_ void** ppStackHi
     const uintptr_t highOutputAddress = (uintptr_t)ppStackHighOut;
     if (lowOutputAddress > UINTPTR_MAX - sizeof(*ppStackLowOut) ||
         highOutputAddress > UINTPTR_MAX - sizeof(*ppStackHighOut) ||
+        lowOutputAddress == highOutputAddress ||
         (lowOutputAddress < highOutputAddress &&
          lowOutputAddress + sizeof(*ppStackLowOut) > highOutputAddress) ||
         (highOutputAddress < lowOutputAddress &&

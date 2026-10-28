@@ -88,10 +88,23 @@ namespace System.Net.Security
                     _tlsSession!.CredentialsHandle = _credentialsHandle;
                 }
 
+                if (deferServerCertificateSelection &&
+                    !_tlsSession!.ResolveServerCertificateForSslStream(incomingBuffer))
+                {
+                    // SslStream.Protocol supplies complete TLS frames, but
+                    // preserve the retry contract if a caller reaches this
+                    // wedge with only a partial ClientHello.  Do not let the
+                    // PAL allocate a server context without its certificate.
+                    token = default;
+                    token.RentBuffer = true;
+                    token.Status = new SecurityStatusPal(
+                        SecurityStatusPalErrorCode.ContinueNeeded);
+                    consumed = 0;
+                    return true;
+                }
+
                 token = _tlsSession!.HandshakeStepForSslStream(incomingBuffer, out consumed);
 
-                // ResolveServerCertificateFromClientHello mirrors the selected
-                // context into the shared wedge options before the PAL call.
                 if (deferServerCertificateSelection)
                 {
                     sendTrustList = _sslAuthenticationOptions!.CertificateContext?.Trust?._sendTrustInHandshake ?? false;

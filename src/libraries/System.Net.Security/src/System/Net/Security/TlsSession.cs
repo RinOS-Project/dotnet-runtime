@@ -1664,6 +1664,22 @@ namespace System.Net.Security
             return true;
         }
 
+        // The SslStream wedge drives the PAL directly instead of using
+        // ProcessHandshake.  Keep the same server-certificate selection
+        // boundary for that path: the PAL must not create a RinTLS server
+        // handle until the ClientHello-derived certificate context is present.
+        internal bool ResolveServerCertificateForSslStream(ReadOnlySpan<byte> input)
+        {
+            ThrowIfDisposed();
+            ThrowIfContextNotSet();
+            if (!_context!.IsServer || _securityContext is not null)
+            {
+                return true;
+            }
+
+            return ResolveServerCertificateFromClientHello(input);
+        }
+
         // ── Internal surface for the SslStream wedge (Linux/FreeBSD only) ─
 
         // Direct accessors used by SslStream to mirror state into its own fields after

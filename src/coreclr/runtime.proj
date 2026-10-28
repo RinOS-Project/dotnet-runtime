@@ -47,7 +47,12 @@
            passes each generated target option through an item property. A
            scalar CMakeArgs value is quoted as one token by the nested build
            and makes the toolchain path consume the following -D options. -->
-      <_RinOSCMakeArgs Include="$([System.String]::Copy('$(RinOSCMakeArgs)').Replace('__RINOS_CMAKE_ARG__', ';'))" />
+      <!-- Split before MSBuild decodes escaped semicolons in each item.  A
+           Replace-to-semicolon expression is evaluated as one Include value,
+           so the cross-component command receives one quoted -cmakeargs
+           containing every option and CMake treats the whole value as the
+           toolchain filename. -->
+      <_RinOSCMakeArgs Include="$([System.Text.RegularExpressions.Regex]::Split('$(RinOSCMakeArgs)', '__RINOS_CMAKE_ARG__'))" />
       <_CoreClrBuildArg Include="@(_RinOSCMakeArgs->'-cmakeargs &quot;%(Identity)&quot;')" />
       <!-- Keep RinOS packaging options as independent cmakeargs.  CMakeArgs is
            a single MSBuild property and loses inner quoting when forwarded

@@ -66,7 +66,9 @@
       <BuildArgs>$(BuildArgs) -cmakeargs "-DVERSION_FILE_PATH=$(NativeVersionFile)"</BuildArgs>
     </PropertyGroup>
     <ItemGroup>
-      <_RinOSCMakeArgs Include="$([System.String]::Copy('$(RinOSCMakeArgs)').Replace('__RINOS_CMAKE_ARG__', ';'))" />
+      <!-- Split before MSBuild decodes escaped semicolons in each item; see
+           runtime.proj for the cross-component CMake argument boundary. -->
+      <_RinOSCMakeArgs Include="$([System.Text.RegularExpressions.Regex]::Split('$(RinOSCMakeArgs)', '__RINOS_CMAKE_ARG__'))" />
       <_RinOSCoreHostCMakeArgs Include="@(_RinOSCMakeArgs->'-cmakeargs &quot;%(Identity)&quot;')" />
     </ItemGroup>
     <PropertyGroup>

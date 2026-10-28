@@ -3522,7 +3522,14 @@ static void WakeRinOSSocketEventPort(RinOSSocketEventPort* port)
 {
     const char wake = 1;
     if (port != NULL && port->WakeFd >= 0)
-        (void)write(port->WakeFd, &wake, sizeof(wake));
+    {
+        ssize_t result;
+        do
+        {
+            result = write(port->WakeFd, &wake, sizeof(wake));
+        } while (result < 0 && errno == EINTR);
+        /* EAGAIN means that a wake byte is already queued. */
+    }
 }
 
 static int32_t CreateSocketEventPortInner(int32_t* port)
@@ -3625,9 +3632,9 @@ static int32_t CloseSocketEventPortInner(int32_t port)
     pthread_mutex_unlock(&slot->Lock);
 
     int closeError = 0;
-    if (close(readFd) != 0)
+    if (close(readFd) != 0 && errno != EINTR)
         closeError = errno;
-    if (close(wakeFd) != 0 && closeError == 0)
+    if (close(wakeFd) != 0 && errno != EINTR && closeError == 0)
         closeError = errno;
 
     (void)pthread_cond_destroy(&slot->Condition);

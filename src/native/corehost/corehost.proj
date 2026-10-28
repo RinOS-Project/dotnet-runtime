@@ -65,6 +65,13 @@
       <BuildArgs>$(Configuration) $(TargetArchitecture) -commithash "$([MSBuild]::ValueOrDefault('$(SourceRevisionId)', 'N/A'))" -os $(_CoreHostUnixTargetOS)</BuildArgs>
       <BuildArgs>$(BuildArgs) -cmakeargs "-DVERSION_FILE_PATH=$(NativeVersionFile)"</BuildArgs>
     </PropertyGroup>
+    <ItemGroup>
+      <_RinOSCMakeArgs Include="$(RinOSCMakeArgs)" />
+      <_RinOSCoreHostCMakeArgs Include="@(_RinOSCMakeArgs->'-cmakeargs &quot;%(Identity)&quot;')" />
+    </ItemGroup>
+    <PropertyGroup>
+      <BuildArgs>$(BuildArgs) @(_RinOSCoreHostCMakeArgs, ' ')</BuildArgs>
+    </PropertyGroup>
     <PropertyGroup Condition="'$(CxxStandardLibrary)' != ''">
       <BuildArgs>$(BuildArgs) -cmakeargs -DCLR_CMAKE_CXX_STANDARD_LIBRARY=$(CxxStandardLibrary)</BuildArgs>
     </PropertyGroup>
@@ -177,6 +184,13 @@
       <BuildArgs Condition="'$(RinOSNativePackaging)' == 'true'">$(BuildArgs) -cmakeargs "-DRINOS_ENABLE_NATIVE_PACKAGING=ON" -cmakeargs "-DRINOS_SIGN_KEY=$(RinOSSignKey)" -cmakeargs "-DRINOS_PUBLIC_KEY=$(RinOSPublicKey)"</BuildArgs>
       <BuildArgs>$(BuildArgs) -cmakeargs "-DCLR_CMAKE_BUILD_HOST_TESTS=$(BuildNativeHostTests.ToUpper())"</BuildArgs>
       <BuildArgs>$(BuildArgs) -cmakeargs "-DCLR_CMAKE_BUILD_HOST_PRODUCT=$(BuildNativeHostProduct.ToUpper())"</BuildArgs>
+    </PropertyGroup>
+    <ItemGroup>
+      <_RinOSCMakeArgs Include="$(RinOSCMakeArgs)" />
+      <_RinOSCoreHostCMakeArgs Include="@(_RinOSCMakeArgs->'-cmakeargs &quot;%(Identity)&quot;')" />
+    </ItemGroup>
+    <PropertyGroup>
+      <BuildArgs>$(BuildArgs) @(_RinOSCoreHostCMakeArgs, ' ')</BuildArgs>
     </PropertyGroup>
 
     <!-- WASI: gen-buildsys.cmd needs WASI_SDK_PATH (set by the AcquireWasiSdk dependency above). -->

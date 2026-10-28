@@ -43,6 +43,12 @@
            PE/DLL ABI while supplying RinOS target headers and definitions. -->
       <_CMakeArgs Include="$(CMakeArgs)" />
       <_CoreClrBuildArg Include="@(_CMakeArgs->'-cmakeargs &quot;%(Identity)&quot;')" />
+      <!-- CMakeArgs is retained for upstream callers, but the RinOS wrapper
+           passes each generated target option through an item property. A
+           scalar CMakeArgs value is quoted as one token by the nested build
+           and makes the toolchain path consume the following -D options. -->
+      <_RinOSCMakeArgs Include="$(RinOSCMakeArgs)" />
+      <_CoreClrBuildArg Include="@(_RinOSCMakeArgs->'-cmakeargs &quot;%(Identity)&quot;')" />
       <!-- Keep RinOS packaging options as independent cmakeargs.  CMakeArgs is
            a single MSBuild property and loses inner quoting when forwarded
            through build.cmd; combining these options would make the toolchain

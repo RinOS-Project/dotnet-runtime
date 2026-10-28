@@ -1744,10 +1744,10 @@ namespace System.Net.Security
                 return true;
             }
 
-            // The public callback contract uses null when the ClientHello did
-            // not carry SNI.  Keep the internal empty-string storage so the
-            // session state remains allocation-free, but do not expose that
-            // sentinel to the selector or its SslStream wrapper.
+            // SslStream's ServerCertificateSelectionCallback receives null when
+            // the ClientHello has no SNI extension. Keep that distinction from
+            // the empty TargetHost used by the server authentication options;
+            // callers may use it to choose the default certificate explicitly.
             string? selectorTargetHost = string.IsNullOrEmpty(_sessionTargetHost)
                 ? null
                 : _sessionTargetHost;

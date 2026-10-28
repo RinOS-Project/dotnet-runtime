@@ -1288,11 +1288,15 @@ static int provider_spnego_replace_output(RinAuthProviderBufferV1* output,
 static int provider_der_integer32_valid(const uint8_t* bytes, uint32_t size)
 {
     if (bytes == NULL || size == 0u || size > 5u) return 0;
-    if (size == 1u) return 1;
+    /* Kerberos PrincipalName.name-type is a non-negative ASN.1 INTEGER.
+     * Keep the DER representation canonical as well: a one-byte negative
+     * value (for example 0xff) must not be reinterpreted as a large unsigned
+     * name type, and a multi-byte value may not carry a redundant sign byte. */
+    if (size == 1u) return (bytes[0] & 0x80u) == 0u;
     if (size == 5u)
         return bytes[0] == 0u && (bytes[1] & 0x80u) != 0u;
+    if ((bytes[0] & 0x80u) != 0u) return 0;
     if (bytes[0] == 0u && (bytes[1] & 0x80u) == 0u) return 0;
-    if (bytes[0] == 0xffu && (bytes[1] & 0x80u) != 0u) return 0;
     return 1;
 }
 

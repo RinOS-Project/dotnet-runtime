@@ -89,7 +89,8 @@ namespace System.Security.Cryptography
             int hashSize = GetHashSize(_curve);
             int signatureSize = GetCoordinateSize(_curve) * 2;
             if (hash.Length != hashSize)
-                throw new CryptographicException(SR.Cryptography_InvalidHashSize);
+                throw new CryptographicException(
+                    SR.Format(SR.Cryptography_InvalidHashSize, "ECDSA", hashSize));
 
             byte[] signature = new byte[signatureSize];
             int signatureLength = 0;

@@ -25,6 +25,7 @@
 #include <windows.h>
 #elif defined(TARGET_RINOS) && !defined(RINOS_CROSS_COMPONENTS_HOST)
 #include <unistd.h>
+#include <rin/process/image_path_abi.h>
 #elif defined(__HAIKU__)
 #include <FindDirectory.h>
 #include <StorageDefs.h>
@@ -137,6 +138,22 @@ char* minipal_getexepath(void)
     if (rin_process_image_path_get(&response) != 0)
     {
         errno = ENOENT;
+        return NULL;
+    }
+
+    /* The syscall wrapper checks the transport result, but the PAL still
+     * owns the boundary between a kernel response and a C string.  Reject
+     * malformed or future ABI records before reading path[length] or handing
+     * the value to managed code. */
+    if (response.struct_size != sizeof(response) ||
+        response.version != RIN_PROCESS_IMAGE_PATH_ABI_VERSION ||
+        response.flags != RIN_PROCESS_IMAGE_PATH_FLAG_AUTHENTICATED ||
+        response.length == 0u ||
+        response.length >= sizeof(response.path) ||
+        response.path[response.length] != '\0' ||
+        strnlen(response.path, sizeof(response.path)) != response.length)
+    {
+        errno = EIO;
         return NULL;
     }
     return strdup(response.path);

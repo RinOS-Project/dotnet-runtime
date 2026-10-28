@@ -1337,14 +1337,14 @@ static bool RinOSUserRangeValid(uintptr_t begin, uintptr_t end)
 {
     return begin >= RINOS_PAL_USER_ADDRESS_MIN &&
            begin < RINOS_PAL_USER_ADDRESS_LIMIT &&
-           end >= begin && end <= RINOS_PAL_USER_ADDRESS_LIMIT;
+           end > begin && end <= RINOS_PAL_USER_ADDRESS_LIMIT;
 }
 
 static bool RinOSStackRangeValid(uintptr_t begin, uintptr_t end)
 {
     return begin >= RINOS_PAL_USER_ADDRESS_MIN &&
            begin < RINOS_PAL_STACK_ADDRESS_LIMIT &&
-           end >= begin && end <= RINOS_PAL_STACK_ADDRESS_LIMIT;
+           end > begin && end <= RINOS_PAL_STACK_ADDRESS_LIMIT;
 }
 
 static bool RinOSPageRoundSize(size_t logicalSize, size_t* roundedSize)

@@ -72,7 +72,8 @@ namespace System.Net.Security
             AllowRsaPssPadding = sslClientAuthenticationOptions.AllowRsaPssPadding;
             AllowRsaPkcs1Padding = sslClientAuthenticationOptions.AllowRsaPkcs1Padding;
 
-            if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+            if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux() &&
+                !OperatingSystem.IsOSPlatform("RINOS"))
             {
                 if (!sslClientAuthenticationOptions.AllowRsaPssPadding || !sslClientAuthenticationOptions.AllowRsaPkcs1Padding)
                 {
@@ -142,7 +143,8 @@ namespace System.Net.Security
             AllowRsaPssPadding = sslServerAuthenticationOptions.AllowRsaPssPadding;
             AllowRsaPkcs1Padding = sslServerAuthenticationOptions.AllowRsaPkcs1Padding;
 
-            if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+            if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux() &&
+                !OperatingSystem.IsOSPlatform("RINOS"))
             {
                 if (!sslServerAuthenticationOptions.AllowRsaPssPadding || !sslServerAuthenticationOptions.AllowRsaPkcs1Padding)
                 {

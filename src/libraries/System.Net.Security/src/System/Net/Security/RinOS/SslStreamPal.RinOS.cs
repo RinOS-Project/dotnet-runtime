@@ -21,6 +21,8 @@ namespace System.Net.Security
         private const int MaxCustomTrustAnchors = 256;
         private const int MaxServerCertificateAuthoritiesBytes = 4098;
         private const long MaxTrustedUnixTime = 253402300799L;
+        // Must stay aligned with RINTLS_OPT_ALPN_HTTP11 in public-base/libs/rintls/rintls.h.
+        private const uint RinTlsOptionAlpnHttp11 = 0x0010u;
 
         internal const bool StartMutualAuthAsAnonymous = false;
         // RinTLS performs hostname, validity and trust-anchor verification before
@@ -46,7 +48,7 @@ namespace System.Net.Security
             ReadOnlySpan<byte> clientProtocols)
         {
             // A missing ALPN extension is valid when the peer did not select a
-            // protocol.  RinTLS itself advertises and validates HTTP/1.1 in
+            // protocol.  RinTLS conditionally advertises and validates HTTP/1.1 in
             // the ClientHello/ServerHello path; this PAL hook only performs
             // the managed SslStream protocol-list admission required by the
             // shared handshake state machine.
@@ -764,6 +766,10 @@ namespace System.Net.Security
 
             uint options = GetRinTlsOptions(
                 sslAuthenticationOptions.EnabledSslProtocols, isServer);
+            if (sslAuthenticationOptions.ApplicationProtocols is { Count: > 0 })
+            {
+                options |= RinTlsOptionAlpnHttp11;
+            }
             ulong trustedTime = GetTrustedUnixTime(chainPolicy);
             IntPtr raw = Interop.RinTls.Create(
                 isServer,

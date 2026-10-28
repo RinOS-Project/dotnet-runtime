@@ -150,8 +150,12 @@ namespace System.Security.Authentication.ExtendedProtection
             {
                 // ExtendedProtection is supported on all Windows versions supported by current .NET version.
                 // Linux is supported via GSSAPI (Managed implements only client-side).
+                // RinOS uses the product GSS provider; its ABI carries channel
+                // bindings through InitSecContextEx/AcceptSecContext.
                 // MacOS's Heimdal-derived GSS.framework does not reject a channel binding mismatch (the exchange completes successfully)
-                return OperatingSystem.IsWindows() || OperatingSystem.IsLinux();
+                return OperatingSystem.IsWindows() ||
+                    OperatingSystem.IsLinux() ||
+                    OperatingSystem.IsOSPlatform("RINOS");
             }
         }
     }

@@ -12,6 +12,7 @@
 #ifdef HOST_WINDOWS
 #include <windows.h>
 #else
+#include <errno.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -679,8 +680,7 @@ ep_rt_aot_file_close (ep_rt_file_handle_t file_handle)
     return ::CloseHandle (file_handle) != FALSE;
 #else
     int fd = (int)(ptrdiff_t)file_handle;
-    close (fd);
-    return true;
+    return close (fd) == 0;
 #endif
 }
 
@@ -695,21 +695,27 @@ ep_rt_aot_file_write (
     return ::WriteFile (file_handle, buffer, bytes_to_write, reinterpret_cast<LPDWORD>(bytes_written), NULL) != FALSE;
 #else
     int fd = (int)(ptrdiff_t)file_handle;
-    int ret;
-    do {
-        ret = write (fd, buffer, bytes_to_write);
-    } while (ret == -1 && errno == EINTR);
+    uint32_t total_written = 0;
 
-    if (ret == -1) {
-        if (bytes_written != NULL) {
-            *bytes_written = 0;
-        }
+    if (bytes_written != NULL)
+        *bytes_written = 0;
 
-        return false;
+    while (total_written < bytes_to_write) {
+        ssize_t ret;
+        do {
+            ret = write (fd,
+                         buffer + total_written,
+                         (size_t)(bytes_to_write - total_written));
+        } while (ret == -1 && errno == EINTR);
+
+        if (ret <= 0)
+            return false;
+
+        total_written += (uint32_t)ret;
     }
 
     if (bytes_written != NULL)
-        *bytes_written = ret;
+        *bytes_written = total_written;
 
     return true;
 #endif

@@ -379,6 +379,19 @@ namespace System.Security.Cryptography.X509Certificates
                 throw new InvalidOperationException(SR.Cryptography_Cert_AlreadyHasPrivateKey);
             }
 
+            // X509Certificate2.CopyWithPrivateKey must not attach an arbitrary
+            // private key to an otherwise unrelated certificate.  RinOS keeps
+            // the certificate as managed DER, so compare the canonical
+            // SubjectPublicKeyInfo emitted by the key with the certificate's
+            // parsed SubjectPublicKeyInfo before cloning the secret material.
+            byte[] keySubjectPublicKeyInfo = privateKey.ExportSubjectPublicKeyInfo();
+            if (!keySubjectPublicKeyInfo.AsSpan().SequenceEqual(
+                    _certificate.SubjectPublicKeyInfo))
+            {
+                throw new ArgumentException(
+                    SR.Cryptography_PrivateKey_DoesNotMatch, nameof(privateKey));
+            }
+
             AsymmetricAlgorithm clone = privateKey switch
             {
                 RSA rsa => CloneRsa(rsa),

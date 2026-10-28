@@ -16,6 +16,16 @@ internal static partial class Interop
             int certificateLength,
             byte[] issuerDer,
             int issuerLength);
+
+        [LibraryImport(Libraries.CryptoNative,
+            EntryPoint = "CryptoNative_RinOSX509LookupRevocation")]
+        internal static partial int RinOSX509LookupRevocation(
+            byte[] certificateDer,
+            int certificateLength,
+            byte[] issuerDer,
+            int issuerLength,
+            ulong trustedUnixTime,
+            out int status);
     }
 }
 

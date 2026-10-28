@@ -16,6 +16,9 @@ namespace System.Security.Cryptography.X509Certificates
     internal sealed class RinOSChainPal : IChainPal
     {
         private const int MaximumChainLength = 16;
+        private const ulong RevocationStatusGood = 1;
+        private const ulong RevocationStatusRevoked = 2;
+        private const long MaxTrustedUnixTime = 253402300799L;
         private readonly List<X509Certificate2> _ownedCertificates;
 
         private RinOSChainPal(
@@ -213,7 +216,8 @@ namespace System.Security.Cryptography.X509Certificates
                     chainCertificates,
                     elementStatuses,
                     revocationMode,
-                    revocationFlag);
+                    revocationFlag,
+                    verificationUtc);
                 ApplyPolicyStatuses(
                     chainCertificates,
                     elementStatuses,
@@ -323,13 +327,15 @@ namespace System.Security.Cryptography.X509Certificates
             List<X509Certificate2> chainCertificates,
             List<List<X509ChainStatus>> elementStatuses,
             X509RevocationMode revocationMode,
-            X509RevocationFlag revocationFlag)
+            X509RevocationFlag revocationFlag,
+            DateTime verificationTime)
         {
             if (revocationMode == X509RevocationMode.NoCheck)
             {
                 return;
             }
 
+            ulong trustedUnixTime = GetTrustedUnixTime(verificationTime);
             int lastIndex = chainCertificates.Count - 1;
             for (int index = 0; index < chainCertificates.Count; index++)
             {
@@ -346,12 +352,101 @@ namespace System.Security.Cryptography.X509Certificates
 
                 if (include)
                 {
-                    AddStatus(
-                        elementStatuses[index],
-                        X509ChainStatusFlags.RevocationStatusUnknown,
-                        "RinOS does not provide a revocation-data transport in this PAL.");
+                    X509Certificate2 issuer = index + 1 < chainCertificates.Count
+                        ? chainCertificates[index + 1]
+                        : chainCertificates[index];
+                    RevocationLookupResult result = LookupCachedRevocation(
+                        chainCertificates[index], issuer, trustedUnixTime);
+
+                    if (result == RevocationLookupResult.Revoked)
+                    {
+                        AddStatus(
+                            elementStatuses[index],
+                            X509ChainStatusFlags.Revoked,
+                            "The certificate is revoked according to the RinOS revocation cache.");
+                    }
+                    else if (result != RevocationLookupResult.Good)
+                    {
+                        AddStatus(
+                            elementStatuses[index],
+                            X509ChainStatusFlags.RevocationStatusUnknown,
+                            revocationMode == X509RevocationMode.Offline
+                                ? "The RinOS revocation cache has no current evidence for this certificate."
+                                : "RinOS has no current cached revocation evidence for this certificate.");
+                    }
                 }
             }
+        }
+
+        private static ulong GetTrustedUnixTime(DateTime verificationTime)
+        {
+            long unixTime;
+            try
+            {
+                unixTime = new DateTimeOffset(
+                    verificationTime.ToUniversalTime()).ToUnixTimeSeconds();
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return 0;
+            }
+
+            return unixTime > 0 && unixTime <= MaxTrustedUnixTime
+                ? (ulong)unixTime
+                : 0;
+        }
+
+        private static RevocationLookupResult LookupCachedRevocation(
+            X509Certificate2 certificate,
+            X509Certificate2 issuer,
+            ulong trustedUnixTime)
+        {
+            if (trustedUnixTime == 0)
+            {
+                return RevocationLookupResult.Unknown;
+            }
+
+            try
+            {
+                int result = Interop.Crypto.RinOSX509LookupRevocation(
+                    certificate.RawData,
+                    certificate.RawData.Length,
+                    issuer.RawData,
+                    issuer.RawData.Length,
+                    trustedUnixTime,
+                    out int status);
+
+                if (result != 0)
+                {
+                    return RevocationLookupResult.Unknown;
+                }
+
+                return (ulong)status switch
+                {
+                    RevocationStatusGood => RevocationLookupResult.Good,
+                    RevocationStatusRevoked => RevocationLookupResult.Revoked,
+                    _ => RevocationLookupResult.Unknown,
+                };
+            }
+            catch (DllNotFoundException)
+            {
+                return RevocationLookupResult.Unknown;
+            }
+            catch (EntryPointNotFoundException)
+            {
+                return RevocationLookupResult.Unknown;
+            }
+            catch (BadImageFormatException)
+            {
+                return RevocationLookupResult.Unknown;
+            }
+        }
+
+        private enum RevocationLookupResult
+        {
+            Unknown,
+            Good,
+            Revoked,
         }
 
         private static void ApplyPolicyStatuses(

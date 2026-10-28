@@ -224,9 +224,10 @@ namespace System.Security.Cryptography
                 _algorithm = RinOSAlgorithms.GetMacAlgorithm(hashAlgorithmId);
                 _hashSize = _algorithm switch
                 {
-                    RinOSAlgorithms.Sha256 => 32,
-                    RinOSAlgorithms.Sha384 => 48,
-                    _ => 64,
+                    RinOSAlgorithms.Sha256 or RinOSAlgorithms.Sha3_256 => 32,
+                    RinOSAlgorithms.Sha384 or RinOSAlgorithms.Sha3_384 => 48,
+                    RinOSAlgorithms.Sha512 or RinOSAlgorithms.Sha3_512 => 64,
+                    _ => throw new CryptographicException("RinOS HMAC algorithm size is invalid."),
                 };
                 fixed (byte* pKey = key)
                 {

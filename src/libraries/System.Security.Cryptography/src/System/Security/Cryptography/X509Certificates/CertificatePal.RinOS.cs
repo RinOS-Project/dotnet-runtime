@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Formats.Asn1;
 using System.IO;
 using System.Security.Cryptography;
+using System.Security.Cryptography.Asn1;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
 
@@ -380,13 +381,10 @@ namespace System.Security.Cryptography.X509Certificates
             }
 
             // X509Certificate2.CopyWithPrivateKey must not attach an arbitrary
-            // private key to an otherwise unrelated certificate.  RinOS keeps
-            // the certificate as managed DER, so compare the canonical
-            // SubjectPublicKeyInfo emitted by the key with the certificate's
-            // parsed SubjectPublicKeyInfo before cloning the secret material.
-            byte[] keySubjectPublicKeyInfo = privateKey.ExportSubjectPublicKeyInfo();
-            if (!keySubjectPublicKeyInfo.AsSpan().SequenceEqual(
-                    _certificate.SubjectPublicKeyInfo))
+            // private key to an otherwise unrelated certificate.  Match the
+            // public key using the same algorithm-family and parameter rules
+            // as the managed PKCS#12 matcher before cloning secret material.
+            if (!PrivateKeyMatchesCertificate(privateKey))
             {
                 throw new ArgumentException(
                     SR.Cryptography_PrivateKey_DoesNotMatch, nameof(privateKey));
@@ -410,6 +408,63 @@ namespace System.Security.Cryptography.X509Certificates
                 clone.Dispose();
                 throw;
             }
+        }
+
+        private bool PrivateKeyMatchesCertificate(AsymmetricAlgorithm privateKey)
+        {
+            byte[] keySubjectPublicKeyInfo = privateKey.ExportSubjectPublicKeyInfo();
+            SubjectPublicKeyInfoAsn keyInfo = SubjectPublicKeyInfoAsn.Decode(
+                keySubjectPublicKeyInfo, AsnEncodingRules.DER);
+
+            string certAlgorithm = _certificate.PublicKeyAlgorithm.AlgorithmId ?? string.Empty;
+            string keyAlgorithm = keyInfo.Algorithm.Algorithm;
+            bool algorithmMatches = certAlgorithm switch
+            {
+                // RSA and RSA-PSS use the same public modulus/exponent.
+                Oids.Rsa or Oids.RsaPss => keyAlgorithm is Oids.Rsa or Oids.RsaPss,
+
+                // id-ecPublicKey and id-ecDH use the same EC public point.
+                Oids.EcPublicKey or Oids.EcDiffieHellman =>
+                    keyAlgorithm is Oids.EcPublicKey or Oids.EcDiffieHellman,
+
+                _ => string.Equals(certAlgorithm, keyAlgorithm, StringComparison.Ordinal),
+            };
+
+            if (!algorithmMatches ||
+                !keyInfo.SubjectPublicKey.Span.SequenceEqual(_certificate.PublicKey))
+            {
+                return false;
+            }
+
+            byte[]? certKeyParameters = _certificate.KeyAlgorithmParameters;
+
+            switch (certAlgorithm)
+            {
+                // Accept either DER-NULL or missing for RSA algorithm parameters.
+                case Oids.Rsa:
+                case Oids.RsaPss:
+                    return
+                        keyInfo.Algorithm.HasNullEquivalentParameters() &&
+                        AlgorithmIdentifierAsn.RepresentsNull(certKeyParameters);
+
+                // EC parameters identify the named curve and must match exactly.
+                case Oids.EcPublicKey:
+                case Oids.EcDiffieHellman:
+                    return
+                        keyInfo.Algorithm.Parameters.HasValue &&
+                        certKeyParameters is not null &&
+                        keyInfo.Algorithm.Parameters.Value.Span.SequenceEqual(certKeyParameters);
+            }
+
+            // For other algorithms, treat absent and empty parameters as equivalent,
+            // but compare any encoded parameters exactly.
+            if (!keyInfo.Algorithm.Parameters.HasValue)
+            {
+                return (certKeyParameters?.Length ?? 0) == 0;
+            }
+
+            return certKeyParameters is not null &&
+                keyInfo.Algorithm.Parameters.Value.Span.SequenceEqual(certKeyParameters);
         }
 
         private ICertificatePal ThrowAlgorithmUnsupported(AsymmetricAlgorithm privateKey)

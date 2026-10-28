@@ -452,7 +452,7 @@ PALEXPORT int32_t CryptoNative_RinOSKmacCurrent(const void* handle, uint8_t* des
     const rinos_kmac_context* context = (const rinos_kmac_context*)handle;
     if (!rinos_kmac_valid(context) || destination_length < 0 ||
         (destination == NULL && destination_length != 0)) return 0;
-    return sha3_kmac_finalize((sha3_ctx*)&context->state, destination,
+    return sha3_kmac_finalize(&context->state, destination,
                               (rin_size_t)destination_length, (int)context->xof);
 }
 

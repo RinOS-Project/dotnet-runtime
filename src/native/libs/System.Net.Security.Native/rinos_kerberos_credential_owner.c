@@ -80,6 +80,8 @@ static void owner_unlock(RinOsKerberosOwnerContext* context)
 
 static int owner_valid(const RinOsKerberosOwnerContext* context)
 {
+    const uint32_t capabilities =
+        context == NULL ? 0u : context->abi.capability_mask;
     /* The initializer publishes the ABI fields with a release store.  Load
      * the completion state with acquire before reading those fields; a
      * volatile read here is not a C11 synchronization operation and would
@@ -100,7 +102,22 @@ static int owner_valid(const RinOsKerberosOwnerContext* context)
                sizeof(context->operation_abi) &&
            context->operation_abi.version ==
                RIN_KERBEROS_OPERATION_OWNER_ABI_VERSION &&
-           context->operation_abi.context == (const void*)context;
+           context->operation_abi.context == (const void*)context &&
+           context->abi.reserved0 == 0u &&
+           context->abi.reserved1 == 0u &&
+           (capabilities &
+            ~RIN_KERBEROS_CREDENTIAL_OWNER_KNOWN_CAPABILITIES) == 0u &&
+           capabilities != 0u &&
+           context->abi.release_credential != NULL &&
+           context->operation_abi.reserved0 == 0u &&
+           context->operation_abi.operation != NULL &&
+           (((capabilities &
+              RIN_KERBEROS_CREDENTIAL_OWNER_CAP_SESSION_INITIATOR) == 0u) ||
+            (context->abi.acquire_session_initiator != NULL &&
+             context->abi.get_session_principal != NULL)) &&
+           (((capabilities &
+              RIN_KERBEROS_CREDENTIAL_OWNER_CAP_ACCEPTOR_KEYTAB) == 0u) ||
+            context->abi.acquire_acceptor_keytab != NULL);
 }
 
 static void owner_minor(uint32_t* minor_status, uint32_t value)
@@ -447,7 +464,8 @@ const RinKerberosCredentialOwnerV1* rin_kerberos_credential_owner_get_v1(void)
     /* Capability discovery must not manufacture a credential, but it should
      * avoid advertising a dead keyring service as a usable owner. Actual
      * ccache/keytab presence remains checked by the acquire callback. */
-    if (!owner_initialize() || rin_keyring_client_status() != RIN_KEYRING_OK)
+    if (!owner_initialize() || !owner_valid(&g_owner) ||
+        rin_keyring_client_status() != RIN_KEYRING_OK)
         return NULL;
     return &g_owner.abi;
 }
@@ -455,7 +473,8 @@ const RinKerberosCredentialOwnerV1* rin_kerberos_credential_owner_get_v1(void)
 const RinKerberosOperationOwnerV1*
 rin_kerberos_operation_owner_get_v1(void)
 {
-    if (!owner_initialize() || rin_keyring_client_status() != RIN_KEYRING_OK)
+    if (!owner_initialize() || !owner_valid(&g_owner) ||
+        rin_keyring_client_status() != RIN_KEYRING_OK)
         return NULL;
     return &g_owner.operation_abi;
 }

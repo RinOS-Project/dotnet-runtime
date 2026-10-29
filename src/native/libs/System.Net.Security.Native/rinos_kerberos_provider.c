@@ -34,6 +34,10 @@
 #define RINOS_KERBEROS_CONTEXT_NEGOTIATING UINT32_C(1)
 #define RINOS_KERBEROS_CONTEXT_ESTABLISHED UINT32_C(2)
 #define RINOS_KERBEROS_MAX_MECH_LIST_SIZE UINT32_C(4096)
+/* Registry locks are process-local boundary guards, not a scheduler.  A
+ * stuck owner must make the provider unavailable instead of spinning through
+ * an unbounded loop while a managed callback is waiting for a return. */
+#define RINOS_KERBEROS_PROVIDER_LOCK_ATTEMPTS UINT32_C(1024)
 #if defined(RINOS_KERBEROS_OWNER_LINKED)
 extern const RinKerberosCredentialOwnerV1*
 rin_kerberos_credential_owner_get_v1(void);
@@ -145,11 +149,21 @@ static RinOsKerberosProviderContext* g_provider_contexts;
  * acquired only by the callback wrappers below and never recursively. */
 static volatile unsigned int g_provider_callback_lock;
 
-static void provider_callback_lock(void)
+static int provider_try_lock(volatile unsigned int* lock)
 {
-    while (__atomic_exchange_n(
-               &g_provider_callback_lock, 1u, __ATOMIC_ACQUIRE) != 0u) {
+    uint32_t attempt;
+    for (attempt = 0u;
+         attempt < RINOS_KERBEROS_PROVIDER_LOCK_ATTEMPTS;
+         ++attempt) {
+        if (__atomic_exchange_n(lock, 1u, __ATOMIC_ACQUIRE) == 0u)
+            return 1;
     }
+    return 0;
+}
+
+static int provider_callback_lock(void)
+{
+    return provider_try_lock(&g_provider_callback_lock);
 }
 
 static void provider_callback_unlock(void)
@@ -164,11 +178,9 @@ static void provider_callback_unlock(void)
 static volatile unsigned int g_provider_name_lock;
 static RinOsKerberosProviderName* g_provider_names;
 
-static void provider_name_lock(void)
+static int provider_name_lock(void)
 {
-    while (__atomic_exchange_n(
-               &g_provider_name_lock, 1u, __ATOMIC_ACQUIRE) != 0u) {
-    }
+    return provider_try_lock(&g_provider_name_lock);
 }
 
 static void provider_name_unlock(void)
@@ -176,12 +188,13 @@ static void provider_name_unlock(void)
     __atomic_store_n(&g_provider_name_lock, 0u, __ATOMIC_RELEASE);
 }
 
-static void provider_name_register(RinOsKerberosProviderName* name)
+static int provider_name_register(RinOsKerberosProviderName* name)
 {
-    provider_name_lock();
+    if (!provider_name_lock()) return 0;
     name->next = g_provider_names;
     g_provider_names = name;
     provider_name_unlock();
+    return 1;
 }
 
 static int provider_name_snapshot(
@@ -190,7 +203,7 @@ static int provider_name_snapshot(
     RinOsKerberosProviderName* current;
     uint32_t size;
     if (pointer == NULL || size_out == NULL) return 0;
-    provider_name_lock();
+    if (!provider_name_lock()) return 0;
     current = g_provider_names;
     while (current != NULL && current != pointer)
         current = current->next;
@@ -215,7 +228,7 @@ static RinOsKerberosProviderName* provider_name_take(const void* pointer)
     RinOsKerberosProviderName* previous = NULL;
     RinOsKerberosProviderName* current;
     if (pointer == NULL) return NULL;
-    provider_name_lock();
+    if (!provider_name_lock()) return NULL;
     current = g_provider_names;
     while (current != NULL && current != pointer) {
         previous = current;
@@ -236,11 +249,9 @@ static RinOsKerberosProviderName* provider_name_take(const void* pointer)
     return current;
 }
 
-static void provider_buffer_lock(void)
+static int provider_buffer_lock(void)
 {
-    while (__atomic_exchange_n(
-               &g_provider_buffer_lock, 1u, __ATOMIC_ACQUIRE) != 0u) {
-    }
+    return provider_try_lock(&g_provider_buffer_lock);
 }
 
 static void provider_buffer_unlock(void)
@@ -256,7 +267,11 @@ static uint8_t* provider_buffer_alloc(size_t capacity)
         1u, sizeof(*buffer) + capacity);
     if (buffer == NULL) return NULL;
     buffer->capacity = capacity;
-    provider_buffer_lock();
+    if (!provider_buffer_lock()) {
+        provider_zero(buffer, sizeof(*buffer) + capacity);
+        free(buffer);
+        return NULL;
+    }
     buffer->next = g_provider_buffers;
     g_provider_buffers = buffer;
     provider_buffer_unlock();
@@ -269,7 +284,7 @@ static void provider_buffer_dispose(void* buffer)
     RinOsKerberosProviderBuffer* current;
     if (buffer == NULL) return;
 
-    provider_buffer_lock();
+    if (!provider_buffer_lock()) return;
     current = g_provider_buffers;
     while (current != NULL && current->data != (uint8_t*)buffer) {
         previous = current;
@@ -291,11 +306,9 @@ static void provider_buffer_dispose(void* buffer)
     free(current);
 }
 
-static void provider_credential_lock(void)
+static int provider_credential_lock(void)
 {
-    while (__atomic_exchange_n(
-               &g_provider_credential_lock, 1u, __ATOMIC_ACQUIRE) != 0u) {
-    }
+    return provider_try_lock(&g_provider_credential_lock);
 }
 
 static void provider_credential_unlock(void)
@@ -303,20 +316,21 @@ static void provider_credential_unlock(void)
     __atomic_store_n(&g_provider_credential_lock, 0u, __ATOMIC_RELEASE);
 }
 
-static void provider_credential_register(
+static int provider_credential_register(
     RinOsKerberosProviderCredential* credential)
 {
-    provider_credential_lock();
+    if (!provider_credential_lock()) return 0;
     credential->next_live = g_provider_credentials;
     g_provider_credentials = credential;
     provider_credential_unlock();
+    return 1;
 }
 
 static int provider_credential_is_live(const void* pointer)
 {
     RinOsKerberosProviderCredential* current;
     if (pointer == NULL) return 0;
-    provider_credential_lock();
+    if (!provider_credential_lock()) return 0;
     current = g_provider_credentials;
     while (current != NULL && current != pointer)
         current = current->next_live;
@@ -324,13 +338,13 @@ static int provider_credential_is_live(const void* pointer)
     return current != NULL;
 }
 
-static void provider_credential_unregister(
+static int provider_credential_unregister(
     RinOsKerberosProviderCredential* credential)
 {
     RinOsKerberosProviderCredential* previous = NULL;
     RinOsKerberosProviderCredential* current;
-    if (credential == NULL) return;
-    provider_credential_lock();
+    if (credential == NULL) return 0;
+    if (!provider_credential_lock()) return 0;
     current = g_provider_credentials;
     while (current != NULL && current != credential) {
         previous = current;
@@ -344,13 +358,12 @@ static void provider_credential_unregister(
         current->next_live = NULL;
     }
     provider_credential_unlock();
+    return current != NULL;
 }
 
-static void provider_context_lock(void)
+static int provider_context_lock(void)
 {
-    while (__atomic_exchange_n(
-               &g_provider_context_lock, 1u, __ATOMIC_ACQUIRE) != 0u) {
-    }
+    return provider_try_lock(&g_provider_context_lock);
 }
 
 static void provider_context_unlock(void)
@@ -358,19 +371,20 @@ static void provider_context_unlock(void)
     __atomic_store_n(&g_provider_context_lock, 0u, __ATOMIC_RELEASE);
 }
 
-static void provider_context_register(RinOsKerberosProviderContext* context)
+static int provider_context_register(RinOsKerberosProviderContext* context)
 {
-    provider_context_lock();
+    if (!provider_context_lock()) return 0;
     context->next_live = g_provider_contexts;
     g_provider_contexts = context;
     provider_context_unlock();
+    return 1;
 }
 
 static int provider_context_is_live(const void* pointer)
 {
     RinOsKerberosProviderContext* current;
     if (pointer == NULL) return 0;
-    provider_context_lock();
+    if (!provider_context_lock()) return 0;
     current = g_provider_contexts;
     while (current != NULL && current != pointer)
         current = current->next_live;
@@ -378,12 +392,12 @@ static int provider_context_is_live(const void* pointer)
     return current != NULL;
 }
 
-static void provider_context_unregister(RinOsKerberosProviderContext* context)
+static int provider_context_unregister(RinOsKerberosProviderContext* context)
 {
     RinOsKerberosProviderContext* previous = NULL;
     RinOsKerberosProviderContext* current;
-    if (context == NULL) return;
-    provider_context_lock();
+    if (context == NULL) return 0;
+    if (!provider_context_lock()) return 0;
     current = g_provider_contexts;
     while (current != NULL && current != context) {
         previous = current;
@@ -397,6 +411,7 @@ static void provider_context_unregister(RinOsKerberosProviderContext* context)
         current->next_live = NULL;
     }
     provider_context_unlock();
+    return current != NULL;
 }
 
 static uint32_t provider_unavailable(uint32_t* minor_status)
@@ -1699,21 +1714,23 @@ static int provider_context_valid(
            context->token_size <= RIN_KERBEROS_OPERATION_MAX_CONTEXT_TOKEN_SIZE;
 }
 
-static void provider_credential_dispose(
+static int provider_credential_dispose(
     RinOsKerberosProviderCredential* credential)
 {
-    if (credential == NULL) return;
-    provider_credential_unregister(credential);
+    if (credential == NULL) return 1;
+    if (!provider_credential_unregister(credential)) return 0;
     provider_zero(credential, sizeof(*credential));
     free(credential);
+    return 1;
 }
 
-static void provider_context_dispose(RinOsKerberosProviderContext* context)
+static int provider_context_dispose(RinOsKerberosProviderContext* context)
 {
-    if (context == NULL) return;
-    provider_context_unregister(context);
+    if (context == NULL) return 1;
+    if (!provider_context_unregister(context)) return 0;
     provider_zero(context, sizeof(*context));
     free(context);
+    return 1;
 }
 
 /* Keep the opaque owner credential alive while a provider context can still
@@ -1820,7 +1837,11 @@ static uint32_t provider_alloc_name(uint32_t* minor_status, char* input,
     name->magic = RINOS_KERBEROS_NAME_MAGIC;
     name->size = input_length;
     memcpy(name->bytes, input, input_length);
-    provider_name_register(name);
+    if (!provider_name_register(name)) {
+        provider_zero(name, sizeof(*name));
+        free(name);
+        return provider_unavailable(minor_status);
+    }
     *output = name;
     if (minor_status != NULL) *minor_status = 0u;
     return RIN_AUTH_PROVIDER_OK;
@@ -1911,7 +1932,11 @@ static uint32_t provider_acquire_acceptor_cred_impl(
     credential = (RinOsKerberosProviderCredential*)calloc(
         1u, sizeof(*credential));
     if (credential == NULL) return provider_unavailable(minor_status);
-    provider_credential_register(credential);
+    if (!provider_credential_register(credential)) {
+        provider_zero(credential, sizeof(*credential));
+        free(credential);
+        return provider_unavailable(minor_status);
+    }
     status = owner->acquire_acceptor_keytab(
         owner->context, minor_status, &owner_credential);
     if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK) {
@@ -1942,7 +1967,10 @@ static uint32_t provider_acquire_acceptor_cred(
     void* context, uint32_t* minor_status, void** output)
 {
     uint32_t status;
-    provider_callback_lock();
+    if (!provider_callback_lock()) {
+        if (output != NULL) *output = NULL;
+        return provider_unavailable(minor_status);
+    }
     status = provider_acquire_acceptor_cred_impl(context, minor_status, output);
     provider_callback_unlock();
     return status;
@@ -1968,7 +1996,11 @@ static uint32_t provider_initiate_cred_spnego_impl(
     credential = (RinOsKerberosProviderCredential*)calloc(
         1u, sizeof(*credential));
     if (credential == NULL) return provider_unavailable(minor_status);
-    provider_credential_register(credential);
+    if (!provider_credential_register(credential)) {
+        provider_zero(credential, sizeof(*credential));
+        free(credential);
+        return provider_unavailable(minor_status);
+    }
     status = owner->acquire_session_initiator(
         owner->context, minor_status, NULL, &owner_credential);
     if (status != RIN_KERBEROS_CREDENTIAL_OWNER_OK) {
@@ -2030,7 +2062,10 @@ static uint32_t provider_initiate_cred_spnego(
     void* context, uint32_t* minor_status, void* desired_name, void** output)
 {
     uint32_t status;
-    provider_callback_lock();
+    if (!provider_callback_lock()) {
+        if (output != NULL) *output = NULL;
+        return provider_unavailable(minor_status);
+    }
     status = provider_initiate_cred_spnego_impl(
         context, minor_status, desired_name, output);
     provider_callback_unlock();
@@ -2074,8 +2109,8 @@ static uint32_t provider_release_cred_impl(void* context, uint32_t* minor_status
              * longer retryable; retain it only while the owner still exposes
              * a handle. */
             if (credential->owner_credential == NULL) {
-                provider_credential_dispose(credential);
-                *input = NULL;
+                if (provider_credential_dispose(credential))
+                    *input = NULL;
             }
             return provider_status_from_owner(status, minor_status);
         }
@@ -2084,7 +2119,8 @@ static uint32_t provider_release_cred_impl(void* context, uint32_t* minor_status
                 RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE,
                 minor_status);
     }
-    provider_credential_dispose(credential);
+    if (!provider_credential_dispose(credential))
+        return provider_unavailable(minor_status);
     *input = NULL;
     return pending_status != RIN_AUTH_PROVIDER_OK
                ? pending_status
@@ -2096,7 +2132,8 @@ static uint32_t provider_release_cred(void* context, uint32_t* minor_status,
                                       void** input)
 {
     uint32_t status;
-    provider_callback_lock();
+    if (!provider_callback_lock())
+        return provider_unavailable(minor_status);
     status = provider_release_cred_impl(context, minor_status, input);
     provider_callback_unlock();
     return status;
@@ -2665,7 +2702,11 @@ static uint32_t provider_init_sec_context_impl(
             1u, sizeof(*provider_context));
         if (provider_context == NULL)
             return provider_unavailable(minor_status);
-        provider_context_register(provider_context);
+        if (!provider_context_register(provider_context)) {
+            provider_zero(provider_context, sizeof(*provider_context));
+            free(provider_context);
+            return provider_unavailable(minor_status);
+        }
         provider_context->magic = RINOS_KERBEROS_CONTEXT_MAGIC;
         provider_context->kind = RIN_KERBEROS_OPERATION_CREDENTIAL_INITIATOR;
         provider_context->state = RINOS_KERBEROS_CONTEXT_NEGOTIATING;
@@ -2929,7 +2970,8 @@ static uint32_t provider_init_sec_context(
     int32_t* ntlm_used)
 {
     uint32_t status;
-    provider_callback_lock();
+    if (!provider_callback_lock())
+        return provider_unavailable(minor_status);
     status = provider_init_sec_context_impl(
         context, minor_status, claimant_cred, security_context, package_type,
         target_name, requested_flags, input, input_length, output,
@@ -3008,7 +3050,11 @@ static uint32_t provider_init_sec_context_ex_impl(
             1u, sizeof(*provider_context));
         if (provider_context == NULL)
             return provider_unavailable(minor_status);
-        provider_context_register(provider_context);
+        if (!provider_context_register(provider_context)) {
+            provider_zero(provider_context, sizeof(*provider_context));
+            free(provider_context);
+            return provider_unavailable(minor_status);
+        }
         provider_context->magic = RINOS_KERBEROS_CONTEXT_MAGIC;
         provider_context->kind = RIN_KERBEROS_OPERATION_CREDENTIAL_INITIATOR;
         provider_context->state = RINOS_KERBEROS_CONTEXT_NEGOTIATING;
@@ -3262,7 +3308,8 @@ static uint32_t provider_init_sec_context_ex(
     uint32_t* return_flags, int32_t* ntlm_used)
 {
     uint32_t status;
-    provider_callback_lock();
+    if (!provider_callback_lock())
+        return provider_unavailable(minor_status);
     status = provider_init_sec_context_ex_impl(
         context, minor_status, claimant_cred, security_context, package_type,
         channel_binding, channel_binding_size, target_name, requested_flags,
@@ -3323,7 +3370,11 @@ static uint32_t provider_accept_sec_context_impl(
             1u, sizeof(*provider_context));
         if (provider_context == NULL)
             return provider_unavailable(minor_status);
-        provider_context_register(provider_context);
+        if (!provider_context_register(provider_context)) {
+            provider_zero(provider_context, sizeof(*provider_context));
+            free(provider_context);
+            return provider_unavailable(minor_status);
+        }
         provider_context->magic = RINOS_KERBEROS_CONTEXT_MAGIC;
         provider_context->kind = RIN_KERBEROS_OPERATION_CREDENTIAL_ACCEPTOR;
         provider_context->state = RINOS_KERBEROS_CONTEXT_NEGOTIATING;
@@ -3540,7 +3591,8 @@ static uint32_t provider_accept_sec_context(
     uint32_t* return_flags, int32_t* ntlm_used)
 {
     uint32_t status;
-    provider_callback_lock();
+    if (!provider_callback_lock())
+        return provider_unavailable(minor_status);
     status = provider_accept_sec_context_impl(
         context, minor_status, acceptor_cred, security_context, channel_binding,
         channel_binding_size, input, input_length, output, return_flags,
@@ -3556,6 +3608,7 @@ static uint32_t provider_delete_sec_context_impl(
     RinOsKerberosProviderCredential* credential;
     RinKerberosOperationRequestV1 request = {0};
     uint32_t status;
+    int context_ref_held;
     (void)context;
     if (security_context == NULL || *security_context == NULL)
         return provider_unavailable(minor_status);
@@ -3582,9 +3635,15 @@ static uint32_t provider_delete_sec_context_impl(
          * expiry.  Other failures remain retryable because their remote
          * context ownership is not established to have ended. */
         if (status == RIN_AUTH_PROVIDER_CONTEXT_EXPIRED) {
+            context_ref_held = provider_context->credential_ref_held != 0u;
             provider_context_release(provider_context);
-            provider_context_dispose(provider_context);
-            *security_context = NULL;
+            if (provider_context_dispose(provider_context)) {
+                *security_context = NULL;
+            } else {
+                if (context_ref_held)
+                    (void)provider_context_retain(credential, provider_context);
+                return provider_unavailable(minor_status);
+            }
         }
         /* The owner still owns the remote context when cleanup fails.  Keep
          * the local handle alive so the caller can retry after a transient
@@ -3596,8 +3655,13 @@ static uint32_t provider_delete_sec_context_impl(
          * error before the next cleanup attempt. */
         return status;
     }
+    context_ref_held = provider_context->credential_ref_held != 0u;
     provider_context_release(provider_context);
-    provider_context_dispose(provider_context);
+    if (!provider_context_dispose(provider_context)) {
+        if (context_ref_held)
+            (void)provider_context_retain(credential, provider_context);
+        return provider_unavailable(minor_status);
+    }
     *security_context = NULL;
     if (minor_status != NULL) *minor_status = 0u;
     return status;
@@ -3607,7 +3671,8 @@ static uint32_t provider_delete_sec_context(
     void* context, uint32_t* minor_status, void** security_context)
 {
     uint32_t status;
-    provider_callback_lock();
+    if (!provider_callback_lock())
+        return provider_unavailable(minor_status);
     status = provider_delete_sec_context_impl(
         context, minor_status, security_context);
     provider_callback_unlock();
@@ -3702,7 +3767,8 @@ static uint32_t provider_wrap(
     RinAuthProviderBufferV1* output)
 {
     uint32_t status;
-    provider_callback_lock();
+    if (!provider_callback_lock())
+        return provider_unavailable(minor_status);
     status = provider_wrap_impl(
         context, minor_status, security_context, encrypt, input, input_length,
         output);
@@ -3727,7 +3793,8 @@ static uint32_t provider_unwrap(
     RinAuthProviderBufferV1* output)
 {
     uint32_t status;
-    provider_callback_lock();
+    if (!provider_callback_lock())
+        return provider_unavailable(minor_status);
     status = provider_unwrap_impl(
         context, minor_status, security_context, encrypt, input, input_length,
         output);
@@ -3764,7 +3831,8 @@ static uint32_t provider_get_mic(
     uint8_t* input, int32_t input_length, RinAuthProviderBufferV1* output)
 {
     uint32_t status;
-    provider_callback_lock();
+    if (!provider_callback_lock())
+        return provider_unavailable(minor_status);
     status = provider_get_mic_impl(
         context, minor_status, security_context, input, input_length, output);
     provider_callback_unlock();
@@ -3856,7 +3924,8 @@ static uint32_t provider_verify_mic(
     uint8_t* input, int32_t input_length, uint8_t* token, int32_t token_length)
 {
     uint32_t status;
-    provider_callback_lock();
+    if (!provider_callback_lock())
+        return provider_unavailable(minor_status);
     status = provider_verify_mic_impl(
         context, minor_status, security_context, input, input_length, token,
         token_length);
@@ -4249,7 +4318,8 @@ static uint32_t provider_get_user(
     RinAuthProviderBufferV1* output)
 {
     uint32_t status;
-    provider_callback_lock();
+    if (!provider_callback_lock())
+        return provider_unavailable(minor_status);
     status = provider_get_user_impl(
         context, minor_status, security_context, output);
     provider_callback_unlock();

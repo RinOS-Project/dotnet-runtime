@@ -402,6 +402,20 @@ static uint32_t owner_operation(
         input_size, output, output_capacity, output_size, next_context_token,
         next_context_capacity, next_context_token_size, generation,
         provider_result, return_flags);
+    if (result == RIN_KEYRING_OK &&
+        (*output_size > output_capacity ||
+         *next_context_token_size > next_context_capacity)) {
+        if (output != NULL && output_capacity != 0u)
+            owner_zero(output, output_capacity);
+        if (next_context_token != NULL && next_context_capacity != 0u)
+            owner_zero(next_context_token, next_context_capacity);
+        *output_size = 0u;
+        *next_context_token_size = 0u;
+        *generation = 0u;
+        *provider_result = 0u;
+        *return_flags = 0u;
+        result = RIN_KEYRING_TOO_LARGE;
+    }
     /* A successful IPC response must still belong to the exact generation
      * acquired for this slot.  DELETE_SEC_CONTEXT is a destruction
      * acknowledgement and deliberately returns generation zero; every other

@@ -1274,6 +1274,11 @@ FCDECL0(int, RhpGetThunkSize);
 FCDECL0(int, RhpGetThunkBlockSize);
 
 static void* g_pThunksTemplateAddress = NULL;
+// The image-owned template remains mapped for the module lifetime, but its
+// managed mapping lease is single-use. Keep that lease state separate from
+// the address so a stale/double release cannot be accepted merely because
+// the image address is still valid.
+static bool g_pThunksTemplateLeaseReleased = false;
 
 /* Dynamic mappings copied from the image template have no reversible PAL
  * ownership information.  Keep exact allocations in a native registry so
@@ -1559,6 +1564,7 @@ EXTERN_C HRESULT QCALLTYPE RhAllocateThunksMapping(void** ppThunksSection)
         // Publish image ownership only after the call-target contract has
         // succeeded.  A failed first attempt remains retryable.
         g_pThunksTemplateAddress = pThunkMap;
+        g_pThunksTemplateLeaseReleased = false;
     }
     else
     {
@@ -1619,6 +1625,12 @@ EXTERN_C HRESULT QCALLTYPE RhFreeThunksMapping(void* pThunksSection)
     // allocation failure cleanup.
     if (pThunksSection == g_pThunksTemplateAddress)
     {
+        if (g_pThunksTemplateLeaseReleased)
+        {
+            UnlockTemplateThunkMappingOwners();
+            return E_INVALIDARG;
+        }
+        g_pThunksTemplateLeaseReleased = true;
         UnlockTemplateThunkMappingOwners();
         return S_OK;
     }

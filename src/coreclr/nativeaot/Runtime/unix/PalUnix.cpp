@@ -2144,7 +2144,7 @@ int32_t PalGetModuleFileName(_Out_ const TCHAR** pModuleNameOut, HANDLE moduleBa
     return strlen(wasmModuleName);
 #else // HOST_WASM
     Dl_info dl;
-    if (dladdr(moduleBase, &dl) == 0)
+    if (dladdr(moduleBase, &dl) == 0 || dl.dli_fname == NULL || dl.dli_fname[0] == '\0')
     {
         return 0;
     }

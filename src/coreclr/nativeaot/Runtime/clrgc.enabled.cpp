@@ -137,7 +137,13 @@ HRESULT GCHeapUtilities::InitializeStandaloneGC()
 
         HANDLE executableModule = PalGetModuleHandleFromPointer((void*)&PalGetModuleHandleFromPointer);
         const TCHAR * executableModulePath = NULL;
-        PalGetModuleFileName(&executableModulePath, executableModule);
+        int32_t executableModulePathLength = PalGetModuleFileName(&executableModulePath, executableModule);
+        if (executableModulePathLength <= 0 || executableModulePath == NULL || executableModulePath[0] == '\0')
+        {
+            LOG((LF_GC, LL_FATALERROR, "GC initialization failed to resolve the executable module path.\n"));
+            return E_FAIL;
+        }
+
         char* convertedExecutableModulePath = PalCopyTCharAsChar(executableModulePath);
         if (!convertedExecutableModulePath)
         {

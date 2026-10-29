@@ -2130,6 +2130,13 @@ bool PalGetMaximumStackBounds(_Out_ void** ppStackLowOut, _Out_ void** ppStackHi
 //
 int32_t PalGetModuleFileName(_Out_ const TCHAR** pModuleNameOut, HANDLE moduleBase)
 {
+    if (pModuleNameOut == NULL)
+    {
+        return 0;
+    }
+
+    *pModuleNameOut = NULL;
+
 #if defined(HOST_WASM)
     // Emscripten's implementation of dladdr corrupts memory and doesn't have the real name, so make up a name instead
     const TCHAR* wasmModuleName = "WebAssemblyModule";
@@ -2139,7 +2146,6 @@ int32_t PalGetModuleFileName(_Out_ const TCHAR** pModuleNameOut, HANDLE moduleBa
     Dl_info dl;
     if (dladdr(moduleBase, &dl) == 0)
     {
-        *pModuleNameOut = NULL;
         return 0;
     }
 

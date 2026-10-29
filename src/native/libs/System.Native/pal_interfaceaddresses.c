@@ -839,12 +839,21 @@ int32_t SystemNative_GetRinOSNetworkInterfaceStatistics(
 
     memset(info, 0, sizeof(*info));
 #if defined(TARGET_RINOS)
+    RinNetPrimaryInfo primary = {0};
+    RinNetPrimaryInfo currentPrimary = {0};
     RinNetInterfaceStatisticsV1 statistics = {0};
-    if (rin_net_get_interface_statistics(&statistics) != 0 ||
+    if (rin_net_get_primary_info(&primary) != 0 ||
+        primary.ifname[0] == '\0' || primary.device_generation == 0u ||
+        if_nametoindex(primary.ifname) != interfaceIndex ||
+        rin_net_get_interface_statistics(&statistics) != 0 ||
         statistics.version != RIN_NET_STATISTICS_VERSION ||
         statistics.struct_size != sizeof(statistics) ||
         statistics.device_generation == 0u ||
-        interfaceIndex != RIN_NET_PRIMARY_INTERFACE_INDEX)
+        statistics.device_generation != primary.device_generation ||
+        rin_net_get_primary_info(&currentPrimary) != 0 ||
+        currentPrimary.device_generation != primary.device_generation ||
+        strcmp(currentPrimary.ifname, primary.ifname) != 0 ||
+        if_nametoindex(currentPrimary.ifname) != interfaceIndex)
     {
         errno = ENOTSUP;
         return -1;

@@ -1455,36 +1455,51 @@ static int provider_kerberos_error_der(const uint8_t* bytes, uint32_t size,
         return 0;
     *error_code_out = value;
 
-    /* Validate the remaining optional KRB-ERROR fields in ASN.1 order. They
-     * are advisory only; no peer-supplied name, text, or data drives policy. */
+    /* RFC 4120 makes crealm [7] and cname [8] optional, but realm [9] and
+     * sname [10] are mandatory service identity fields.  A peer error that
+     * omits the service identity is not a standards-shaped KRB-ERROR and
+     * must not be promoted into a preserved GSS mechanism status. */
+    if (sequence.offset < sequence.size &&
+        sequence.bytes[sequence.offset] == 0xa7u) {
+        if (!provider_der_read_wrapped_value(&sequence, 0xa7u, 0x1bu,
+                                             &time_bytes, &time_size) ||
+            time_size == 0u)
+            return 0;
+    }
+    if (sequence.offset < sequence.size &&
+        sequence.bytes[sequence.offset] == 0xa8u) {
+        if (!provider_der_read_wrapped_value(&sequence, 0xa8u, 0x30u,
+                                             &time_bytes, &time_size) ||
+            !provider_kerberos_principal_name_valid(time_bytes, time_size))
+            return 0;
+    }
+    if (!provider_der_read_wrapped_value(&sequence, 0xa9u, 0x1bu,
+                                         &time_bytes, &time_size) ||
+        time_size == 0u ||
+        !provider_der_read_wrapped_value(&sequence, 0xaau, 0x30u,
+                                         &app_bytes, &app_size) ||
+        !provider_kerberos_principal_name_valid(app_bytes, app_size))
+        return 0;
+
+    /* Validate the remaining optional e-text/e-data fields in ASN.1 order.
+     * They are advisory only; no peer-supplied text or data drives policy. */
+    previous_optional_tag = 0xaau;
     while (sequence.offset < sequence.size) {
         const uint8_t tag = sequence.bytes[sequence.offset];
         uint8_t inner_tag;
         const uint8_t* ignored_bytes;
         uint32_t ignored_size;
-        if (tag < 0xa7u || tag > 0xacu || tag <= previous_optional_tag)
+        if (tag < 0xabu || tag > 0xacu || tag <= previous_optional_tag)
             return 0;
         previous_optional_tag = tag;
         switch (tag) {
-        case 0xa7u: case 0xa9u: case 0xabu: inner_tag = 0x1bu; break;
-        case 0xa8u: case 0xaau: inner_tag = 0x30u; break;
+        case 0xabu: inner_tag = 0x1bu; break;
         case 0xacu: inner_tag = 0x04u; break;
         default: return 0;
         }
         if (!provider_der_read_wrapped_value(&sequence, tag, inner_tag,
                                              &ignored_bytes, &ignored_size))
             return 0;
-        if ((tag == 0xa8u || tag == 0xaau) &&
-            !provider_kerberos_principal_name_valid(ignored_bytes,
-                                                     ignored_size))
-            return 0;
-        /* RFC 4120 makes crealm, cname, realm, sname, e-text, and e-data
-         * optional.  Validate identity fields when a peer supplies them, but
-         * do not require a service identity in order to surface the KDC error
-         * code.  An explicitly supplied empty realm is still malformed. */
-        if (tag == 0xa7u || tag == 0xa9u) {
-            if (ignored_size == 0u) return 0;
-        }
         (void)ignored_bytes;
         (void)ignored_size;
     }

@@ -371,8 +371,20 @@ void ETW::LoaderLog::SendModuleEvent(HANDLE pModule, uint32_t dwEventOptions)
 #else
     const char * wszModuleFileNameUtf8 = NULL;
     uint32_t moduleFileNameCharCount = PalGetModuleFileName(&wszModuleFileNameUtf8, pModule);
-    CHAR16_T wszModuleFileNameUnicode[1024];
-    minipal_convert_utf8_to_utf16(wszModuleFileNameUtf8, moduleFileNameCharCount, &wszModuleFileNameUnicode[0], ARRAY_SIZE(wszModuleFileNameUnicode), MINIPAL_MB_NO_REPLACE_INVALID_CHARS);
+    CHAR16_T wszModuleFileNameUnicode[1024] = { 0 };
+    if (moduleFileNameCharCount != 0 && wszModuleFileNameUtf8 != NULL)
+    {
+        size_t convertedCharCount = minipal_convert_utf8_to_utf16(
+            wszModuleFileNameUtf8,
+            moduleFileNameCharCount,
+            &wszModuleFileNameUnicode[0],
+            ARRAY_SIZE(wszModuleFileNameUnicode),
+            MINIPAL_MB_NO_REPLACE_INVALID_CHARS);
+        if (convertedCharCount == 0)
+        {
+            wszModuleFileNameUnicode[0] = 0;
+        }
+    }
     wszModuleFileName = (const WCHAR *)&wszModuleFileNameUnicode[0];
 #endif
 

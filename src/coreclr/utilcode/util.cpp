@@ -21,7 +21,7 @@
 #include "mdfileformat.h"
 #include <configuration.h>
 
-#if (defined(HOST_UNIX) || defined(TARGET_RINOS)) && \
+#if defined(HOST_UNIX) && !defined(TARGET_RINOS) && \
     !defined(TARGET_WASM) && !defined(DACCESS_COMPILE)
 #include <link.h>
 #include <stdint.h>

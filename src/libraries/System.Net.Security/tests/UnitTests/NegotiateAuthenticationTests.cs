@@ -416,6 +416,70 @@ namespace System.Net.Security.Tests
             Assert.True(fakeNtlmServer.IsAuthenticated);
         }
 
+        [ConditionalFact(typeof(NegotiateAuthenticationTests), nameof(UseManagedNtlm))]
+        public void NtlmUnwrapInPlace_TruncatedTokenReturnsSafeOutputs()
+        {
+            using FakeNtlmServer fakeNtlmServer = new FakeNtlmServer(s_testCredentialRight);
+            using NegotiateAuthentication ntAuth = new NegotiateAuthentication(
+                new NegotiateAuthenticationClientOptions
+                {
+                    Package = "NTLM",
+                    Credential = s_testCredentialRight,
+                    TargetName = "HTTP/foo",
+                    RequiredProtectionLevel = ProtectionLevel.EncryptAndSign
+                });
+
+            DoNtlmExchange(fakeNtlmServer, ntAuth);
+
+            Span<byte> truncated = stackalloc byte[15];
+            NegotiateAuthenticationStatusCode status = ntAuth.UnwrapInPlace(
+                truncated,
+                out int unwrappedOffset,
+                out int unwrappedLength,
+                out bool wasEncrypted);
+
+            Assert.Equal(NegotiateAuthenticationStatusCode.InvalidToken, status);
+            Assert.Equal(0, unwrappedOffset);
+            Assert.Equal(0, unwrappedLength);
+            Assert.False(wasEncrypted);
+        }
+
+        [ConditionalFact(typeof(NegotiateAuthenticationTests), nameof(UseManagedNtlm))]
+        public void NtlmUnwrapInPlace_InvalidSignatureReturnsSafeOutputs()
+        {
+            using FakeNtlmServer fakeNtlmServer = new FakeNtlmServer(s_testCredentialRight);
+            using NegotiateAuthentication ntAuth = new NegotiateAuthentication(
+                new NegotiateAuthenticationClientOptions
+                {
+                    Package = "NTLM",
+                    Credential = s_testCredentialRight,
+                    TargetName = "HTTP/foo",
+                    RequiredProtectionLevel = ProtectionLevel.EncryptAndSign
+                });
+
+            DoNtlmExchange(fakeNtlmServer, ntAuth);
+
+            ArrayBufferWriter<byte> writer = new ArrayBufferWriter<byte>();
+            NegotiateAuthenticationStatusCode wrapStatus = ntAuth.Wrap(
+                s_Hello, writer, requestEncryption: true, out _);
+            Assert.Equal(NegotiateAuthenticationStatusCode.Completed, wrapStatus);
+
+            byte[] wrapped = new byte[writer.WrittenCount];
+            writer.WrittenSpan.CopyTo(wrapped);
+            wrapped[0] ^= 0x80;
+
+            NegotiateAuthenticationStatusCode status = ntAuth.UnwrapInPlace(
+                wrapped,
+                out int unwrappedOffset,
+                out int unwrappedLength,
+                out bool wasEncrypted);
+
+            Assert.Equal(NegotiateAuthenticationStatusCode.MessageAltered, status);
+            Assert.Equal(0, unwrappedOffset);
+            Assert.Equal(0, unwrappedLength);
+            Assert.False(wasEncrypted);
+        }
+
         [ConditionalTheory(typeof(NegotiateAuthenticationTests), nameof(IsNtlmAvailable))]
         [InlineData(true, true)]
         [InlineData(true, false)]

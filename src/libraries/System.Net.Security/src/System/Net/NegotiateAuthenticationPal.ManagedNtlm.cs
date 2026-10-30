@@ -1195,9 +1195,13 @@ namespace System.Net
 
             public override NegotiateAuthenticationStatusCode UnwrapInPlace(Span<byte> input, out int unwrappedOffset, out int unwrappedLength, out bool wasEncrypted)
             {
-                wasEncrypted = true;
-                unwrappedOffset = SignatureLength;
-                unwrappedLength = input.Length - SignatureLength;
+                // Keep all outputs safe until the complete wrapped-message
+                // shape has been validated. In particular, a truncated
+                // signature must never expose a negative payload length to
+                // NegotiateStream's buffer bookkeeping.
+                wasEncrypted = false;
+                unwrappedOffset = 0;
+                unwrappedLength = 0;
 
                 if (input.Length < SignatureLength)
                 {
@@ -1210,10 +1214,16 @@ namespace System.Net
                     throw new InvalidOperationException(SR.net_auth_noauth);
                 }
 
+                wasEncrypted = true;
+                unwrappedOffset = SignatureLength;
+                unwrappedLength = input.Length - SignatureLength;
                 seal.Transform(input.Slice(SignatureLength), input.Slice(SignatureLength));
                 if (!VerifyMIC(input.Slice(SignatureLength), input.Slice(0, SignatureLength)))
                 {
                     CryptographicOperations.ZeroMemory(input.Slice(SignatureLength));
+                    wasEncrypted = false;
+                    unwrappedOffset = 0;
+                    unwrappedLength = 0;
                     return NegotiateAuthenticationStatusCode.MessageAltered;
                 }
 

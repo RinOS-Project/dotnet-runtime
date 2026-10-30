@@ -25,6 +25,10 @@
     !defined(TARGET_WASM) && !defined(DACCESS_COMPILE)
 #include <link.h>
 #include <stdint.h>
+#elif defined(TARGET_RINOS) && !defined(DACCESS_COMPILE)
+/* RinOS supplies the authenticated image-range ABI through its libc link
+ * header; it is not the host Linux ELF loader contract. */
+#include "link.h"
 #endif
 
 #ifndef DACCESS_COMPILE

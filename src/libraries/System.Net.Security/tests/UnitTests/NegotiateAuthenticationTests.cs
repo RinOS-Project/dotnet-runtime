@@ -19,6 +19,50 @@ namespace System.Net.Security.Tests
     [ActiveIssue("https://github.com/dotnet/runtime/issues/123472", typeof(PlatformDetection), nameof(PlatformDetection.IsNativeAot), nameof(PlatformDetection.IsLinux))]
     public class NegotiateAuthenticationTests
     {
+        private sealed class ExpandedBufferWriter : IBufferWriter<byte>
+        {
+            private const byte Sentinel = 0xA5;
+            private readonly byte[] _buffer;
+
+            internal ExpandedBufferWriter(int length)
+            {
+                _buffer = new byte[length];
+                Array.Fill(_buffer, Sentinel);
+            }
+
+            internal ReadOnlySpan<byte> WrittenSpan => _buffer;
+
+            public void Advance(int count)
+            {
+                if ((uint)count > (uint)_buffer.Length)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(count));
+                }
+            }
+
+            public Memory<byte> GetMemory(int sizeHint = 0)
+            {
+                ValidateSizeHint(sizeHint);
+                return _buffer;
+            }
+
+            public Span<byte> GetSpan(int sizeHint = 0)
+            {
+                ValidateSizeHint(sizeHint);
+                return _buffer;
+            }
+
+            private void ValidateSizeHint(int sizeHint)
+            {
+                if (sizeHint < 0 || sizeHint > _buffer.Length)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(sizeHint));
+                }
+            }
+
+            internal static byte SentinelValue => Sentinel;
+        }
+
         // Ubuntu 24 and 26 ship with broekn gss-ntlmssp 1.2
         // RHEL 8 ships gss-ntlmssp 1.2 built against OpenSSL 1.1 which produces broken NTLM responses
         private static bool UseManagedNtlm => PlatformDetection.IsUbuntu24 || PlatformDetection.IsUbuntu26 || PlatformDetection.IsOpenSUSE16 || (PlatformDetection.IsRedHatFamily && !PlatformDetection.IsOpenSsl3);
@@ -478,6 +522,42 @@ namespace System.Net.Security.Tests
             Assert.Equal(0, unwrappedOffset);
             Assert.Equal(0, unwrappedLength);
             Assert.False(wasEncrypted);
+        }
+
+        [ConditionalFact(typeof(NegotiateAuthenticationTests), nameof(UseManagedNtlm))]
+        public void NtlmUnwrap_InvalidSignatureOnlyClearsRequestedPayload()
+        {
+            using FakeNtlmServer fakeNtlmServer = new FakeNtlmServer(s_testCredentialRight);
+            using NegotiateAuthentication ntAuth = new NegotiateAuthentication(
+                new NegotiateAuthenticationClientOptions
+                {
+                    Package = "NTLM",
+                    Credential = s_testCredentialRight,
+                    TargetName = "HTTP/foo",
+                    RequiredProtectionLevel = ProtectionLevel.EncryptAndSign
+                });
+
+            DoNtlmExchange(fakeNtlmServer, ntAuth);
+
+            ArrayBufferWriter<byte> wrappedWriter = new ArrayBufferWriter<byte>();
+            Assert.Equal(
+                NegotiateAuthenticationStatusCode.Completed,
+                ntAuth.Wrap(s_Hello, wrappedWriter, requestEncryption: true, out _));
+            byte[] wrapped = wrappedWriter.WrittenSpan.ToArray();
+            wrapped[0] ^= 0x80;
+
+            ExpandedBufferWriter output = new ExpandedBufferWriter(s_Hello.Length + 32);
+            NegotiateAuthenticationStatusCode status = ntAuth.Unwrap(
+                wrapped, output, out bool wasEncrypted);
+
+            Assert.Equal(NegotiateAuthenticationStatusCode.MessageAltered, status);
+            Assert.False(wasEncrypted);
+            Assert.Equal(
+                new byte[s_Hello.Length],
+                output.WrittenSpan.Slice(0, s_Hello.Length).ToArray());
+            Assert.All(
+                output.WrittenSpan.Slice(s_Hello.Length).ToArray(),
+                value => Assert.Equal(ExpandedBufferWriter.SentinelValue, value));
         }
 
         [ConditionalTheory(typeof(NegotiateAuthenticationTests), nameof(IsNtlmAvailable))]

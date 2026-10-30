@@ -1167,7 +1167,7 @@ namespace System.Net
 
             public override NegotiateAuthenticationStatusCode Unwrap(ReadOnlySpan<byte> input, IBufferWriter<byte> outputWriter, out bool wasEncrypted)
             {
-                wasEncrypted = true;
+                wasEncrypted = false;
 
                 RC4? seal = _isServer ? _clientSeal : _serverSeal;
                 if (seal == null)
@@ -1180,15 +1180,18 @@ namespace System.Net
                     return NegotiateAuthenticationStatusCode.InvalidToken;
                 }
 
-                Span<byte> output = outputWriter.GetSpan(input.Length - SignatureLength);
-                seal.Transform(input.Slice(SignatureLength), output.Slice(0, input.Length - SignatureLength));
-                if (!VerifyMIC(output.Slice(0, input.Length - SignatureLength), input.Slice(0, SignatureLength)))
+                int payloadLength = input.Length - SignatureLength;
+                Span<byte> output = outputWriter.GetSpan(payloadLength);
+                wasEncrypted = true;
+                seal.Transform(input.Slice(SignatureLength), output.Slice(0, payloadLength));
+                if (!VerifyMIC(output.Slice(0, payloadLength), input.Slice(0, SignatureLength)))
                 {
-                    CryptographicOperations.ZeroMemory(output);
+                    CryptographicOperations.ZeroMemory(output.Slice(0, payloadLength));
+                    wasEncrypted = false;
                     return NegotiateAuthenticationStatusCode.MessageAltered;
                 }
 
-                outputWriter.Advance(input.Length - SignatureLength);
+                outputWriter.Advance(payloadLength);
 
                 return NegotiateAuthenticationStatusCode.Completed;
             }

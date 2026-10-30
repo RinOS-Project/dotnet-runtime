@@ -21,7 +21,8 @@
 #include "mdfileformat.h"
 #include <configuration.h>
 
-#if defined(HOST_UNIX) && !defined(TARGET_WASM) && !defined(DACCESS_COMPILE)
+#if (defined(HOST_UNIX) || defined(TARGET_RINOS)) && \
+    !defined(TARGET_WASM) && !defined(DACCESS_COMPILE)
 #include <link.h>
 #include <stdint.h>
 #endif
@@ -2332,7 +2333,8 @@ void PutRiscV64AuipcCombo(UINT32 * pCode, INT64 offset, bool isStype)
 //======================================================================
 // This function returns true, if it can determine that the instruction pointer
 // refers to a code address that belongs in the range of the given image.
-#if defined(HOST_UNIX) && !defined(TARGET_WASM) && !defined(DACCESS_COMPILE)
+#if defined(HOST_UNIX) && !defined(TARGET_RINOS) && \
+    !defined(TARGET_WASM) && !defined(DACCESS_COMPILE)
 struct IsIPInModuleData
 {
     uintptr_t moduleBase;
@@ -2369,6 +2371,65 @@ static int IsIPInModuleCallback(struct dl_phdr_info* info, size_t, void* context
     }
 
     return 1;
+}
+#endif
+
+#if defined(TARGET_RINOS) && !defined(DACCESS_COMPILE)
+static BOOL IsIPInRinModule(uintptr_t moduleBase, uintptr_t instructionPointer)
+{
+    RinDlImageRangeV1 first{};
+    RinDlImageRangeV1 current{};
+    RinDlImageRangeV1 final{};
+    int fetchResult;
+    BOOL matches = FALSE;
+
+    if (moduleBase == 0 || instructionPointer == 0)
+    {
+        return FALSE;
+    }
+
+    fetchResult = rin_dl_image_range_get(0UL, &first);
+    if (fetchResult != 0 || first.struct_size != sizeof(first) ||
+        first.version != RIN_DLINVENTORY_RANGE_ABI_VERSION ||
+        (first.flags & RIN_DLINVENTORY_RANGE_FLAG_AUTHENTICATED) == 0 ||
+        first.generation == 0 || first.record_count == 0 ||
+        first.record_count > RIN_DLINVENTORY_V1_MAX_RECORDS)
+    {
+        return FALSE;
+    }
+
+    for (uint32_t index = 0; index < first.record_count; ++index)
+    {
+        fetchResult = rin_dl_image_range_get(index, &current);
+        if (fetchResult != 0 || current.struct_size != sizeof(current) ||
+            current.version != RIN_DLINVENTORY_RANGE_ABI_VERSION ||
+            (current.flags & RIN_DLINVENTORY_RANGE_FLAG_AUTHENTICATED) == 0 ||
+            current.generation != first.generation ||
+            current.record_index != index ||
+            current.record_count != first.record_count ||
+            current.image_base == 0 || current.image_size == 0 ||
+            current.image_size > UINT64_MAX - current.image_base)
+        {
+            return FALSE;
+        }
+
+        const uint64_t base = current.image_base;
+        const uint64_t size = current.image_size;
+        const uint64_t address = static_cast<uint64_t>(instructionPointer);
+        if (current.image_base == static_cast<uint64_t>(moduleBase) &&
+            address >= base && address - base < size)
+        {
+            matches = TRUE;
+        }
+    }
+
+    fetchResult = rin_dl_image_range_get(0UL, &final);
+    if (fetchResult != 0 || final.generation != first.generation ||
+        final.record_count != first.record_count)
+    {
+        return FALSE;
+    }
+    return matches;
 }
 #endif
 
@@ -2456,6 +2517,13 @@ lDone: ;
     {
     }
     PAL_ENDTRY
+#elif defined(TARGET_RINOS) && !defined(DACCESS_COMPILE)
+    if (pModuleBaseAddress != NULL && ip != 0)
+    {
+        param.fRet = IsIPInRinModule(
+            reinterpret_cast<uintptr_t>(pModuleBaseAddress),
+            reinterpret_cast<uintptr_t>(ip));
+    }
 #elif defined(HOST_UNIX) && !defined(TARGET_WASM) && !defined(DACCESS_COMPILE)
     if (pModuleBaseAddress != NULL && ip != 0)
     {

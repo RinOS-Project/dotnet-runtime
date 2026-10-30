@@ -392,7 +392,13 @@ EventPipeThread* ep_rt_aot_thread_get_or_create (void)
         return thread;
 
     eventpipe_tls_instance = thread_holder_alloc_func ();
-    return ep_thread_holder_get_thread (eventpipe_tls_instance);
+    // EventPipe initialization is allowed to fail under memory pressure.  The
+    // holder allocator returns null in that case; do not turn a diagnostic
+    // allocation failure into a process crash by dereferencing the missing
+    // holder.
+    return eventpipe_tls_instance != NULL
+        ? ep_thread_holder_get_thread (eventpipe_tls_instance)
+        : NULL;
 }
 
 void

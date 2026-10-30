@@ -574,6 +574,12 @@ ep_rt_aot_thread_create (
     void *id)
 {
     STATIC_CONTRACT_NOTHROW;
+
+    // EP_ASSERT is compiled out of release builds.  Do not pass a null
+    // callback through the PAL helper-thread owner in that configuration.
+    if (thread_func == NULL)
+        return false;
+
     EP_ASSERT (thread_func != NULL);
 
     // Note that none of the callers examine the return id in any way

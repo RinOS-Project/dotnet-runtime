@@ -25,10 +25,12 @@
     !defined(TARGET_WASM) && !defined(DACCESS_COMPILE)
 #include <link.h>
 #include <stdint.h>
-#elif defined(TARGET_RINOS) && !defined(DACCESS_COMPILE)
+#elif defined(TARGET_RINOS) && !defined(DACCESS_COMPILE) && \
+    !defined(CROSS_COMPILE) && !defined(SELF_NO_HOST)
 /* RinOS supplies the authenticated image-range ABI through its libc link
  * header; it is not the host Linux ELF loader contract. */
 #include "link.h"
+#define RINOS_HAVE_IMAGE_RANGE_API 1
 #endif
 
 #ifndef DACCESS_COMPILE
@@ -2378,7 +2380,8 @@ static int IsIPInModuleCallback(struct dl_phdr_info* info, size_t, void* context
 }
 #endif
 
-#if defined(TARGET_RINOS) && !defined(DACCESS_COMPILE)
+#if defined(TARGET_RINOS) && defined(RINOS_HAVE_IMAGE_RANGE_API) && \
+    !defined(DACCESS_COMPILE)
 static BOOL IsIPInRinModule(uintptr_t moduleBase, uintptr_t instructionPointer)
 {
     RinDlImageRangeV1 first{};
@@ -2521,13 +2524,19 @@ lDone: ;
     {
     }
     PAL_ENDTRY
-#elif defined(TARGET_RINOS) && !defined(DACCESS_COMPILE)
+#elif defined(TARGET_RINOS) && defined(RINOS_HAVE_IMAGE_RANGE_API) && \
+    !defined(DACCESS_COMPILE)
     if (pModuleBaseAddress != NULL && ip != 0)
     {
         param.fRet = IsIPInRinModule(
             reinterpret_cast<uintptr_t>(pModuleBaseAddress),
             reinterpret_cast<uintptr_t>(ip));
     }
+#elif defined(TARGET_RINOS) && !defined(DACCESS_COMPILE)
+    /* The cross/JIT host has no target loader inventory; never infer module
+     * ownership from host addresses or fabricate a target range. */
+    (void)pModuleBaseAddress;
+    (void)ip;
 #elif defined(HOST_UNIX) && !defined(TARGET_WASM) && !defined(DACCESS_COMPILE)
     if (pModuleBaseAddress != NULL && ip != 0)
     {

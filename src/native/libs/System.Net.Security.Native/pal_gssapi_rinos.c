@@ -1423,9 +1423,17 @@ PALEXPORT uint32_t NetSecurityNative_VerifyMic(
     }
     if (provider != NULL)
     {
-        return rinos_gss_map_provider_status(provider->verify_mic(
-            provider->context, minorStatus, contextHandle, inputBytes,
-            inputLength, tokenBytes, tokenLength));
+        /* VerifyMIC is a per-message operation, but a Kerberos provider may
+         * still return an RFC 4120 KRB-ERROR (for example a bad-integrity or
+         * expired-ticket response). Keep the protocol minor code and use the
+         * same major-status projection as context establishment and Wrap/
+         * Unwrap; dropping this through the generic mapper loses the managed
+         * MessageAltered/CredentialsExpired classification. */
+        return rinos_gss_map_kerberos_major(
+            provider->verify_mic(
+                provider->context, minorStatus, contextHandle, inputBytes,
+                inputLength, tokenBytes, tokenLength),
+            minorStatus);
     }
 
     (void)contextHandle;

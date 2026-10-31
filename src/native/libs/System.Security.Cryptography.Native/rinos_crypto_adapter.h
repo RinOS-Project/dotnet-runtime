@@ -192,6 +192,12 @@ PALEXPORT int32_t CryptoNative_RinTlsSetClientCertificate(
 PALEXPORT int32_t CryptoNative_RinTlsSetServerCertificate(
     void* handle, const uint8_t* certificate_list,
     int32_t certificate_list_length, void* signer, void* signer_opaque);
+PALEXPORT int32_t CryptoNative_RinTlsSetServerCertificateForScheme(
+    void* handle, const uint8_t* certificate_list,
+    int32_t certificate_list_length, void* signer, void* signer_opaque,
+    uint16_t signature_scheme);
+PALEXPORT int32_t CryptoNative_RinTlsSetServerCertificateProvider(
+    void* handle, void* provider, void* provider_opaque);
 PALEXPORT int32_t CryptoNative_RinTlsSetServerClientCertificateRequired(
     void* handle, int32_t required);
 PALEXPORT int32_t CryptoNative_RinTlsSetServerClientCertificateAuthorities(

@@ -173,6 +173,12 @@ int32_t CryptoNative_RinTlsSetClientCertificate(
 int32_t CryptoNative_RinTlsSetServerCertificate(
     void* handle, const uint8_t* certificate_list, int32_t certificate_list_length,
     void* signer, void* signer_opaque);
+int32_t CryptoNative_RinTlsSetServerCertificateForScheme(
+    void* handle, const uint8_t* certificate_list,
+    int32_t certificate_list_length, void* signer, void* signer_opaque,
+    uint16_t signature_scheme);
+int32_t CryptoNative_RinTlsSetServerCertificateProvider(
+    void* handle, void* provider, void* provider_opaque);
 int32_t CryptoNative_RinTlsSetServerClientCertificateRequired(
     void* handle, int32_t required);
 int32_t CryptoNative_RinTlsSetServerClientCertificateAuthorities(
@@ -313,6 +319,8 @@ static const Entry s_cryptoNative[] =
     DllImportEntry(CryptoNative_RinTlsHandshake)
     DllImportEntry(CryptoNative_RinTlsSetClientCertificate)
     DllImportEntry(CryptoNative_RinTlsSetServerCertificate)
+    DllImportEntry(CryptoNative_RinTlsSetServerCertificateForScheme)
+    DllImportEntry(CryptoNative_RinTlsSetServerCertificateProvider)
     DllImportEntry(CryptoNative_RinTlsSetServerClientCertificateRequired)
     DllImportEntry(CryptoNative_RinTlsSetServerClientCertificateAuthorities)
     DllImportEntry(CryptoNative_RinTlsClientCertificateRequested)

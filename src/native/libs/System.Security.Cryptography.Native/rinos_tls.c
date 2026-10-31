@@ -24,7 +24,27 @@ typedef struct rinos_tls_adapter {
     rin_size_t output_offset;
     rin_size_t output_length;
     int closed;
+    void* server_certificate_provider;
+    void* server_certificate_provider_opaque;
 } rinos_tls_adapter;
+
+typedef int (*rinos_tls_server_certificate_provider_func)(
+    void* adapter, const void* client_hello, void* opaque);
+
+static int rinos_tls_server_certificate_provider_bridge(
+    rintls_ctx* context, const rintls_server_client_hello* client_hello,
+    void* opaque)
+{
+    rinos_tls_adapter* adapter = (rinos_tls_adapter*)opaque;
+    rinos_tls_server_certificate_provider_func provider;
+    (void)context;
+    if (!adapter || !adapter->server_certificate_provider)
+        return RINTLS_ERR_MEMORY;
+    provider = (rinos_tls_server_certificate_provider_func)
+        adapter->server_certificate_provider;
+    return provider((void*)adapter, (const void*)client_hello,
+                    adapter->server_certificate_provider_opaque);
+}
 
 static RinCertificateRevocationCacheV1 g_rinos_revocation_cache;
 static volatile uint32_t g_rinos_revocation_cache_lock;
@@ -592,6 +612,40 @@ int32_t CryptoNative_RinTlsSetServerCertificate(
     return rintls_set_server_certificate(
         adapter->context, certificate_list, (rin_size_t)certificate_list_length,
         (rintls_server_certificate_sign_func)signer, signer_opaque);
+}
+
+int32_t CryptoNative_RinTlsSetServerCertificateForScheme(
+    void* handle, const uint8_t* certificate_list,
+    int32_t certificate_list_length, void* signer, void* signer_opaque,
+    uint16_t signature_scheme)
+{
+    rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;
+    if (!adapter || certificate_list_length < 0 ||
+        (certificate_list_length != 0 && !certificate_list) ||
+        !signer)
+        return RINTLS_ERR_MEMORY;
+    return rintls_set_server_certificate_for_scheme(
+        adapter->context, certificate_list, (rin_size_t)certificate_list_length,
+        (rintls_server_certificate_sign_func)signer, signer_opaque,
+        signature_scheme);
+}
+
+int32_t CryptoNative_RinTlsSetServerCertificateProvider(
+    void* handle, void* provider, void* provider_opaque)
+{
+    rinos_tls_adapter* adapter = (rinos_tls_adapter*)handle;
+    if (!adapter || !provider)
+        return RINTLS_ERR_MEMORY;
+    adapter->server_certificate_provider = provider;
+    adapter->server_certificate_provider_opaque = provider_opaque;
+    int32_t result = rintls_set_server_certificate_provider(
+        adapter->context, rinos_tls_server_certificate_provider_bridge,
+        adapter);
+    if (result != RINTLS_OK) {
+        adapter->server_certificate_provider = NULL;
+        adapter->server_certificate_provider_opaque = NULL;
+    }
+    return result;
 }
 
 int32_t CryptoNative_RinTlsSetServerClientCertificateRequired(

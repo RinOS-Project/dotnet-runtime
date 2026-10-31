@@ -50,6 +50,17 @@ internal static partial class Interop
             IntPtr signer, IntPtr signerOpaque);
 
         [LibraryImport(Libraries.CryptoNative,
+            EntryPoint = "CryptoNative_RinTlsSetServerCertificateForScheme")]
+        private static unsafe partial int SetServerCertificateForSchemeNative(
+            IntPtr handle, byte* certificateList, int certificateListLength,
+            IntPtr signer, IntPtr signerOpaque, ushort signatureScheme);
+
+        [LibraryImport(Libraries.CryptoNative,
+            EntryPoint = "CryptoNative_RinTlsSetServerCertificateProvider")]
+        private static partial int SetServerCertificateProviderNative(
+            IntPtr handle, IntPtr provider, IntPtr providerOpaque);
+
+        [LibraryImport(Libraries.CryptoNative,
             EntryPoint = "CryptoNative_RinTlsSetServerClientCertificateRequired")]
         private static partial int SetServerClientCertificateRequiredNative(
             IntPtr handle, int required);
@@ -379,6 +390,32 @@ internal static partial class Interop
                     certificateList.Length, signer, signerOpaque);
             }
         }
+
+        internal static unsafe int SetServerCertificateForScheme(
+            RinSslHandle handle, ReadOnlySpan<byte> certificateList,
+            IntPtr signer, IntPtr signerOpaque, ushort signatureScheme)
+            => SetServerCertificateForScheme(
+                handle.DangerousGetHandle(), certificateList, signer,
+                signerOpaque, signatureScheme);
+
+        internal static unsafe int SetServerCertificateForScheme(
+            IntPtr handle, ReadOnlySpan<byte> certificateList,
+            IntPtr signer, IntPtr signerOpaque, ushort signatureScheme)
+        {
+            fixed (byte* listPtr = certificateList)
+            {
+                return SetServerCertificateForSchemeNative(
+                    handle,
+                    certificateList.IsEmpty ? null : listPtr,
+                    certificateList.Length, signer, signerOpaque,
+                    signatureScheme);
+            }
+        }
+
+        internal static int SetServerCertificateProvider(
+            RinSslHandle handle, IntPtr provider, IntPtr providerOpaque)
+            => SetServerCertificateProviderNative(
+                handle.DangerousGetHandle(), provider, providerOpaque);
 
         internal static int SetServerClientCertificateRequired(
             RinSslHandle handle, bool required)

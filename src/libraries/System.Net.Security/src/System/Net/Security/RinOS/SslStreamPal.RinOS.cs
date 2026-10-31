@@ -291,20 +291,28 @@ namespace System.Net.Security
             byte[] certificateList = BuildServerCertificateList(certificateContext);
             RinCertificateSignerState state =
                 new RinCertificateSignerState(certificateContext.TargetCertificate);
+            state.AttachCertificateList(certificateList);
             IntPtr stateHandle = handle.AttachCertificateSignerState(state);
             int result = -1;
             try
             {
-                result = Interop.RinTls.SetServerCertificate(
-                    handle, certificateList,
-                    Marshal.GetFunctionPointerForDelegate(s_certificateSignCallback),
+                // Do not let RinTLS choose a signature family before the
+                // ClientHello is available.  Its generic setter prefers
+                // ECDSA, which can select ECDSA for an RSA certificate and
+                // only fail later inside the managed signer.  The provider is
+                // invoked once after ClientHello and binds the certificate to
+                // an offered scheme compatible with its public key.
+                result = Interop.RinTls.SetServerCertificateProvider(
+                    handle,
+                    Marshal.GetFunctionPointerForDelegate(
+                        s_serverCertificateProviderCallback),
                     stateHandle);
             }
             finally
             {
-                CryptographicOperations.ZeroMemory(certificateList);
                 if (result != 0)
                 {
+                    CryptographicOperations.ZeroMemory(certificateList);
                     handle.DetachCertificateSignerState();
                 }
             }
@@ -495,14 +503,88 @@ namespace System.Net.Security
             destination[offset + 1] = (byte)value;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        private unsafe struct ServerClientHelloNative
+        {
+            internal uint StructSize;
+            internal uint Version;
+            internal byte* ServerName;
+            internal uint ServerNameSize;
+            internal ushort* CipherSuites;
+            internal uint CipherSuiteCount;
+            internal ushort* SupportedVersions;
+            internal uint SupportedVersionCount;
+            internal ushort* SignatureSchemes;
+            internal uint SignatureSchemeCount;
+            internal ushort KeyShareGroup;
+            internal byte* KeyShare;
+            internal uint KeyShareSize;
+            internal uint OfferedFeatures;
+            internal ulong Reserved0;
+            internal ulong Reserved1;
+        }
+
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private unsafe delegate int CertificateSignCallback(
             IntPtr opaque, ushort signatureScheme, byte* message,
             nuint messageLength, byte* signature, nuint signatureCapacity,
             nuint* signatureLength);
 
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private unsafe delegate int ServerCertificateProviderCallback(
+            IntPtr adapter, ServerClientHelloNative* clientHello,
+            IntPtr opaque);
+
         private static readonly unsafe CertificateSignCallback
             s_certificateSignCallback = SignCertificate;
+
+        private static readonly unsafe ServerCertificateProviderCallback
+            s_serverCertificateProviderCallback = SelectServerCertificate;
+
+        private static unsafe int SelectServerCertificate(
+            IntPtr adapter, ServerClientHelloNative* clientHello,
+            IntPtr opaque)
+        {
+            const int RinTlsCertificateError = -4;
+            try
+            {
+                if (adapter == IntPtr.Zero || clientHello == null ||
+                    opaque == IntPtr.Zero ||
+                    clientHello->StructSize < (uint)sizeof(ServerClientHelloNative) ||
+                    clientHello->Version != 1u ||
+                    clientHello->Reserved0 != 0u || clientHello->Reserved1 != 0u ||
+                    clientHello->SignatureSchemeCount > 64u ||
+                    (clientHello->SignatureSchemeCount != 0u &&
+                     clientHello->SignatureSchemes == null))
+                {
+                    return RinTlsCertificateError;
+                }
+
+                object? target = GCHandle.FromIntPtr(opaque).Target;
+                if (target is not RinCertificateSignerState state)
+                {
+                    return RinTlsCertificateError;
+                }
+
+                ushort signatureScheme = state.SelectServerSignatureScheme(
+                    clientHello->SignatureSchemes,
+                    clientHello->SignatureSchemeCount);
+                if (signatureScheme == 0u || state.CertificateList is null)
+                {
+                    return RinTlsCertificateError;
+                }
+
+                return Interop.RinTls.SetServerCertificateForScheme(
+                    adapter, state.CertificateList,
+                    Marshal.GetFunctionPointerForDelegate(
+                        s_certificateSignCallback),
+                    opaque, signatureScheme);
+            }
+            catch
+            {
+                return RinTlsCertificateError;
+            }
+        }
 
         private static unsafe int SignCertificate(
             IntPtr opaque, ushort signatureScheme, byte* message,
@@ -557,11 +639,90 @@ namespace System.Net.Security
 
         private sealed class RinCertificateSignerState
         {
+            private static readonly ushort[] s_rsaPreferredSchemes =
+                { 0x0804, 0x0401, 0x0501, 0x0601 };
+            private static readonly ushort[] s_ecdsaP256Schemes = { 0x0403 };
+            private static readonly ushort[] s_ecdsaP384Schemes = { 0x0503 };
+            private static readonly ushort[] s_ecdsaP521Schemes = { 0x0603 };
             private readonly X509Certificate2 _certificate;
+            internal byte[]? CertificateList { get; private set; }
 
             internal RinCertificateSignerState(X509Certificate2 certificate)
             {
                 _certificate = certificate;
+            }
+
+            internal void AttachCertificateList(byte[] certificateList)
+            {
+                CertificateList = certificateList;
+            }
+
+            internal unsafe ushort SelectServerSignatureScheme(
+                ushort* offeredSchemes, uint offeredSchemeCount)
+            {
+                bool isEcdsa = false;
+                int keySize = 0;
+                using (ECDsa? ecdsa = _certificate.GetECDsaPublicKey())
+                {
+                    if (ecdsa is not null)
+                    {
+                        isEcdsa = true;
+                        keySize = ecdsa.KeySize;
+                    }
+                }
+
+                if (!isEcdsa)
+                {
+                    using RSA? rsa = _certificate.GetRSAPublicKey();
+                    if (rsa is null)
+                    {
+                        return 0u;
+                    }
+
+                    return SelectOfferedScheme(
+                        s_rsaPreferredSchemes, offeredSchemes,
+                        offeredSchemeCount);
+                }
+
+                ReadOnlySpan<ushort> ecdsaPreferred = keySize switch
+                {
+                    256 => s_ecdsaP256Schemes,
+                    384 => s_ecdsaP384Schemes,
+                    521 => s_ecdsaP521Schemes,
+                    _ => ReadOnlySpan<ushort>.Empty,
+                };
+                return SelectOfferedScheme(
+                    ecdsaPreferred, offeredSchemes, offeredSchemeCount);
+            }
+
+            private static unsafe ushort SelectOfferedScheme(
+                ReadOnlySpan<ushort> preferred, ushort* offeredSchemes,
+                uint offeredSchemeCount)
+            {
+                if (preferred.IsEmpty)
+                {
+                    return 0u;
+                }
+
+                if (offeredSchemeCount == 0u)
+                {
+                    return preferred[0];
+                }
+
+                for (int preferredIndex = 0; preferredIndex < preferred.Length;
+                     preferredIndex++)
+                {
+                    for (uint offeredIndex = 0u;
+                         offeredIndex < offeredSchemeCount; offeredIndex++)
+                    {
+                        if (offeredSchemes[offeredIndex] == preferred[preferredIndex])
+                        {
+                            return preferred[preferredIndex];
+                        }
+                    }
+                }
+
+                return 0u;
             }
 
             internal byte[] Sign(ushort signatureScheme, ReadOnlySpan<byte> message)
@@ -578,7 +739,7 @@ namespace System.Net.Security
                     0x0805 => SignRsa(message, HashAlgorithmName.SHA384),
                     0x0806 => SignRsa(message, HashAlgorithmName.SHA512),
                     _ => throw new CryptographicException(
-                        "RinTLS selected an unsupported client signature scheme."),
+                        "RinTLS selected an unsupported TLS signature scheme."),
                 };
             }
 
@@ -590,7 +751,7 @@ namespace System.Net.Security
                 if (ecdsa is null || ecdsa.KeySize != expectedKeySize)
                 {
                     throw new CryptographicException(
-                        "The client certificate does not match the TLS signature scheme.");
+                        "The certificate does not match the TLS signature scheme.");
                 }
 
                 byte[] hash = hashAlgorithm == HashAlgorithmName.SHA256
@@ -613,7 +774,7 @@ namespace System.Net.Security
                 if (rsa is null)
                 {
                     throw new CryptographicException(
-                        "The client certificate does not contain an RSA private key.");
+                        "The certificate does not contain an RSA private key.");
                 }
 
                 byte[] hash = hashAlgorithm == HashAlgorithmName.SHA256
@@ -631,7 +792,7 @@ namespace System.Net.Security
                 if (rsa is null)
                 {
                     throw new CryptographicException(
-                        "The server certificate does not contain an RSA private key.");
+                        "The certificate does not contain an RSA private key.");
                 }
 
                 byte[] hash = hashAlgorithm == HashAlgorithmName.SHA256

@@ -37,7 +37,8 @@ namespace System.Security.Cryptography
         {
             using (ConcurrencyBlock.Enter(ref _block))
             {
-                return _liteKmac.Current(destination);
+                _liteKmac.Current(destination);
+                return destination.Length;
             }
         }
 

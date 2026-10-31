@@ -447,7 +447,7 @@ namespace System.Security.Cryptography.X509Certificates
                 return false;
             }
 
-            byte[]? certKeyParameters = _certificate.KeyAlgorithmParameters;
+            byte[]? certKeyParameters = _certificate.PublicKeyAlgorithm.Parameters;
 
             switch (certAlgorithm)
             {

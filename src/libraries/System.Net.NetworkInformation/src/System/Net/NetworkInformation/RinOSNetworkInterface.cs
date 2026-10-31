@@ -127,16 +127,19 @@ namespace System.Net.NetworkInformation
                     ValidatePrefixLength(addressLength, addressInfo.PrefixLength);
                     int interfaceIndex = GetInterfaceIndex(
                         unchecked((uint)addressInfo.InterfaceIndex));
-                    if (byIndex.TryGetValue(interfaceIndex, out RinOSNetworkInterface? networkInterface))
+                    if (!byIndex.TryGetValue(interfaceIndex, out RinOSNetworkInterface? networkInterface))
                     {
-                        IPAddress address = new IPAddress(((ReadOnlySpan<byte>)addressInfo.AddressBytes)[..addressLength]);
-                        if (addressLength == 16 && address.IsIPv6LinkLocal)
-                        {
-                            address.ScopeId = (uint)interfaceIndex;
-                        }
-
-                        networkInterface.AddAddress(address, addressInfo.PrefixLength);
+                        throw new NetworkInformationException(
+                            "RinOS returned an address for an unknown network-interface index.");
                     }
+
+                    IPAddress address = new IPAddress(((ReadOnlySpan<byte>)addressInfo.AddressBytes)[..addressLength]);
+                    if (addressLength == 16 && address.IsIPv6LinkLocal)
+                    {
+                        address.ScopeId = (uint)interfaceIndex;
+                    }
+
+                    networkInterface.AddAddress(address, addressInfo.PrefixLength);
 
                     addressList++;
                 }

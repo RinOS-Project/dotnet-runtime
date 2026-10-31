@@ -224,17 +224,9 @@ static int RinOSManagedInterfaceIndex(uint64_t interfaceId,
 static int32_t RinOSSnapshotInterfaceMtu(
     const RinNetIfaddrsInterfaceV2* interfaceInfo)
 {
-    RinNetIPv6Info ipv6 = {0};
-    if (interfaceInfo == NULL ||
-        (interfaceInfo->addresses.flags &
-         RIN_NET_IFADDRS_INTERFACE_FLAG_PRIMARY) == 0u ||
-        rin_net_get_ipv6_info(&ipv6) != 0 ||
-        ipv6.version != RIN_NET_IPV6_INFO_VERSION ||
-        ipv6.struct_size < sizeof(ipv6) ||
-        ipv6.device_generation != interfaceInfo->addresses.device_generation ||
-        ipv6.link_mtu == 0u)
+    if (interfaceInfo == NULL || interfaceInfo->link_mtu == 0u)
         return -1;
-    return (int32_t)ipv6.link_mtu;
+    return (int32_t)interfaceInfo->link_mtu;
 }
 
 static int32_t RinOSGetNetworkInterfacesFromSnapshot(

@@ -41,6 +41,9 @@ internal static partial class Interop
             public InlineArray12<byte> AddressBytes;
             public byte SupportsMulticast;
             private InlineArray3<byte> __padding;
+            public ushort DeviceGeneration;
+            public byte IsPrimary;
+            private byte __padding2;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -52,6 +55,8 @@ internal static partial class Interop
             public InlineArray4<byte> GatewayBytes;
             public InlineArray4<byte> DnsBytes;
             public uint Flags;
+            public ushort DeviceGeneration;
+            private ushort __padding;
         }
 
         [StructLayout(LayoutKind.Sequential)]

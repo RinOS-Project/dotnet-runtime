@@ -45,6 +45,9 @@ typedef struct
     uint8_t AddressBytes[12];   // Link address.
     uint8_t SupportsMulticast;  // Interface supports multicast.
     uint8_t _padding[3];
+    uint16_t DeviceGeneration;  // RinOS device identity generation, or zero.
+    uint8_t IsPrimary;          // 1 only for the primary in this snapshot.
+    uint8_t _padding2;
 } NetworkInterfaceInfo;
 
 typedef struct
@@ -55,6 +58,8 @@ typedef struct
     uint8_t GatewayBytes[4];
     uint8_t DnsBytes[4];
     uint32_t Flags;
+    uint16_t DeviceGeneration;
+    uint16_t _padding;
 } RinOSNetworkPrimaryInfo;
 
 typedef struct

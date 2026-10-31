@@ -229,6 +229,22 @@ static int32_t RinOSSnapshotInterfaceMtu(
     return (int32_t)interfaceInfo->link_mtu;
 }
 
+static uint8_t RinOSSnapshotOperationalStatus(uint32_t flags)
+{
+    const int adminKnown =
+        (flags & RIN_NET_IFADDRS_V2_FLAG_ADMIN_KNOWN) != 0u;
+    const int adminUp = (flags & RIN_NET_IFADDRS_V2_FLAG_ADMIN_UP) != 0u;
+    const int linkKnown =
+        (flags & RIN_NET_IFADDRS_V2_FLAG_LINK_KNOWN) != 0u;
+    const int linkUp = (flags & RIN_NET_IFADDRS_V2_FLAG_LINK_UP) != 0u;
+
+    if ((adminKnown && !adminUp) || (linkKnown && !linkUp))
+        return OperationalStatus_Down;
+    if (adminKnown && adminUp && linkKnown && linkUp)
+        return OperationalStatus_Up;
+    return OperationalStatus_Unknown;
+}
+
 static int32_t RinOSGetNetworkInterfacesFromSnapshot(
     int32_t* interfaceCount, NetworkInterfaceInfo** interfaceList,
     int32_t* addressCount, IpAddressInfo** addressList)
@@ -330,15 +346,13 @@ static int32_t RinOSGetNetworkInterfacesFromSnapshot(
         output->Mtu = RinOSSnapshotInterfaceMtu(entry);
         output->HardwareType =
             MapRinOSHardwareType(entry->link_type, source->ifname);
-        if ((entry->flags & RIN_NET_IFADDRS_V2_FLAG_LINK_KNOWN) == 0u)
-            output->OperationalState = OperationalStatus_Unknown;
-        else if ((entry->flags & RIN_NET_IFADDRS_V2_FLAG_ADMIN_UP) != 0u &&
-                 (entry->flags & RIN_NET_IFADDRS_V2_FLAG_LINK_UP) != 0u)
-            output->OperationalState = OperationalStatus_Up;
-        else
-            output->OperationalState = OperationalStatus_Down;
+        output->OperationalState =
+            RinOSSnapshotOperationalStatus(entry->flags);
         output->SupportsMulticast =
             (entry->capabilities & RIN_NET_IFADDRS_V2_CAP_MULTICAST) != 0u;
+        output->DeviceGeneration = source->device_generation;
+        output->IsPrimary =
+            (source->flags & RIN_NET_IFADDRS_INTERFACE_FLAG_PRIMARY) != 0u;
         for (addressIndex = 0u; addressIndex < sizeof(source->mac);
              ++addressIndex)
             if (source->mac[addressIndex] != 0u)
@@ -646,7 +660,7 @@ c_static_assert(sizeof(LinkLayerAddressInfo) == 20);
 c_static_assert(sizeof_member(LinkLayerAddressInfo, AddressBytes) == 12);
 c_static_assert(sizeof_member(NetworkInterfaceInfo, AddressBytes) == 12);
 c_static_assert(sizeof(NetworkInterfaceInfo) >= sizeof(IpAddressInfo));
-c_static_assert(sizeof(RinOSNetworkPrimaryInfo) == 36);
+c_static_assert(sizeof(RinOSNetworkPrimaryInfo) == 40);
 c_static_assert(sizeof(RinOSNetworkInterfaceStatistics) == 64);
 
 int32_t SystemNative_GetNetworkInterfaces(int32_t * interfaceCount, NetworkInterfaceInfo **interfaceList, int32_t * addressCount, IpAddressInfo **addressList )
@@ -1015,6 +1029,7 @@ int32_t SystemNative_GetRinOSNetworkPrimaryInfo(RinOSNetworkPrimaryInfo* info)
     memcpy(info->GatewayBytes, primary.gateway, sizeof(info->GatewayBytes));
     memcpy(info->DnsBytes, primary.dns, sizeof(info->DnsBytes));
     info->Flags = primary.flags & RIN_NETINFO_KNOWN_FLAGS;
+    info->DeviceGeneration = primary.device_generation;
     return 0;
 #else
     errno = ENOTSUP;

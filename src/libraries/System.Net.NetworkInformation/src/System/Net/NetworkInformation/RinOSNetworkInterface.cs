@@ -54,7 +54,9 @@ namespace System.Net.NetworkInformation
             Interop.Sys.IpAddressInfo* addressList = null;
             IntPtr globalMemory = IntPtr.Zero;
             Interop.Sys.RinOSNetworkPrimaryInfo primaryInfo = default;
-            bool hasPrimaryInfo = Interop.Sys.GetRinOSNetworkPrimaryInfo(&primaryInfo) == 0;
+            bool hasPrimaryInfo =
+                Interop.Sys.GetRinOSNetworkPrimaryInfo(&primaryInfo) == 0 &&
+                primaryInfo.DeviceGeneration != 0;
 
             if (Interop.Sys.GetNetworkInterfaces(&interfaceCount, &interfaceList, &addressCount, &addressList) != 0)
             {
@@ -84,6 +86,11 @@ namespace System.Net.NetworkInformation
                     string name = ReadFixedUtf8Name((byte*)&interfaceList->Name);
                     int interfaceIndex = GetInterfaceIndex(
                         unchecked((uint)interfaceList->InterfaceIndex));
+                    bool primaryIdentityMatches = hasPrimaryInfo &&
+                        interfaceList->IsPrimary != 0 &&
+                        interfaceList->DeviceGeneration != 0 &&
+                        interfaceList->DeviceGeneration == primaryInfo.DeviceGeneration &&
+                        string.Equals(name, primaryName, StringComparison.Ordinal);
                     RinOSNetworkInterface networkInterface = new RinOSNetworkInterface(
                         name,
                         interfaceIndex,
@@ -92,10 +99,7 @@ namespace System.Net.NetworkInformation
                         (NetworkInterfaceType)interfaceList->HardwareType,
                         (OperationalStatus)interfaceList->OperationalState,
                         interfaceList->SupportsMulticast != 0,
-                        hasPrimaryInfo && string.Equals(
-                            name,
-                            primaryName,
-                            StringComparison.Ordinal)
+                        primaryIdentityMatches
                             ? primaryInfo
                             : null);
 

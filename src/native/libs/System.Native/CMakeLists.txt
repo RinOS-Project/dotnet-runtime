@@ -136,10 +136,16 @@ if (GEN_SHARED_LIB)
         ${NATIVE_LIBS_EXTRA}
     )
 
+    if (CLR_CMAKE_TARGET_RINOS)
+        # minipal is an implementation archive for the PAL.  Its helper
+        # symbols are not part of System.Native's managed interop surface.
+        target_link_options(System.Native PRIVATE -Wl,--exclude-libs,ALL)
+    endif()
+
     if (NOT CLR_CMAKE_TARGET_APPLE_MOBILE AND NOT CLR_CMAKE_TARGET_ANDROID AND NOT CLR_CMAKE_TARGET_BROWSER AND NOT CLR_CMAKE_TARGET_WASI)
         add_custom_command(TARGET System.Native POST_BUILD
             COMMENT "Verifying System.Native entry points against entrypoints.c "
-            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../verify-entrypoints.sh
+            COMMAND ${RINOS_VERIFY_ENTRYPOINTS_COMMAND}
                 $<TARGET_FILE:System.Native>
                 ${CMAKE_CURRENT_SOURCE_DIR}/entrypoints.c
                 ${CMAKE_NM}

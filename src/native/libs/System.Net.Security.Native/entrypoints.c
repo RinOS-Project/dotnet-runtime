@@ -36,6 +36,8 @@ static const Entry s_securityNative[] =
     // GSSAPI PAL entry points.
     DllImportEntry(rin_service_find_system_slot)
     DllImportEntry(rin_service_start)
+    DllImportEntry(rin_service_stop)
+    DllImportEntry(rin_service_restart)
 };
 
 EXTERN_C const void* SecurityResolveDllImport(const char* name);

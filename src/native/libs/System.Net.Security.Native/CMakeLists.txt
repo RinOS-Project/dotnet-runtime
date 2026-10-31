@@ -93,7 +93,7 @@ if (GEN_SHARED_LIB)
     if (NOT CLR_CMAKE_TARGET_APPLE_MOBILE AND NOT CLR_CMAKE_TARGET_ANDROID AND NOT CLR_CMAKE_TARGET_BROWSER AND NOT CLR_CMAKE_TARGET_WASI)
         add_custom_command(TARGET System.Net.Security.Native POST_BUILD
             COMMENT "Verifying System.Net.Security.Native entry points against entrypoints.c "
-            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../verify-entrypoints.sh
+            COMMAND ${RINOS_VERIFY_ENTRYPOINTS_COMMAND}
                 $<TARGET_FILE:System.Net.Security.Native>
                 ${CMAKE_CURRENT_SOURCE_DIR}/entrypoints.c
                 ${CMAKE_NM}

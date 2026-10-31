@@ -143,7 +143,7 @@ if (GEN_SHARED_LIB)
     if (NOT CLR_CMAKE_TARGET_APPLE_MOBILE)
         add_custom_command(TARGET System.Security.Cryptography.Native.Apple POST_BUILD
             COMMENT "Verifying System.Security.Cryptography.Native.Apple points against entrypoints.c "
-            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../verify-entrypoints.sh
+            COMMAND ${RINOS_VERIFY_ENTRYPOINTS_COMMAND}
                 $<TARGET_FILE:System.Security.Cryptography.Native.Apple>
                 ${CMAKE_CURRENT_SOURCE_DIR}/entrypoints.c
                 ${CMAKE_NM}

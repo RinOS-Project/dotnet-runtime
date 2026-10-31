@@ -88,6 +88,15 @@ if (CLR_CMAKE_TARGET_UNIX OR CLR_CMAKE_TARGET_BROWSER OR CLR_CMAKE_TARGET_WASI)
             set(EXPORTS_FILE ${CMAKE_CURRENT_BINARY_DIR}/System.IO.Compression.Native.exports)
             generate_exports_file(${DEF_SOURCES} ${EXPORTS_FILE})
             set_exports_linker_option(${EXPORTS_FILE})
+            if (CLR_CMAKE_TARGET_RINOS)
+                # The Windows-hosted cross build uses lld for the RinOS ELF
+                # image, but the generic linker detection describes the host
+                # linker and leaves EXPORTS_LINKER_OPTION empty.  Force the
+                # generated version script for the product target so symbols
+                # pulled from Brotli/Zstd archives remain exported only when
+                # they are part of the managed interop ABI.
+                set(EXPORTS_LINKER_OPTION -Wl,--version-script=${EXPORTS_FILE})
+            endif()
 
             add_custom_target(System.IO.Compression.Native_exports DEPENDS ${EXPORTS_FILE})
             add_dependencies(System.IO.Compression.Native System.IO.Compression.Native_exports)
@@ -97,7 +106,7 @@ if (CLR_CMAKE_TARGET_UNIX OR CLR_CMAKE_TARGET_BROWSER OR CLR_CMAKE_TARGET_WASI)
 
             add_custom_command(TARGET System.IO.Compression.Native POST_BUILD
                 COMMENT "Verifying System.IO.Compression.Native entry points against entrypoints.c "
-                COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../verify-entrypoints.sh
+                COMMAND ${RINOS_VERIFY_ENTRYPOINTS_COMMAND}
                     $<TARGET_FILE:System.IO.Compression.Native>
                     ${CMAKE_CURRENT_SOURCE_DIR}/entrypoints.c
                     ${CMAKE_NM}

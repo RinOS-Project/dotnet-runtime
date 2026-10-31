@@ -29,6 +29,27 @@ include_directories(${CLR_SRC_NATIVE_DIR})
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
+# The RinOS target is commonly cross-built from Windows.  Invoking the
+# upstream .sh entrypoint verifier directly through cmd.exe is not portable:
+# cmd waits on the file association instead of starting a shell.  Use the
+# repository's Python verifier for that target and keep the upstream shell
+# verifier for normal Unix builds.
+if (CLR_CMAKE_TARGET_RINOS)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    set(RINOS_VERIFY_ENTRYPOINTS_COMMAND
+        "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/verify-entrypoints.py")
+else()
+    set(RINOS_VERIFY_ENTRYPOINTS_COMMAND
+        "${CMAKE_CURRENT_LIST_DIR}/verify-entrypoints.sh")
+endif()
+
+if (CLR_CMAKE_TARGET_RINOS)
+    # RinOS RLLs must expose only PAL entrypoints.  The generic host Unix
+    # configure path adds this flag, but a Windows-hosted RinOS cross build
+    # does not pass through that host branch.
+    add_compile_options(-fvisibility=hidden)
+endif()
+
 if (CLR_CMAKE_TARGET_BROWSER OR CLR_CMAKE_TARGET_WASI)
     set(STATIC_LIBS_ONLY 1)
     set(GEN_SHARED_LIB 0)

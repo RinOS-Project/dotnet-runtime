@@ -676,7 +676,7 @@ namespace System.Net.Security
                     using RSA? rsa = _certificate.GetRSAPublicKey();
                     if (rsa is null)
                     {
-                        return 0u;
+                        return 0;
                     }
 
                     return SelectOfferedScheme(
@@ -701,7 +701,7 @@ namespace System.Net.Security
             {
                 if (preferred.IsEmpty)
                 {
-                    return 0u;
+                    return 0;
                 }
 
                 if (offeredSchemeCount == 0u)
@@ -722,7 +722,7 @@ namespace System.Net.Security
                     }
                 }
 
-                return 0u;
+                return 0;
             }
 
             internal byte[] Sign(ushort signatureScheme, ReadOnlySpan<byte> message)

@@ -1612,7 +1612,7 @@ namespace System.Net.Security
                 return false;
             }
 
-            ArrayBufferWriter<byte> handshake = new(capacity: Math.Min(
+            ArrayBufferWriter<byte> handshake = new(Math.Min(
                 input.Length, MaxClientHelloHandshakeBytes));
             int expectedHandshakeLength = 0;
             int wireOffset = 0;

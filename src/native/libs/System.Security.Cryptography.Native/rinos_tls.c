@@ -26,6 +26,7 @@ typedef struct rinos_tls_adapter {
     int closed;
     void* server_certificate_provider;
     void* server_certificate_provider_opaque;
+    int server_certificate_provider_called;
 } rinos_tls_adapter;
 
 typedef int (*rinos_tls_server_certificate_provider_func)(
@@ -44,6 +45,36 @@ static int rinos_tls_server_certificate_provider_bridge(
         adapter->server_certificate_provider;
     return provider((void*)adapter, (const void*)client_hello,
                     adapter->server_certificate_provider_opaque);
+}
+
+/* The managed PAL drives one handshake step at a time so it can report
+ * client-certificate requests without consuming the next application call.
+ * The public rintls_handshake() loop invokes the server certificate provider,
+ * but this adapter intentionally uses rintls_handshake_step() instead. Keep
+ * the equivalent one-shot server path here: the ClientHello has already been
+ * parsed when WANT_CREDENTIALS is returned, and the provider must run before
+ * the next server-hello step. */
+static int rinos_tls_invoke_server_certificate_provider(
+    rinos_tls_adapter* adapter)
+{
+    rintls_server_client_hello client_hello;
+    int result;
+
+    if (!adapter || !adapter->context ||
+        !adapter->server_certificate_provider ||
+        adapter->server_certificate_provider_called)
+        return RINTLS_ERR_CERTIFICATE;
+
+    adapter->server_certificate_provider_called = 1;
+    rintls_memset(&client_hello, 0, sizeof(client_hello));
+    client_hello.struct_size = (u32)sizeof(client_hello);
+    result = rintls_get_server_client_hello(
+        adapter->context, &client_hello);
+    if (result != RINTLS_OK)
+        return result;
+
+    return rinos_tls_server_certificate_provider_bridge(
+        adapter->context, &client_hello, adapter);
 }
 
 static RinCertificateRevocationCacheV1 g_rinos_revocation_cache;
@@ -340,6 +371,20 @@ int32_t CryptoNative_RinTlsHandshake(void* handle, const uint8_t* input,
     result = rinos_append_input(adapter, input, (rin_size_t)input_length);
     if (result != RINTLS_OK) return result;
     result = rintls_handshake_step(adapter->context);
+    if (result == RINTLS_ERR_WANT_CREDENTIALS &&
+        adapter->server_certificate_provider &&
+        !adapter->server_certificate_provider_called) {
+        result = rinos_tls_invoke_server_certificate_provider(adapter);
+        if (result == RINTLS_OK) {
+            /* The provider has installed the certificate list and signer for
+             * the parsed ClientHello. Resume the same handshake call so the
+             * managed PAL receives the generated ServerHello bytes instead
+             * of an artificial second credential round-trip. */
+            result = rintls_handshake_step(adapter->context);
+            if (result == RINTLS_ERR_WANT_CREDENTIALS)
+                result = RINTLS_ERR_CERTIFICATE;
+        }
+    }
     /* RinTLS pauses immediately after a TLS 1.3 CertificateRequest. Surface
      * that protocol state as the PAL's credential callback status; the
      * managed side can then install a certificate-list and signer without
@@ -638,12 +683,14 @@ int32_t CryptoNative_RinTlsSetServerCertificateProvider(
         return RINTLS_ERR_MEMORY;
     adapter->server_certificate_provider = provider;
     adapter->server_certificate_provider_opaque = provider_opaque;
+    adapter->server_certificate_provider_called = 0;
     int32_t result = rintls_set_server_certificate_provider(
         adapter->context, rinos_tls_server_certificate_provider_bridge,
         adapter);
     if (result != RINTLS_OK) {
         adapter->server_certificate_provider = NULL;
         adapter->server_certificate_provider_opaque = NULL;
+        adapter->server_certificate_provider_called = 0;
     }
     return result;
 }

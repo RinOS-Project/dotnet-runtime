@@ -67,6 +67,12 @@
 // We have to do runtime check before using the pointers to this API. That is why these are listed in the FOR_ALL_OPTIONAL_ICU_FUNCTIONS list.
 U_CAPI UCollator* U_EXPORT2 ucol_clone(const UCollator* coll, UErrorCode* status);
 
+// unum_hasAttribute was added to the public ICU C headers in ICU 72, but the
+// API is optional at runtime and the shim still supports older ICU headers.
+// Declare it here so dynamic-ICU builds can compile against those headers and
+// resolve the symbol only when the loaded ICU provides it.
+U_CAPI UBool U_EXPORT2 unum_hasAttribute(const UNumberFormat* fmt, UNumberFormatAttribute attr);
+
 // ucol_safeClone is deprecated in ICU version 71. We have to handle it manually to avoid getting a build break when referencing it in the code.
 typedef UCollator* (U_EXPORT2 *ucol_safeClone_func)(const UCollator* coll, void* stackBuffer, int32_t* pBufferSize, UErrorCode* status);
 

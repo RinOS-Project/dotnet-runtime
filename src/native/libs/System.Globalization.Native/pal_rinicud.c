@@ -2745,51 +2745,39 @@ int32_t GlobalizationNative_GetLocaleInfoMinimumGroupingDigits(const UChar* loca
 int32_t GlobalizationNative_GetCalendars(const UChar* locale, CalendarId* calendars, int32_t capacity)
 {
     RinIcuDataLocaleRecord record;
+    CalendarId candidates[2];
+    int32_t candidate_count = 0;
+    int32_t written;
     if (!calendars || capacity <= 0 || !get_locale_record(locale, &record)) return 0;
     if (strcmp(record.language, "fa") == 0 && strcmp(record.region, "IR") == 0) {
-        calendars[0] = 22;
-        if (capacity > 1) {
-            calendars[1] = 1;
-            return 2;
-        }
-        return 1;
-    }
-    if (strcmp(record.language, "ar") == 0 && strcmp(record.region, "SA") == 0) {
-        calendars[0] = 23;
-        if (capacity > 1) {
-            calendars[1] = 1;
-            return 2;
-        }
-        return 1;
-    }
-    calendars[0] = 1;
-    if (capacity > 1) {
+        candidates[candidate_count++] = 22;
+        candidates[candidate_count++] = 1;
+    } else if (strcmp(record.language, "ar") == 0 && strcmp(record.region, "SA") == 0) {
+        candidates[candidate_count++] = 23;
+        candidates[candidate_count++] = 1;
+    } else {
+        candidates[candidate_count++] = 1;
         if (strcmp(record.language, "ja") == 0) {
-            calendars[1] = 3;
-            return 2;
-        }
-        if (strcmp(record.language, "th") == 0 &&
-            strcmp(record.region, "TH") == 0) {
-            calendars[1] = 7;
-            return 2;
-        }
-        if (strcmp(record.language, "zh") == 0 &&
-            strcmp(record.region, "TW") == 0) {
-            calendars[1] = 4;
-            return 2;
-        }
-        if (strcmp(record.language, "ko") == 0 &&
-            strcmp(record.region, "KR") == 0) {
-            calendars[1] = 5;
-            return 2;
-        }
-        if (strcmp(record.language, "he") == 0 &&
-            strcmp(record.region, "IL") == 0) {
-            calendars[1] = 8;
-            return 2;
+            candidates[candidate_count++] = 3;
+        } else if (strcmp(record.language, "th") == 0 &&
+                   strcmp(record.region, "TH") == 0) {
+            candidates[candidate_count++] = 7;
+        } else if (strcmp(record.language, "zh") == 0 &&
+                   strcmp(record.region, "TW") == 0) {
+            candidates[candidate_count++] = 4;
+        } else if (strcmp(record.language, "ko") == 0 &&
+                   strcmp(record.region, "KR") == 0) {
+            candidates[candidate_count++] = 5;
+        } else if (strcmp(record.language, "he") == 0 &&
+                   strcmp(record.region, "IL") == 0) {
+            candidates[candidate_count++] = 8;
         }
     }
-    return 1;
+    written = capacity < candidate_count ? capacity : candidate_count;
+    for (int32_t index = 0; index < written; ++index) {
+        calendars[index] = candidates[index];
+    }
+    return written;
 }
 
 ResultCode GlobalizationNative_GetCalendarInfo(const UChar* locale, CalendarId calendar, CalendarDataType kind, UChar* value, int32_t capacity)

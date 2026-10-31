@@ -785,7 +785,7 @@ namespace System
                 switch (ch)
                 {
                     case (byte)'#':
-                        FormatFixed(ref vlb, ref number, nMaxDigits, info.CurrencyGroupSizes(), info.MinimumGroupingDigits, info.CurrencyDecimalSeparatorTChar<TChar>(), info.CurrencyGroupSeparatorTChar<TChar>());
+                        FormatFixed(ref vlb, ref number, nMaxDigits, info.CurrencyGroupSizes(), info.MinimumGroupingDigits(), info.CurrencyDecimalSeparatorTChar<TChar>(), info.CurrencyGroupSeparatorTChar<TChar>());
                         break;
 
                     case (byte)'-':
@@ -985,7 +985,7 @@ namespace System
                 switch (ch)
                 {
                     case (byte)'#':
-                        FormatFixed(ref vlb, ref number, nMaxDigits, info.NumberGroupSizes(), info.MinimumGroupingDigits, info.NumberDecimalSeparatorTChar<TChar>(), info.NumberGroupSeparatorTChar<TChar>());
+                        FormatFixed(ref vlb, ref number, nMaxDigits, info.NumberGroupSizes(), info.MinimumGroupingDigits(), info.NumberDecimalSeparatorTChar<TChar>(), info.NumberGroupSeparatorTChar<TChar>());
                         break;
 
                     case (byte)'-':
@@ -1112,7 +1112,7 @@ namespace System
                 switch (ch)
                 {
                     case (byte)'#':
-                        FormatFixed(ref vlb, ref number, nMaxDigits, info.PercentGroupSizes(), info.MinimumGroupingDigits, info.PercentDecimalSeparatorTChar<TChar>(), info.PercentGroupSeparatorTChar<TChar>());
+                        FormatFixed(ref vlb, ref number, nMaxDigits, info.PercentGroupSizes(), info.MinimumGroupingDigits(), info.PercentDecimalSeparatorTChar<TChar>(), info.PercentGroupSeparatorTChar<TChar>());
                         break;
 
                     case (byte)'-':
@@ -1301,6 +1301,8 @@ namespace System
         private static int[] CurrencyGroupSizes(this NumberFormatInfo info) => info._currencyGroupSizes;
 
         private static int[] PercentGroupSizes(this NumberFormatInfo info) => info._percentGroupSizes;
+
+        private static int MinimumGroupingDigits(this NumberFormatInfo info) => info._minimumGroupingDigits;
 #else
 
         private static int[] NumberGroupSizes(this NumberFormatInfo info) => info.NumberGroupSizes;
@@ -1308,6 +1310,11 @@ namespace System
         private static int[] CurrencyGroupSizes(this NumberFormatInfo info) => info.CurrencyGroupSizes;
 
         private static int[] PercentGroupSizes(this NumberFormatInfo info) => info.PercentGroupSizes;
+
+        // Number.Formatting.Common.cs is also compiled into System.Runtime.Numerics.
+        // NumberFormatInfo has no public minimum-grouping-digits API, so retain the
+        // .NET-compatible default for the non-CoreLib copy.
+        private static int MinimumGroupingDigits(this NumberFormatInfo info) => 1;
 #endif
     }
 }

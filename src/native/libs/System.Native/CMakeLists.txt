@@ -159,6 +159,22 @@ add_library(System.Native-Static
     ${NATIVE_SOURCES}
 )
 
+if (CLR_CMAKE_TARGET_RINOS)
+    if (NOT DEFINED RINOS_REPO_ROOT OR RINOS_REPO_ROOT STREQUAL "")
+        message(FATAL_ERROR "RinOS System.Native requires RINOS_REPO_ROOT")
+    endif()
+    target_include_directories(System.Native-Static PRIVATE
+        "${RINOS_REPO_ROOT}/src"
+        "${RINOS_REPO_ROOT}/public-base/libs/libc"
+    )
+    if (GEN_SHARED_LIB)
+        target_include_directories(System.Native PRIVATE
+            "${RINOS_REPO_ROOT}/src"
+            "${RINOS_REPO_ROOT}/public-base/libs/libc"
+        )
+    endif()
+endif()
+
 set_target_properties(System.Native-Static PROPERTIES OUTPUT_NAME System.Native CLEAN_DIRECT_OUTPUT 1)
 
 install (TARGETS System.Native-Static DESTINATION ${STATIC_LIB_DESTINATION} COMPONENT libs)

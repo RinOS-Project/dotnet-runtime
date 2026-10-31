@@ -26,6 +26,7 @@
 #endif
 #if defined(TARGET_RINOS)
 #include <rin/net/netif_abi.h>
+#include "rin_net_interface_snapshot.h"
 extern int rin_net_get_primary_info(RinNetPrimaryInfo* out);
 extern int rin_net_get_ipv6_info(RinNetIPv6Info* out);
 #endif
@@ -193,6 +194,202 @@ static void EmitRinOSLinkLayerAddress(
     }
 
     onLinkLayerFound(context, primary->ifname, &linkLayer);
+}
+#endif
+
+#if defined(TARGET_RINOS)
+static inline uint8_t mask2prefix(uint8_t* mask, int length);
+
+/* The managed NetworkInterfaceInfo ABI uses a signed 32-bit index, while the
+ * kernel snapshot deliberately keeps interface_id as an unsigned ownership
+ * value.  The loopback record uses UINT32_MAX as its non-driver sentinel;
+ * map that one value to the managed ABI's reserved positive endpoint and
+ * reject every other unrepresentable identity. */
+static int RinOSManagedInterfaceIndex(uint64_t interfaceId,
+                                      uint32_t* managedIndex)
+{
+    if (managedIndex == NULL || interfaceId == 0u)
+        return 0;
+    if (interfaceId == UINT32_MAX)
+    {
+        *managedIndex = (uint32_t)INT_MAX;
+        return 1;
+    }
+    if (interfaceId > (uint64_t)INT_MAX)
+        return 0;
+    *managedIndex = (uint32_t)interfaceId;
+    return 1;
+}
+
+static int32_t RinOSSnapshotInterfaceMtu(
+    const RinNetIfaddrsInterfaceV2* interfaceInfo)
+{
+    RinNetIPv6Info ipv6 = {0};
+    if (interfaceInfo == NULL ||
+        (interfaceInfo->addresses.flags &
+         RIN_NET_IFADDRS_INTERFACE_FLAG_PRIMARY) == 0u ||
+        rin_net_get_ipv6_info(&ipv6) != 0 ||
+        ipv6.version != RIN_NET_IPV6_INFO_VERSION ||
+        ipv6.struct_size < sizeof(ipv6) ||
+        ipv6.device_generation != interfaceInfo->addresses.device_generation ||
+        ipv6.link_mtu == 0u)
+        return -1;
+    return (int32_t)ipv6.link_mtu;
+}
+
+static int32_t RinOSGetNetworkInterfacesFromSnapshot(
+    int32_t* interfaceCount, NetworkInterfaceInfo** interfaceList,
+    int32_t* addressCount, IpAddressInfo** addressList)
+{
+    RinNetIfaddrsSnapshotListV2 snapshot = {0};
+    size_t totalAddresses = 0u;
+    size_t interfaceBytes;
+    size_t addressBytes;
+    void* memoryBlock;
+    NetworkInterfaceInfo* interfaces;
+    IpAddressInfo* addresses;
+    uint32_t index;
+
+    if (rin_net_get_interface_ifaddrs_snapshot(&snapshot) != 0)
+        return -1;
+    if (!rin_net_ifaddrs_snapshot_list_v2_valid(&snapshot) ||
+        snapshot.count > (uint32_t)INT_MAX)
+    {
+        errno = EPROTO;
+        return -1;
+    }
+
+    for (index = 0u; index < snapshot.count; ++index)
+    {
+        const RinNetIfaddrsInterfaceV2* entry = &snapshot.interfaces[index];
+        uint32_t managedIndex;
+        uint32_t addressIndex;
+        if (!RinOSManagedInterfaceIndex(entry->addresses.interface_id,
+                                        &managedIndex))
+        {
+            errno = EOVERFLOW;
+            return -1;
+        }
+        for (addressIndex = 0u; addressIndex < index; ++addressIndex)
+        {
+            uint32_t priorIndex;
+            if (!RinOSManagedInterfaceIndex(
+                    snapshot.interfaces[addressIndex].addresses.interface_id,
+                    &priorIndex) || priorIndex == managedIndex)
+            {
+                errno = EPROTO;
+                return -1;
+            }
+        }
+        if ((entry->addresses.flags &
+             RIN_NET_IFADDRS_INTERFACE_FLAG_IPV4_CONFIGURED) != 0u)
+            ++totalAddresses;
+        if (entry->addresses.address_count >
+            SIZE_MAX - totalAddresses)
+        {
+            errno = EOVERFLOW;
+            return -1;
+        }
+        totalAddresses += entry->addresses.address_count;
+        if (totalAddresses > (size_t)INT_MAX)
+        {
+            errno = EOVERFLOW;
+            return -1;
+        }
+    }
+
+    if ((size_t)snapshot.count > SIZE_MAX / sizeof(NetworkInterfaceInfo))
+    {
+        errno = EOVERFLOW;
+        return -1;
+    }
+    interfaceBytes = (size_t)snapshot.count * sizeof(NetworkInterfaceInfo);
+    if (totalAddresses > (SIZE_MAX - interfaceBytes) /
+                            sizeof(IpAddressInfo))
+    {
+        errno = EOVERFLOW;
+        return -1;
+    }
+    addressBytes = totalAddresses * sizeof(IpAddressInfo);
+    memoryBlock = calloc(1u, interfaceBytes + addressBytes);
+    if (memoryBlock == NULL)
+    {
+        errno = ENOMEM;
+        return -1;
+    }
+    interfaces = (NetworkInterfaceInfo*)memoryBlock;
+    addresses = (IpAddressInfo*)((uint8_t*)memoryBlock + interfaceBytes);
+
+    totalAddresses = 0u;
+    for (index = 0u; index < snapshot.count; ++index)
+    {
+        const RinNetIfaddrsInterfaceV2* entry = &snapshot.interfaces[index];
+        const RinNetIfaddrsInterfaceV1* source = &entry->addresses;
+        NetworkInterfaceInfo* output = &interfaces[index];
+        uint32_t managedIndex;
+        uint32_t addressIndex;
+        if (!RinOSManagedInterfaceIndex(source->interface_id,
+                                        &managedIndex))
+            goto malformed;
+
+        memcpy(output->Name, source->ifname, sizeof(output->Name));
+        output->Speed = -1;
+        output->InterfaceIndex = managedIndex;
+        output->Mtu = RinOSSnapshotInterfaceMtu(entry);
+        output->HardwareType =
+            MapRinOSHardwareType(entry->link_type, source->ifname);
+        if ((entry->flags & RIN_NET_IFADDRS_V2_FLAG_LINK_KNOWN) == 0u)
+            output->OperationalState = OperationalStatus_Unknown;
+        else if ((entry->flags & RIN_NET_IFADDRS_V2_FLAG_ADMIN_UP) != 0u &&
+                 (entry->flags & RIN_NET_IFADDRS_V2_FLAG_LINK_UP) != 0u)
+            output->OperationalState = OperationalStatus_Up;
+        else
+            output->OperationalState = OperationalStatus_Down;
+        output->SupportsMulticast =
+            (entry->capabilities & RIN_NET_IFADDRS_V2_CAP_MULTICAST) != 0u;
+        for (addressIndex = 0u; addressIndex < sizeof(source->mac);
+             ++addressIndex)
+            if (source->mac[addressIndex] != 0u)
+            {
+                output->NumAddressBytes = (uint8_t)sizeof(source->mac);
+                memcpy(output->AddressBytes, source->mac,
+                       sizeof(source->mac));
+                break;
+            }
+
+        if ((source->flags &
+             RIN_NET_IFADDRS_INTERFACE_FLAG_IPV4_CONFIGURED) != 0u)
+        {
+            IpAddressInfo* address = &addresses[totalAddresses++];
+            address->InterfaceIndex = managedIndex;
+            address->NumAddressBytes = NUM_BYTES_IN_IPV4_ADDRESS;
+            memcpy(address->AddressBytes, source->ipv4_address,
+                   NUM_BYTES_IN_IPV4_ADDRESS);
+            address->PrefixLength = mask2prefix(source->ipv4_netmask,
+                                                NUM_BYTES_IN_IPV4_ADDRESS);
+        }
+        for (addressIndex = 0u; addressIndex < source->address_count;
+             ++addressIndex)
+        {
+            IpAddressInfo* address = &addresses[totalAddresses++];
+            address->InterfaceIndex = managedIndex;
+            address->NumAddressBytes = NUM_BYTES_IN_IPV6_ADDRESS;
+            address->PrefixLength = source->prefix_lengths6[addressIndex];
+            memcpy(address->AddressBytes, source->addresses6[addressIndex],
+                   NUM_BYTES_IN_IPV6_ADDRESS);
+        }
+    }
+
+    *interfaceCount = (int32_t)snapshot.count;
+    *addressCount = (int32_t)totalAddresses;
+    *interfaceList = interfaces;
+    *addressList = addresses;
+    return 0;
+
+malformed:
+    free(memoryBlock);
+    errno = EPROTO;
+    return -1;
 }
 #endif
 
@@ -472,6 +669,11 @@ int32_t SystemNative_GetNetworkInterfaces(int32_t * interfaceCount, NetworkInter
     *addressCount = 0;
     *interfaceList = NULL;
     *addressList = NULL;
+
+#if defined(TARGET_RINOS)
+    return RinOSGetNetworkInterfacesFromSnapshot(
+        interfaceCount, interfaceList, addressCount, addressList);
+#endif
 
 #if HAVE_GETIFADDRS
     struct ifaddrs* head;   // Pointer to block allocated by getifaddrs().

@@ -182,6 +182,14 @@ namespace System.Net.NetworkInformation
 
         private static int GetInterfaceIndex(uint index)
         {
+            // RinOS reserves UINT32_MAX for the kernel-owned loopback record.
+            // System.Native maps that identity to Int32.MaxValue because this
+            // managed interop ABI cannot carry an unsigned 32-bit index.
+            if (index == uint.MaxValue)
+            {
+                return int.MaxValue;
+            }
+
             if (index == 0 || index > int.MaxValue)
             {
                 throw new NetworkInformationException(

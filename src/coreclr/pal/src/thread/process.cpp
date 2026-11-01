@@ -161,7 +161,14 @@ int gApplicationGroupIdLength = 0;
 #elif defined(__APPLE__)
 #define CLR_SEM_MAX_NAMELEN 31
 #elif defined(NAME_MAX)
+#if (NAME_MAX - 4) < MAX_PATH
 #define CLR_SEM_MAX_NAMELEN (NAME_MAX - 4)
+#else
+// RinOS exposes a filesystem component limit larger than the PAL's fixed
+// semaphore-name buffer.  The generated semaphore names use MAX_PATH as the
+// common PAL bound, so do not let a platform NAME_MAX widen this ABI buffer.
+#define CLR_SEM_MAX_NAMELEN MAX_PATH
+#endif
 #else
 // On Solaris, MAXNAMLEN is 512, which is higher than MAX_PATH defined by pal.h
 #define CLR_SEM_MAX_NAMELEN MAX_PATH

@@ -640,7 +640,7 @@ namespace System.Net.Security
         private sealed class RinCertificateSignerState
         {
             private static readonly ushort[] s_rsaPreferredSchemes =
-                { 0x0804, 0x0401, 0x0501, 0x0601 };
+                { 0x0804, 0x0805, 0x0806, 0x0401, 0x0501, 0x0601 };
             private static readonly ushort[] s_ecdsaP256Schemes = { 0x0403 };
             private static readonly ushort[] s_ecdsaP384Schemes = { 0x0503 };
             private static readonly ushort[] s_ecdsaP521Schemes = { 0x0603 };

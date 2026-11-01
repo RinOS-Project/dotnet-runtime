@@ -322,7 +322,11 @@ static bool WriteThunkPointer(uint8_t*& cursor, uint8_t* end, void* value)
 static bool WriteThunkBytes(uint8_t*& cursor, uint8_t* end,
                             const void* value, size_t size)
 {
-    if (!CanWriteThunkBytes(cursor, end, size))
+    // A zero-length copy is harmless with a null source, but a future
+    // architecture encoder must not turn a malformed source pointer into a
+    // crash while emitting executable thunk bytes.
+    if ((size != 0 && value == nullptr) ||
+        !CanWriteThunkBytes(cursor, end, size))
         return false;
     memcpy(cursor, value, size);
     cursor += size;

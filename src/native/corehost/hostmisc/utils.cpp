@@ -10,6 +10,9 @@
 #include <_version.h>
 #else
 #include <_version.c>
+// RinOS's generated _version.c exports version macros, not the historical
+// static symbol consumed by the Unix host-version parser.
+static const char sccsid[] = "@(#)Version " VER_PRODUCTVERSION_STR;
 #endif
 
 bool file_exists_in_dir(const pal::string_t& dir, const pal::char_t* file_name, pal::string_t* out_file_path)

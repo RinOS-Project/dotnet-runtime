@@ -125,6 +125,58 @@ static void owner_minor(uint32_t* minor_status, uint32_t value)
     if (minor_status != NULL) *minor_status = value;
 }
 
+static int owner_operation_valid(uint16_t operation)
+{
+    switch (operation) {
+    case RIN_KERBEROS_OPERATION_INIT_SEC_CONTEXT:
+    case RIN_KERBEROS_OPERATION_ACCEPT_SEC_CONTEXT:
+    case RIN_KERBEROS_OPERATION_DELETE_SEC_CONTEXT:
+    case RIN_KERBEROS_OPERATION_WRAP:
+    case RIN_KERBEROS_OPERATION_UNWRAP:
+    case RIN_KERBEROS_OPERATION_GET_MIC:
+    case RIN_KERBEROS_OPERATION_VERIFY_MIC:
+    case RIN_KERBEROS_OPERATION_GET_PEER_PRINCIPAL:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+static int owner_operation_request_valid(
+    const RinKerberosOperationRequestV1* request,
+    uint32_t context_token_size, uint32_t input_size,
+    uint32_t output_capacity, uint32_t next_context_capacity,
+    const uint8_t* context_token, const uint8_t* input,
+    const uint8_t* output, const uint8_t* next_context_token)
+{
+    if (request == NULL ||
+        request->struct_size != sizeof(*request) ||
+        request->version != RIN_KERBEROS_OPERATION_ABI_VERSION ||
+        !owner_operation_valid(request->operation) ||
+        (request->credential_kind !=
+             RIN_KERBEROS_OPERATION_CREDENTIAL_INITIATOR &&
+         request->credential_kind !=
+             RIN_KERBEROS_OPERATION_CREDENTIAL_ACCEPTOR) ||
+        (request->flags & ~RIN_KERBEROS_OPERATION_KNOWN_FLAGS) != 0u ||
+        ((request->operation != RIN_KERBEROS_OPERATION_WRAP &&
+          request->operation != RIN_KERBEROS_OPERATION_UNWRAP) &&
+         request->flags != 0u) ||
+        request->context_token_size != context_token_size ||
+        request->input_size != input_size ||
+        request->output_capacity != output_capacity ||
+        context_token_size > RIN_KERBEROS_OPERATION_MAX_CONTEXT_TOKEN_SIZE ||
+        input_size > RIN_KERBEROS_OPERATION_MAX_INPUT_SIZE ||
+        output_capacity > RIN_KERBEROS_OPERATION_MAX_OUTPUT_SIZE ||
+        next_context_capacity >
+            RIN_KERBEROS_OPERATION_MAX_CONTEXT_TOKEN_SIZE ||
+        (context_token_size != 0u && context_token == NULL) ||
+        (input_size != 0u && input == NULL) ||
+        (output_capacity != 0u && output == NULL) ||
+        (next_context_capacity != 0u && next_context_token == NULL))
+        return 0;
+    return 1;
+}
+
 static void* owner_make_token(uint32_t index, uint32_t generation)
 {
     const uintptr_t value =
@@ -382,14 +434,16 @@ static uint32_t owner_operation(
     if (credential == NULL || request == NULL || output_size == NULL ||
         next_context_token_size == NULL || generation == NULL ||
         provider_result == NULL || return_flags == NULL ||
-        request->struct_size != sizeof(*request) ||
-        request->version != RIN_KERBEROS_OPERATION_ABI_VERSION ||
-        request->context_token_size != context_token_size ||
-        request->input_size != input_size ||
-        request->output_capacity != output_capacity ||
         !owner_decode_token(credential, &index, &token_generation) ||
         !owner_valid(owner) || !owner_lock(owner))
         return RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
+    if (!owner_operation_request_valid(
+            request, context_token_size, input_size, output_capacity,
+            next_context_capacity, context_token, input, output,
+            next_context_token)) {
+        owner_unlock(owner);
+        return RIN_KERBEROS_CREDENTIAL_OWNER_UNAVAILABLE;
+    }
     slot = &owner->slots[index];
     if (slot->magic != RINOS_KERBEROS_OWNER_MAGIC ||
         slot->generation != token_generation ||

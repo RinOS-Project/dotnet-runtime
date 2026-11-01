@@ -93,6 +93,12 @@ typedef struct RinOsKerberosProviderContext {
     uint32_t credential_ref_held;
     uint32_t mech_list_size;
     uint8_t mech_list[RINOS_KERBEROS_MAX_MECH_LIST_SIZE];
+    /* Channel bindings are part of the authenticated context contract.  The
+     * SPNEGO final acknowledgement may complete locally without another owner
+     * operation, so retain the exact bounded binding and reject a caller that
+     * changes it between context legs. */
+    uint32_t channel_binding_size;
+    uint8_t channel_binding[RIN_KERBEROS_PROVIDER_MAX_CHANNEL_BINDING_SIZE];
     uint8_t token[RIN_KERBEROS_OPERATION_MAX_CONTEXT_TOKEN_SIZE];
     struct RinOsKerberosProviderContext* next_live;
 } RinOsKerberosProviderContext;
@@ -1726,7 +1732,41 @@ static int provider_context_valid(
            provider_operation_owner_valid(context->owner) &&
            (context->state == RINOS_KERBEROS_CONTEXT_NEGOTIATING ||
             context->state == RINOS_KERBEROS_CONTEXT_ESTABLISHED) &&
+           context->channel_binding_size <=
+               RIN_KERBEROS_PROVIDER_MAX_CHANNEL_BINDING_SIZE &&
            context->token_size <= RIN_KERBEROS_OPERATION_MAX_CONTEXT_TOKEN_SIZE;
+}
+
+static int provider_context_channel_binding_matches(
+    const RinOsKerberosProviderContext* context, const void* channel_binding,
+    int32_t channel_binding_size)
+{
+    if (context == NULL || channel_binding_size < 0 ||
+        (uint32_t)channel_binding_size != context->channel_binding_size ||
+        (uint32_t)channel_binding_size >
+            RIN_KERBEROS_PROVIDER_MAX_CHANNEL_BINDING_SIZE ||
+        (channel_binding_size != 0 && channel_binding == NULL))
+        return 0;
+    return channel_binding_size == 0 ||
+           memcmp(context->channel_binding, channel_binding,
+                  (size_t)channel_binding_size) == 0;
+}
+
+static int provider_context_bind_channel(
+    RinOsKerberosProviderContext* context, const void* channel_binding,
+    int32_t channel_binding_size)
+{
+    if (context == NULL || channel_binding_size < 0 ||
+        (uint32_t)channel_binding_size >
+            RIN_KERBEROS_PROVIDER_MAX_CHANNEL_BINDING_SIZE ||
+        (channel_binding_size != 0 && channel_binding == NULL))
+        return 0;
+    context->channel_binding_size = (uint32_t)channel_binding_size;
+    provider_zero(context->channel_binding, sizeof(context->channel_binding));
+    if (channel_binding_size != 0)
+        memcpy(context->channel_binding, channel_binding,
+               (size_t)channel_binding_size);
+    return 1;
 }
 
 static int provider_credential_dispose(
@@ -2738,6 +2778,16 @@ static uint32_t provider_init_sec_context_impl(
         }
         created_context = 1;
     }
+    if (created_context) {
+        if (!provider_context_bind_channel(provider_context, NULL, 0)) {
+            provider_context_dispose(provider_context);
+            *security_context = NULL;
+            return provider_unavailable(minor_status);
+        }
+    } else if (!provider_context_channel_binding_matches(
+                   provider_context, NULL, 0)) {
+        return provider_unavailable(minor_status);
+    }
     if (spnego_mode && input_length != 0u) {
         spnego_parse_status = provider_spnego_unwrap(
             input, input_length, &spnego_input);
@@ -3086,6 +3136,17 @@ static uint32_t provider_init_sec_context_ex_impl(
         }
         created_context = 1;
     }
+    if (created_context) {
+        if (!provider_context_bind_channel(
+                provider_context, channel_binding, channel_binding_size)) {
+            provider_context_dispose(provider_context);
+            *security_context = NULL;
+            return provider_unavailable(minor_status);
+        }
+    } else if (!provider_context_channel_binding_matches(
+                   provider_context, channel_binding, channel_binding_size)) {
+        return provider_unavailable(minor_status);
+    }
     if (spnego_mode && input_length != 0u) {
         spnego_parse_status = provider_spnego_unwrap(
             input, input_length, &spnego_input);
@@ -3397,6 +3458,17 @@ static uint32_t provider_accept_sec_context_impl(
         provider_context->owner = provider_operation_owner();
         provider_context->credential = credential;
         created_context = 1;
+    }
+    if (created_context) {
+        if (!provider_context_bind_channel(
+                provider_context, channel_binding, channel_binding_size)) {
+            provider_context_dispose(provider_context);
+            *security_context = NULL;
+            return provider_unavailable(minor_status);
+        }
+    } else if (!provider_context_channel_binding_matches(
+                   provider_context, channel_binding, channel_binding_size)) {
+        return provider_unavailable(minor_status);
     }
     if (spnego_mode ||
         (input_length != 0u &&

@@ -374,6 +374,7 @@ static const RinNativeAotThunkProviderV1* GetPortableThunkProviderForRuntime(
     const RinNativeAotThunkProviderV1* discovered =
         GetRinNativeAotThunkProvider();
     const RinNativeAotThunkProviderV1* active = nullptr;
+    const RinNativeAotThunkProviderV1* transientProvider = nullptr;
     bool multipleProviders = false;
 
     LockPortableThunkMappingOwners();
@@ -385,6 +386,21 @@ static const RinNativeAotThunkProviderV1* GetPortableThunkProviderForRuntime(
         if (owner->provider == nullptr)
             continue;
 
+        /* A provider callback is allowed to block or re-enter the runtime.
+         * Do not dispatch a geometry query while the same owner is in its
+         * release callback: the product provider may be tearing down the
+         * context that backs these callbacks.  A different live owner may
+         * still be queried, but it must not be confused with the transient
+         * provider below. */
+        if (owner->pendingRelease || owner->releaseInProgress)
+        {
+            if (transientProvider == nullptr)
+                transientProvider = owner->provider;
+            else if (transientProvider != owner->provider)
+                multipleProviders = true;
+            continue;
+        }
+
         if (active == nullptr)
             active = owner->provider;
         else if (active != owner->provider)
@@ -392,6 +408,24 @@ static const RinNativeAotThunkProviderV1* GetPortableThunkProviderForRuntime(
             multipleProviders = true;
             break;
         }
+    }
+
+    if (active == nullptr && transientProvider != nullptr)
+    {
+        /* There is no live mapping whose provider can safely answer the
+         * query.  Even if rediscovery returns the same table, selecting it
+         * here would race the release callback and could call through a
+         * context after its owner has begun teardown. */
+        if (providerConflict != nullptr)
+            *providerConflict = true;
+        UnlockPortableThunkMappingOwners();
+        return nullptr;
+    }
+
+    if (active != nullptr && transientProvider != nullptr &&
+        active != transientProvider)
+    {
+        multipleProviders = true;
     }
 
     if (multipleProviders ||

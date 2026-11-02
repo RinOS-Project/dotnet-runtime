@@ -1730,6 +1730,7 @@ static int provider_context_valid(
            (context->credential_ref_held == 0u ||
             context->credential->active_contexts != 0u) &&
            provider_operation_owner_valid(context->owner) &&
+            context->owner->context == context->credential->owner->context &&
            (context->state == RINOS_KERBEROS_CONTEXT_NEGOTIATING ||
             context->state == RINOS_KERBEROS_CONTEXT_ESTABLISHED) &&
            context->channel_binding_size <=

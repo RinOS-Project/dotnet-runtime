@@ -244,9 +244,9 @@ static void ReleaseFailedRxThunkMapping(RinOsRxThunkMappingOwner* owner)
  * owned by this allocator before exposing the opposite half.  The managed
  * heap lock still provides the lifetime ordering between this lookup and a
  * mapping release; this registry check is the native ownership boundary. */
-static bool IsOwnedRxThunkPage(uintptr_t pageAddress, bool dataSection)
+static bool IsOwnedRxThunkAddress(uintptr_t address, bool dataSection)
 {
-    if (pageAddress == 0 || !IsValidThunkPageGeometry() ||
+    if (address == 0 || !IsValidThunkPageGeometry() ||
         THUNKS_MAP_SIZE > SIZE_MAX / 2)
     {
         return false;
@@ -272,10 +272,13 @@ static bool IsOwnedRxThunkPage(uintptr_t pageAddress, bool dataSection)
 
         const uintptr_t sectionBase = baseAddress +
             (dataSection ? (uintptr_t)THUNKS_MAP_SIZE : 0u);
+        if (sectionBase > UINTPTR_MAX - (uintptr_t)THUNKS_MAP_SIZE)
+        {
+            continue;
+        }
         const uintptr_t sectionEnd = sectionBase +
             (uintptr_t)THUNKS_MAP_SIZE;
-        if (pageAddress >= sectionBase && pageAddress < sectionEnd &&
-            ((pageAddress - sectionBase) % (uintptr_t)OS_PAGE_SIZE) == 0)
+        if (address >= sectionBase && address < sectionEnd)
         {
             owned = true;
             break;
@@ -419,7 +422,7 @@ FCIMPL1(void*, RhpGetThunkDataBlockAddress, void* pThunkStubAddress)
         return NULL;
     }
 
-    if (!IsOwnedRxThunkPage(pageAddress, false))
+    if (!IsOwnedRxThunkAddress((uintptr_t)pThunkStubAddress, false))
     {
         return NULL;
     }
@@ -442,7 +445,7 @@ FCIMPL1(void*, RhpGetThunkStubsBlockAddress, void* pThunkDataAddress)
         return NULL;
     }
 
-    if (!IsOwnedRxThunkPage(pageAddress, true))
+    if (!IsOwnedRxThunkAddress((uintptr_t)pThunkDataAddress, true))
     {
         return NULL;
     }

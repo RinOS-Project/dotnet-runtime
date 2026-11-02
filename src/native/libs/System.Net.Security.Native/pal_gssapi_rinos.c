@@ -599,7 +599,13 @@ static uint32_t rinos_gss_finish_provider_handle(
         {
             *outputHandle = NULL;
         }
-        return mappedStatus;
+        /* A provider cannot claim a successful credential acquisition without
+         * publishing an opaque handle.  Do not let the null-output case turn
+         * into a managed success; there is nothing SafeHandle can release. */
+        return mappedStatus == RINOS_GSS_S_COMPLETE &&
+                   (outputHandle == NULL || *outputHandle == NULL)
+            ? rinos_gss_unavailable(minorStatus)
+            : mappedStatus;
     }
 
     return mappedStatus;

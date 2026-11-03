@@ -1,8 +1,8 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#if defined(__linux__) && !defined(_GNU_SOURCE)
-// glibc declares pthread_setname_np only when _GNU_SOURCE is defined before <pthread.h>.
+#if (defined(__linux__) || defined(__rinos__)) && !defined(_GNU_SOURCE)
+// glibc pthread extensions and RinOS GNU extensions require _GNU_SOURCE.
 #define _GNU_SOURCE
 #elif defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
 // pthread_threadid_np and pthread_setname_np are hidden by _XOPEN_SOURCE unless

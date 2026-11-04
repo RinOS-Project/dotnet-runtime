@@ -147,15 +147,26 @@ PALEXPORT int32_t CryptoNative_RinOSAesGcmEncrypt(
     if (aes_gcm_init(&gcm, context->key, context->key_length) != 0)
         return 0;
 
-    aes_gcm_set_iv(&gcm, nonce, (rin_size_t)nonce_length);
-    if (aad_length != 0)
-        aes_gcm_aad(&gcm, aad, (rin_size_t)aad_length);
-    if (plaintext_length != 0)
+    int gcm_result = aes_gcm_set_iv(
+        &gcm, nonce, (rin_size_t)nonce_length);
+    if (gcm_result == 0 && aad_length != 0)
+        gcm_result = aes_gcm_aad(&gcm, aad, (rin_size_t)aad_length);
+    if (gcm_result == 0 && plaintext_length != 0)
     {
         rintls_memcpy(ciphertext, plaintext, (rin_size_t)plaintext_length);
-        aes_gcm_encrypt_inplace(&gcm, ciphertext, (rin_size_t)plaintext_length);
+        gcm_result = aes_gcm_encrypt_inplace(
+            &gcm, ciphertext, (rin_size_t)plaintext_length);
     }
-    aes_gcm_finish(&gcm, full_tag);
+    if (gcm_result == 0) gcm_result = aes_gcm_finish(&gcm, full_tag);
+    if (gcm_result != 0)
+    {
+        if (ciphertext_length != 0)
+            rintls_secure_zero(ciphertext, (rin_size_t)ciphertext_length);
+        rintls_secure_zero(tag, (rin_size_t)tag_length);
+        rintls_secure_zero(full_tag, sizeof(full_tag));
+        rintls_secure_zero(&gcm, sizeof(gcm));
+        return 0;
+    }
     rintls_memcpy(tag, full_tag, (rin_size_t)tag_length);
 
     rintls_secure_zero(full_tag, sizeof(full_tag));
@@ -188,15 +199,24 @@ PALEXPORT int32_t CryptoNative_RinOSAesGcmDecrypt(
     if (aes_gcm_init(&gcm, context->key, context->key_length) != 0)
         return 0;
 
-    aes_gcm_set_iv(&gcm, nonce, (rin_size_t)nonce_length);
-    if (aad_length != 0)
-        aes_gcm_aad(&gcm, aad, (rin_size_t)aad_length);
-    if (ciphertext_length != 0)
+    int gcm_result = aes_gcm_set_iv(
+        &gcm, nonce, (rin_size_t)nonce_length);
+    if (gcm_result == 0 && aad_length != 0)
+        gcm_result = aes_gcm_aad(&gcm, aad, (rin_size_t)aad_length);
+    if (gcm_result == 0 && ciphertext_length != 0)
     {
         rintls_memcpy(plaintext, ciphertext, (rin_size_t)ciphertext_length);
-        aes_gcm_decrypt_inplace(&gcm, plaintext, (rin_size_t)ciphertext_length);
+        gcm_result = aes_gcm_decrypt_inplace(
+            &gcm, plaintext, (rin_size_t)ciphertext_length);
     }
-    aes_gcm_finish(&gcm, full_tag);
+    if (gcm_result == 0) gcm_result = aes_gcm_finish(&gcm, full_tag);
+    if (gcm_result != 0) {
+        if (plaintext_length != 0)
+            rintls_secure_zero(plaintext, (rin_size_t)plaintext_length);
+        rintls_secure_zero(full_tag, sizeof(full_tag));
+        rintls_secure_zero(&gcm, sizeof(gcm));
+        return 0;
+    }
     int result = rintls_secure_compare(full_tag, tag, (rin_size_t)tag_length);
     if (result != 0 && plaintext_length != 0)
         rintls_secure_zero(plaintext, (rin_size_t)plaintext_length);
